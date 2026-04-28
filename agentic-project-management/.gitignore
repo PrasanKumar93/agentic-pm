@@ -1,0 +1,16 @@
+node_modules
+.turbo
+.next
+dist
+coverage
+.env
+.env.local
+*.log
+*.tsbuildinfo
+.DS_Store
+workspaces
+artifacts
+packages/*/src/**/*.d.ts
+packages/*/src/**/*.d.ts.map
+packages/*/src/**/*.js
+packages/*/src/**/*.js.map
