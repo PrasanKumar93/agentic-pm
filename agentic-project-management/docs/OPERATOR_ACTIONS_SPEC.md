@@ -112,7 +112,7 @@ Notes:
 - `retry` increments `retryCount` once.
 - `start` does not increment `retryCount`; it only makes the item dispatchable.
 - `cancel` updates the latest active run to `cancelled` when that run is still running/preparing/stalled/retrying.
-- Long-running process termination is not handled by this API yet. The future worker-control slice will watch desired state and stop active agent processes.
+- Worker-side process termination is covered in `WORKER_CANCELLATION_SPEC.md`.
 
 ## 4. Auditing
 
@@ -156,6 +156,5 @@ Required checks:
 
 - Add global `start eligible`.
 - Add confirmation modals for high-impact actions once real repos/PRs are connected.
-- Add worker-side cancellation for active agent sessions.
 - Add action to request changes and comment back to Linear.
 - Add action result banners/toasts in the dashboard.

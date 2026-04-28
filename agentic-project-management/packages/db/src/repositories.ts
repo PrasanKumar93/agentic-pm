@@ -34,6 +34,13 @@ export class InvalidWorkItemActionError extends Error {
   }
 }
 
+export interface RunStopRequest {
+  shouldStop: boolean;
+  reason?: string;
+  runStatus?: Run["status"];
+  workItemStatus?: WorkItemStatus;
+}
+
 export class AgenticRepository {
   readonly collections: AgenticCollections;
 
@@ -141,6 +148,54 @@ export class AgenticRepository {
   async isDispatchPaused(projectId: string): Promise<boolean> {
     const control = await this.collections.dispatchControls.findOne({ projectId });
     return control?.paused ?? false;
+  }
+
+  async getRunStopRequest(input: { runId: string; workItemId: string }): Promise<RunStopRequest> {
+    const [run, workItem] = await Promise.all([
+      this.collections.runs.findOne({ id: input.runId }),
+      this.collections.workItems.findOne({ id: input.workItemId })
+    ]);
+
+    if (!workItem) {
+      return {
+        shouldStop: true,
+        reason: `work item ${input.workItemId} is no longer available`,
+        runStatus: run?.status
+      };
+    }
+
+    if (run?.status === "cancelled") {
+      return {
+        shouldStop: true,
+        reason: run.exitReason ?? "run was cancelled",
+        runStatus: run.status,
+        workItemStatus: workItem.status
+      };
+    }
+
+    if (workItem.status === "cancelled") {
+      return {
+        shouldStop: true,
+        reason: "work item was cancelled",
+        runStatus: run?.status,
+        workItemStatus: workItem.status
+      };
+    }
+
+    if (workItem.status === "paused") {
+      return {
+        shouldStop: true,
+        reason: "work item was paused",
+        runStatus: run?.status,
+        workItemStatus: workItem.status
+      };
+    }
+
+    return {
+      shouldStop: false,
+      runStatus: run?.status,
+      workItemStatus: workItem.status
+    };
   }
 
   async claimNextQueuedWorkItem(projectId: string, workerId: string, now = new Date()): Promise<WorkItem | null> {

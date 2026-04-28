@@ -3,6 +3,7 @@ export type AgentEventType =
   | "stdout"
   | "stderr"
   | "message"
+  | "heartbeat"
   | "artifact"
   | "session.completed"
   | "session.failed";

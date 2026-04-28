@@ -1,10 +1,17 @@
 import "dotenv/config";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { CodexCliRuntime, FakeAgentRuntime, type AgentRuntime } from "@agentic-pm/agents";
+import { CodexCliRuntime, FakeAgentRuntime, type AgentRuntime, type AgentSession } from "@agentic-pm/agents";
 import { expandEnvReference, loadWorkflowDocument, renderWorkflowPrompt } from "@agentic-pm/config";
-import { createId, type Issue } from "@agentic-pm/core";
-import { AgenticRepository, connectMongo, ensureIndexes, getCollections, readMongoConfig } from "@agentic-pm/db";
+import { createId, type Issue, type Run } from "@agentic-pm/core";
+import {
+  AgenticRepository,
+  connectMongo,
+  ensureIndexes,
+  getCollections,
+  readMongoConfig,
+  type RunStopRequest
+} from "@agentic-pm/db";
 import { ConsoleEventSink } from "@agentic-pm/observability";
 import { FakeTrackerAdapter, LinearTrackerAdapter, type TrackerAdapter } from "@agentic-pm/trackers";
 import { WorkspaceManager } from "@agentic-pm/workspaces";
@@ -103,37 +110,39 @@ async function dispatchOne(): Promise<void> {
     return;
   }
 
-  await tracker.moveIssue({
-    issueExternalId: issue.externalId,
-    stateName: workflow.config.tracker.running_state
-  });
-
-  const workspacePath = await workspaces.prepareIssueWorkspace({
-    projectSlug,
-    issue,
-    hooks: process.env.AGENTIC_PM_ENABLE_HOOKS === "true" ? workflow.config.hooks : {}
-  });
-
-  const run = await repository.createRun({
-    workItem,
-    workspacePath,
-    agentRuntime: runtime.name
-  });
-
-  await repository.setRunStatus(run.id, "running");
-  await repository.appendEvent({
-    projectId,
-    workItemId: workItem.id,
-    runId: run.id,
-    type: "run.started",
-    level: "info",
-    message: `Started run for ${issue.identifier}`,
-    payload: {
-      workspacePath
-    }
-  });
+  let run: Run | undefined;
 
   try {
+    await tracker.moveIssue({
+      issueExternalId: issue.externalId,
+      stateName: workflow.config.tracker.running_state
+    });
+
+    const workspacePath = await workspaces.prepareIssueWorkspace({
+      projectSlug,
+      issue,
+      hooks: process.env.AGENTIC_PM_ENABLE_HOOKS === "true" ? workflow.config.hooks : {}
+    });
+
+    run = await repository.createRun({
+      workItem,
+      workspacePath,
+      agentRuntime: runtime.name
+    });
+
+    await repository.setRunStatus(run.id, "running");
+    await repository.appendEvent({
+      projectId,
+      workItemId: workItem.id,
+      runId: run.id,
+      type: "run.started",
+      level: "info",
+      message: `Started run for ${issue.identifier}`,
+      payload: {
+        workspacePath
+      }
+    });
+
     const prompt = await renderWorkflowPrompt(workflow, {
       issue,
       repository: {
@@ -147,22 +156,52 @@ async function dispatchOne(): Promise<void> {
       prompt
     });
 
+    const stopBeforeEvents = await repository.getRunStopRequest({
+      runId: run.id,
+      workItemId: workItem.id
+    });
+    if (stopBeforeEvents.shouldStop) {
+      await stopRun({ run, workItem, session, stopRequest: stopBeforeEvents });
+      return;
+    }
+
     let failed = false;
     for await (const agentEvent of runtime.run(session, prompt)) {
       await repository.heartbeatRun(run.id);
-      await repository.appendEvent({
-        projectId,
-        workItemId: workItem.id,
-        runId: run.id,
-        type: `agent.${agentEvent.type}`,
-        level: agentEvent.type === "stderr" || agentEvent.type === "session.failed" ? "error" : "info",
-        message: agentEvent.message,
-        payload: agentEvent.payload
-      });
+
+      if (agentEvent.type !== "heartbeat") {
+        await repository.appendEvent({
+          projectId,
+          workItemId: workItem.id,
+          runId: run.id,
+          type: `agent.${agentEvent.type}`,
+          level: agentEvent.type === "stderr" || agentEvent.type === "session.failed" ? "error" : "info",
+          message: agentEvent.message,
+          payload: agentEvent.payload
+        });
+      }
 
       if (agentEvent.type === "session.failed") {
         failed = true;
       }
+
+      const stopRequest = await repository.getRunStopRequest({
+        runId: run.id,
+        workItemId: workItem.id
+      });
+      if (stopRequest.shouldStop) {
+        await stopRun({ run, workItem, session, stopRequest });
+        return;
+      }
+    }
+
+    const stopBeforeFinalize = await repository.getRunStopRequest({
+      runId: run.id,
+      workItemId: workItem.id
+    });
+    if (stopBeforeFinalize.shouldStop) {
+      await stopRun({ run, workItem, session, stopRequest: stopBeforeFinalize });
+      return;
     }
 
     if (failed) {
@@ -183,17 +222,57 @@ async function dispatchOne(): Promise<void> {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await repository.setRunStatus(run.id, "failed", message);
     await repository.markWorkItemStatus(workItem.id, "failed");
+
+    if (run) {
+      await repository.setRunStatus(run.id, "failed", message);
+      await repository.appendEvent({
+        projectId,
+        workItemId: workItem.id,
+        runId: run.id,
+        type: "run.failed",
+        level: "error",
+        message
+      });
+      return;
+    }
+
     await repository.appendEvent({
       projectId,
       workItemId: workItem.id,
-      runId: run.id,
-      type: "run.failed",
+      type: "run.setup_failed",
       level: "error",
       message
     });
   }
+}
+
+async function stopRun(input: {
+  run: { id: string };
+  workItem: { id: string; projectId: string };
+  session: AgentSession;
+  stopRequest: RunStopRequest;
+}): Promise<void> {
+  const reason = input.stopRequest.reason ?? "run stop requested";
+  await runtime.cancel(input.session, reason);
+  await repository.setRunStatus(input.run.id, "cancelled", reason);
+
+  if (input.stopRequest.workItemStatus !== "paused") {
+    await repository.markWorkItemStatus(input.workItem.id, "cancelled");
+  }
+
+  await repository.appendEvent({
+    projectId: input.workItem.projectId,
+    workItemId: input.workItem.id,
+    runId: input.run.id,
+    type: "run.cancelled",
+    level: "warn",
+    message: reason,
+    payload: {
+      runStatus: input.stopRequest.runStatus,
+      workItemStatus: input.stopRequest.workItemStatus
+    }
+  });
 }
 
 function createTracker(): TrackerAdapter {

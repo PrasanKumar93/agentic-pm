@@ -19,14 +19,14 @@ Date: 2026-04-29
 - Row-level operator actions for start, retry, pause, resume, and cancel.
 - Run detail timeline backed by `/runs/:runId/events`.
 - Dispatch controls for project-level pause/resume and start eligible.
+- Worker-side cancellation checks for active agent sessions.
 
 ## In Progress
 
-- Worker-side cancellation checks while an agent session is running.
+- Linear webhook signature validation and Linear setup guide.
 
 ## Next Queue
 
-- Linear webhook signature validation and Linear setup guide.
 - Action result banners in the dashboard.
 - Codex runtime hardening: event streaming, cancellation, artifacts, and review packet capture.
 - Pull request creation and manual merge gate.

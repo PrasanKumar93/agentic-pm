@@ -50,6 +50,7 @@ export class CodexCliRuntime implements AgentRuntime {
     const queue: AgentEvent[] = [];
     let done = false;
     let error: Error | undefined;
+    let nextHeartbeatAt = Date.now() + 1000;
 
     child.stdout.on("data", (chunk: Buffer) => {
       queue.push({
@@ -97,6 +98,14 @@ export class CodexCliRuntime implements AgentRuntime {
       }
 
       await new Promise((resolve) => setTimeout(resolve, 100));
+      if (Date.now() >= nextHeartbeatAt) {
+        nextHeartbeatAt = Date.now() + 1000;
+        yield {
+          type: "heartbeat",
+          message: "Codex session heartbeat",
+          payload: { sessionId: session.id }
+        };
+      }
     }
 
     this.processes.delete(session.id);

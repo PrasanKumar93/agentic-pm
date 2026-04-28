@@ -40,6 +40,7 @@
 - [ ] Verify Codex app-server protocol locally.
 - [ ] Replace fake runtime with Codex runtime adapter.
 - [ ] Stream Codex events into MongoDB.
-- [ ] Add stall detection and cancellation.
+- [x] Add worker-side cancellation checks.
+- [ ] Add stall detection.
 - [ ] Add artifact capture for logs and patches.
 - [ ] Create PR and review packet from agent output.
