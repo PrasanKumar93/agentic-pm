@@ -64,6 +64,14 @@ type WorkItemSummary = {
   updatedAt: string;
 };
 
+type RunEventSummary = {
+  id: string;
+  type: string;
+  level: "debug" | "info" | "warn" | "error";
+  message: string;
+  createdAt: string;
+};
+
 type WorkItemsResponse = {
   data: WorkItemSummary[];
   meta?: {
@@ -73,9 +81,18 @@ type WorkItemsResponse = {
   };
 };
 
+type RunEventsResponse = {
+  data: RunEventSummary[];
+};
+
 type DashboardData = {
   items: WorkItemSummary[];
   generatedAt?: string;
+  error?: string;
+};
+
+type RunEventsData = {
+  events: RunEventSummary[];
   error?: string;
 };
 
@@ -85,6 +102,8 @@ export default async function DashboardPage() {
   const dashboard = await fetchDashboardData();
   const lanes = buildLanes(dashboard.items);
   const selected = selectRunDetailItem(dashboard.items);
+  const runEvents = selected?.latestRun ? await fetchRunEvents(selected.latestRun.id) : { events: [] };
+  const recentEvents = getRecentEvents(runEvents.events);
 
   return (
     <main className="shell">
@@ -263,6 +282,32 @@ export default async function DashboardPage() {
                     retries: {selected.retryCount}
                   </p>
                 </div>
+
+                <div className="eventTimeline">
+                  <div className="eventTimelineHeader">
+                    <span>Timeline</span>
+                    <strong>{selected.eventCount} events</strong>
+                  </div>
+
+                  {runEvents.error ? (
+                    <div className="timelineNotice">{runEvents.error}</div>
+                  ) : recentEvents.length > 0 ? (
+                    <div className="timelineList">
+                      {recentEvents.map((event) => (
+                        <div className="timelineItem" key={event.id}>
+                          <div>
+                            <strong>{event.type}</strong>
+                            <span>{formatRelativeTime(event.createdAt)}</span>
+                          </div>
+                          <p>{event.message}</p>
+                          <span className={`eventLevel ${event.level}`}>{event.level}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="timelineNotice">No run events captured yet.</div>
+                  )}
+                </div>
               </>
             ) : (
               <div className="emptyState detailEmpty">
@@ -302,6 +347,29 @@ async function fetchDashboardData(): Promise<DashboardData> {
   }
 }
 
+async function fetchRunEvents(runId: string): Promise<RunEventsData> {
+  try {
+    const response = await fetch(`${apiUrl}/runs/${runId}/events`, {
+      cache: "no-store"
+    });
+
+    if (!response.ok) {
+      throw new Error(`API returned ${response.status}`);
+    }
+
+    const payload = (await response.json()) as RunEventsResponse;
+    return {
+      events: payload.data
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown API error";
+    return {
+      events: [],
+      error: `Could not load run events: ${message}`
+    };
+  }
+}
+
 function buildLanes(items: WorkItemSummary[]) {
   return [
     { label: "Queued", value: countStatus(items, "queued"), tone: "neutral" },
@@ -314,6 +382,10 @@ function buildLanes(items: WorkItemSummary[]) {
 
 function countStatus(items: WorkItemSummary[], status: WorkItemStatus): number {
   return items.filter((item) => item.status === status).length;
+}
+
+function getRecentEvents(events: RunEventSummary[]): RunEventSummary[] {
+  return events.slice(-8).reverse();
 }
 
 function selectRunDetailItem(items: WorkItemSummary[]): WorkItemSummary | undefined {

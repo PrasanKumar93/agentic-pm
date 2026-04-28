@@ -470,6 +470,100 @@ h2 {
   overflow-wrap: anywhere;
 }
 
+.eventTimeline {
+  display: grid;
+  gap: 10px;
+}
+
+.eventTimelineHeader,
+.timelineItem > div {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.eventTimelineHeader span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.eventTimelineHeader strong {
+  font-size: 12px;
+}
+
+.timelineList {
+  border-left: 1px solid var(--border);
+  display: grid;
+  gap: 10px;
+  margin-left: 5px;
+  padding-left: 14px;
+}
+
+.timelineItem {
+  background: #f7f9f7;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+  position: relative;
+}
+
+.timelineItem::before {
+  background: var(--teal);
+  border: 2px solid #fff;
+  border-radius: 50%;
+  content: "";
+  height: 8px;
+  left: -20px;
+  position: absolute;
+  top: 14px;
+  width: 8px;
+}
+
+.timelineItem strong {
+  font-size: 12px;
+}
+
+.timelineItem p,
+.timelineNotice {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.timelineItem p {
+  overflow-wrap: anywhere;
+}
+
+.timelineItem div span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.eventLevel {
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 11px;
+  justify-self: start;
+  padding: 3px 7px;
+}
+
+.eventLevel.info,
+.eventLevel.debug {
+  color: var(--teal);
+}
+
+.eventLevel.warn {
+  color: var(--amber);
+}
+
+.eventLevel.error {
+  color: var(--red);
+}
+
 .detailEmpty {
   min-height: 360px;
 }

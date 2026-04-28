@@ -22,6 +22,7 @@
 - [ ] Run a fake agent and capture events.
 - [ ] Show the run in the dashboard from live API data.
 - [ ] Control work item queue state from dashboard operator actions.
+- [ ] Show the selected run event timeline in the dashboard.
 
 ## Milestone 3: Linear Loop
 
