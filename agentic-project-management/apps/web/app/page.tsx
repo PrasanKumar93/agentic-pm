@@ -1,49 +1,89 @@
-import { CirclePause, Play, RefreshCw, RotateCcw, ShieldCheck, Square } from "lucide-react";
+import {
+  AlertTriangle,
+  CirclePause,
+  Database,
+  Play,
+  RefreshCw,
+  RotateCcw,
+  ShieldCheck,
+  Square
+} from "lucide-react";
 
-type WorkItemRow = {
+export const dynamic = "force-dynamic";
+
+type WorkItemStatus =
+  | "queued"
+  | "running"
+  | "waiting_for_review"
+  | "blocked"
+  | "paused"
+  | "failed"
+  | "completed"
+  | "cancelled";
+
+type RunStatus =
+  | "queued"
+  | "preparing"
+  | "running"
+  | "stalled"
+  | "retrying"
+  | "waiting_for_review"
+  | "failed"
+  | "cancelled"
+  | "completed";
+
+type WorkItemSummary = {
   id: string;
-  issue: string;
-  title: string;
-  status: "queued" | "running" | "waiting_for_review" | "blocked";
-  owner: string;
-  updated: string;
+  status: WorkItemStatus;
+  issue: {
+    id: string;
+    identifier: string;
+    title: string;
+    state: string;
+    url?: string;
+  };
+  latestRun?: {
+    id: string;
+    status: RunStatus;
+    agentRuntime: string;
+    workspacePath: string;
+    startedAt: string;
+    endedAt?: string;
+  };
+  eventCount: number;
+  lastEvent?: {
+    type: string;
+    level: "debug" | "info" | "warn" | "error";
+    message: string;
+    createdAt: string;
+  };
+  claimedBy?: string;
+  retryCount: number;
+  updatedAt: string;
 };
 
-const rows: WorkItemRow[] = [
-  {
-    id: "work_1",
-    issue: "ENG-1",
-    title: "Wire the first local agent run",
-    status: "running",
-    owner: "worker_local",
-    updated: "just now"
-  },
-  {
-    id: "work_2",
-    issue: "ENG-2",
-    title: "Create Linear webhook verifier",
-    status: "queued",
-    owner: "unclaimed",
-    updated: "4m ago"
-  },
-  {
-    id: "work_3",
-    issue: "ENG-3",
-    title: "Review packet artifact model",
-    status: "waiting_for_review",
-    owner: "worker_local",
-    updated: "18m ago"
-  }
-];
+type WorkItemsResponse = {
+  data: WorkItemSummary[];
+  meta?: {
+    limit: number;
+    count: number;
+    generatedAt: string;
+  };
+};
 
-const lanes = [
-  { label: "Queued", value: 12, tone: "neutral" },
-  { label: "Running", value: 3, tone: "blue" },
-  { label: "Review", value: 5, tone: "amber" },
-  { label: "Blocked", value: 1, tone: "red" }
-];
+type DashboardData = {
+  items: WorkItemSummary[];
+  generatedAt?: string;
+  error?: string;
+};
 
-export default function DashboardPage() {
+const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+
+export default async function DashboardPage() {
+  const dashboard = await fetchDashboardData();
+  const lanes = buildLanes(dashboard.items);
+  const selected = selectRunDetailItem(dashboard.items);
+
   return (
     <main className="shell">
       <aside className="sidebar">
@@ -72,18 +112,33 @@ export default function DashboardPage() {
           </div>
 
           <div className="toolbar">
-            <button title="Refresh">
+            <a className="iconButton" href="/" title="Refresh">
               <RefreshCw size={16} />
-            </button>
-            <button title="Pause dispatch">
+            </a>
+            <button disabled title="Pause dispatch">
               <CirclePause size={16} />
             </button>
-            <button className="primary">
+            <button className="primary" disabled title="Start eligible">
               <Play size={16} />
               Start eligible
             </button>
           </div>
         </header>
+
+        {dashboard.error ? (
+          <section className="notice errorNotice">
+            <AlertTriangle size={16} />
+            <span>{dashboard.error}</span>
+          </section>
+        ) : (
+          <section className="notice">
+            <Database size={16} />
+            <span>
+              Live API data
+              {dashboard.generatedAt ? ` · refreshed ${formatRelativeTime(dashboard.generatedAt)}` : ""}
+            </span>
+          </section>
+        )}
 
         <section className="metrics">
           {lanes.map((lane) => (
@@ -99,69 +154,187 @@ export default function DashboardPage() {
             <div className="panelHeader">
               <div>
                 <h2>Work board</h2>
-                <p>Linear issues normalized into agent work items.</p>
+                <p>Issues normalized into agent work items.</p>
               </div>
-              <button title="Retry failed">
+              <button disabled title="Retry failed">
                 <RotateCcw size={16} />
               </button>
             </div>
 
-            <div className="table">
-              <div className="row tableHead">
-                <span>Issue</span>
-                <span>Title</span>
-                <span>Status</span>
-                <span>Owner</span>
-                <span>Updated</span>
-              </div>
-              {rows.map((row) => (
-                <div className="row" key={row.id}>
-                  <strong>{row.issue}</strong>
-                  <span>{row.title}</span>
-                  <span className={`pill ${row.status}`}>{row.status.replaceAll("_", " ")}</span>
-                  <span>{row.owner}</span>
-                  <span>{row.updated}</span>
+            {dashboard.items.length > 0 ? (
+              <div className="table">
+                <div className="row tableHead">
+                  <span>Issue</span>
+                  <span>Title</span>
+                  <span>Status</span>
+                  <span>Owner</span>
+                  <span>Updated</span>
                 </div>
-              ))}
-            </div>
+                {dashboard.items.map((row) => (
+                  <div className="row" key={row.id}>
+                    {row.issue.url ? (
+                      <a href={row.issue.url} target="_blank" rel="noreferrer">
+                        {row.issue.identifier}
+                      </a>
+                    ) : (
+                      <strong>{row.issue.identifier}</strong>
+                    )}
+                    <span>{row.issue.title}</span>
+                    <span className={`pill ${row.status}`}>{formatStatus(row.status)}</span>
+                    <span>{row.claimedBy ?? row.latestRun?.agentRuntime ?? "unclaimed"}</span>
+                    <span>{formatRelativeTime(row.updatedAt)}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="emptyState">
+                <Database size={18} />
+                <strong>No work items yet</strong>
+                <span>Run the worker with the fake tracker, or connect Linear and move an issue into an active state.</span>
+              </div>
+            )}
           </div>
 
           <aside className="panel runDetail">
-            <div className="panelHeader compact">
-              <div>
-                <h2>Run detail</h2>
-                <p>ENG-1 · fake-agent</p>
-              </div>
-              <span className="liveDot" />
-            </div>
+            {selected ? (
+              <>
+                <div className="panelHeader compact">
+                  <div>
+                    <h2>Run detail</h2>
+                    <p>
+                      {selected.issue.identifier} · {selected.latestRun?.agentRuntime ?? "no run yet"}
+                    </p>
+                  </div>
+                  <span className={selected.status === "running" ? "liveDot" : "quietDot"} />
+                </div>
 
-            <div className="statusStack">
-              <div>
-                <span>Workspace</span>
-                <strong>workspaces/local/eng-1-wire-first-local-agent-run</strong>
-              </div>
-              <div>
-                <span>Runtime</span>
-                <strong>fake-agent</strong>
-              </div>
-              <div>
-                <span>Policy</span>
-                <strong className="inlineIcon">
-                  <ShieldCheck size={15} />
-                  Manual merge gate
-                </strong>
-              </div>
-            </div>
+                <div className="statusStack">
+                  <div>
+                    <span>Workspace</span>
+                    <strong>{selected.latestRun?.workspacePath ?? "Not prepared yet"}</strong>
+                  </div>
+                  <div>
+                    <span>Run status</span>
+                    <strong>{selected.latestRun ? formatStatus(selected.latestRun.status) : "No run yet"}</strong>
+                  </div>
+                  <div>
+                    <span>Policy</span>
+                    <strong className="inlineIcon">
+                      <ShieldCheck size={15} />
+                      Manual merge gate
+                    </strong>
+                  </div>
+                </div>
 
-            <div className="logBox">
-              <p><Square size={10} /> worker.started</p>
-              <p><Square size={10} /> tracker.issue.reconciled</p>
-              <p><Square size={10} /> run.started</p>
-              <p><Square size={10} /> agent.session.started</p>
-            </div>
+                <div className="logBox">
+                  <p>
+                    <Square size={10} />
+                    {selected.lastEvent?.type ?? "waiting.for.events"}
+                  </p>
+                  <p>
+                    <Square size={10} />
+                    {selected.lastEvent?.message ?? "No events captured yet"}
+                  </p>
+                  <p>
+                    <Square size={10} />
+                    {selected.eventCount} events
+                  </p>
+                  <p>
+                    <Square size={10} />
+                    retries: {selected.retryCount}
+                  </p>
+                </div>
+              </>
+            ) : (
+              <div className="emptyState detailEmpty">
+                <Database size={18} />
+                <strong>No run selected</strong>
+                <span>The latest run will appear here after the worker claims an issue.</span>
+              </div>
+            )}
           </aside>
         </section>
       </section>
     </main>
   );
+}
+
+async function fetchDashboardData(): Promise<DashboardData> {
+  try {
+    const response = await fetch(`${apiUrl}/work-items?limit=50`, {
+      cache: "no-store"
+    });
+
+    if (!response.ok) {
+      throw new Error(`API returned ${response.status}`);
+    }
+
+    const payload = (await response.json()) as WorkItemsResponse;
+    return {
+      items: payload.data,
+      generatedAt: payload.meta?.generatedAt
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown API error";
+    return {
+      items: [],
+      error: `API unavailable at ${apiUrl}: ${message}`
+    };
+  }
+}
+
+function buildLanes(items: WorkItemSummary[]) {
+  return [
+    { label: "Queued", value: countStatus(items, "queued"), tone: "neutral" },
+    { label: "Running", value: countStatus(items, "running"), tone: "blue" },
+    { label: "Review", value: countStatus(items, "waiting_for_review"), tone: "amber" },
+    { label: "Blocked", value: countStatus(items, "blocked"), tone: "red" }
+  ];
+}
+
+function countStatus(items: WorkItemSummary[], status: WorkItemStatus): number {
+  return items.filter((item) => item.status === status).length;
+}
+
+function selectRunDetailItem(items: WorkItemSummary[]): WorkItemSummary | undefined {
+  return (
+    items.find((item) => item.status === "running") ??
+    items.find((item) => item.status === "waiting_for_review") ??
+    items[0]
+  );
+}
+
+function formatStatus(status: string): string {
+  return status.replaceAll("_", " ");
+}
+
+function formatRelativeTime(value: string): string {
+  const date = new Date(value);
+  const timestamp = date.getTime();
+
+  if (Number.isNaN(timestamp)) {
+    return "unknown";
+  }
+
+  const seconds = Math.max(0, Math.round((Date.now() - timestamp) / 1000));
+  if (seconds < 10) {
+    return "just now";
+  }
+
+  if (seconds < 60) {
+    return `${seconds}s ago`;
+  }
+
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) {
+    return `${minutes}m ago`;
+  }
+
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) {
+    return `${hours}h ago`;
+  }
+
+  const days = Math.round(hours / 24);
+  return `${days}d ago`;
 }

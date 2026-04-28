@@ -35,3 +35,4 @@ The first usable loop will be:
 
 - [Plan](docs/PLAN.md)
 - [MVP Checklist](docs/MVP_CHECKLIST.md)
+- [Live Dashboard Spec](docs/LIVE_DASHBOARD_SPEC.md)

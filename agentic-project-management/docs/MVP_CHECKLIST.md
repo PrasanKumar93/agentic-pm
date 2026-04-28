@@ -20,7 +20,7 @@
 - [ ] Claim an issue as a work item.
 - [ ] Create a workspace for the issue.
 - [ ] Run a fake agent and capture events.
-- [ ] Show the run in the dashboard.
+- [ ] Show the run in the dashboard from live API data.
 
 ## Milestone 3: Linear Loop
 

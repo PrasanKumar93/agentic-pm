@@ -29,9 +29,17 @@ app.get("/health", async () => {
 });
 
 app.get("/work-items", async (request) => {
-  const limit = Number((request.query as { limit?: string }).limit ?? 50);
+  const requestedLimit = Number((request.query as { limit?: string }).limit ?? 50);
+  const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 100) : 50;
+  const data = await repository.listWorkItemSummaries(limit);
+
   return {
-    data: await repository.listWorkItems(limit)
+    data,
+    meta: {
+      limit,
+      count: data.length,
+      generatedAt: new Date().toISOString()
+    }
   };
 });
 

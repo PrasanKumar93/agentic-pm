@@ -88,6 +88,42 @@ export interface WorkItem {
   updatedAt: Date;
 }
 
+export interface IssueSummary {
+  id: string;
+  identifier: string;
+  title: string;
+  state: string;
+  url?: string;
+}
+
+export interface RunSummary {
+  id: string;
+  status: RunStatus;
+  agentRuntime: string;
+  workspacePath: string;
+  startedAt: Date;
+  endedAt?: Date;
+}
+
+export interface RunEventSummary {
+  type: string;
+  level: EventLevel;
+  message: string;
+  createdAt: Date;
+}
+
+export interface WorkItemSummary {
+  id: string;
+  status: WorkItemStatus;
+  issue: IssueSummary;
+  latestRun?: RunSummary;
+  eventCount: number;
+  lastEvent?: RunEventSummary;
+  claimedBy?: string;
+  retryCount: number;
+  updatedAt: Date;
+}
+
 export interface Run {
   id: string;
   workItemId: string;

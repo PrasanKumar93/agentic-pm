@@ -1,5 +1,14 @@
 import type { Db } from "mongodb";
-import { createId, nextRetryAt, type Artifact, type Issue, type Run, type RunEvent, type WorkItem } from "@agentic-pm/core";
+import {
+  createId,
+  nextRetryAt,
+  type Artifact,
+  type Issue,
+  type Run,
+  type RunEvent,
+  type WorkItem,
+  type WorkItemSummary
+} from "@agentic-pm/core";
 import { getCollections, type AgenticCollections } from "./collections.js";
 
 export class AgenticRepository {
@@ -79,6 +88,60 @@ export class AgenticRepository {
       .sort({ updatedAt: -1 })
       .limit(limit)
       .toArray();
+  }
+
+  async listWorkItemSummaries(limit = 50): Promise<WorkItemSummary[]> {
+    const workItems = await this.listWorkItems(limit);
+
+    return Promise.all(
+      workItems.map(async (workItem) => {
+        const issue = await this.collections.issues.findOne({ id: workItem.issueId });
+        const latestRun = workItem.lastRunId
+          ? await this.collections.runs.findOne({ id: workItem.lastRunId })
+          : await this.collections.runs.findOne({ workItemId: workItem.id }, { sort: { startedAt: -1 } });
+
+        const [eventCount, lastEvent] = latestRun
+          ? await Promise.all([
+              this.collections.runEvents.countDocuments({ runId: latestRun.id }),
+              this.collections.runEvents.findOne({ runId: latestRun.id }, { sort: { createdAt: -1 } })
+            ])
+          : [0, null] as const;
+
+        return {
+          id: workItem.id,
+          status: workItem.status,
+          issue: {
+            id: issue?.id ?? workItem.issueId,
+            identifier: issue?.identifier ?? "Unknown",
+            title: issue?.title ?? "Issue unavailable",
+            state: issue?.state ?? "Unknown",
+            url: issue?.url
+          },
+          latestRun: latestRun
+            ? {
+                id: latestRun.id,
+                status: latestRun.status,
+                agentRuntime: latestRun.agentRuntime,
+                workspacePath: latestRun.workspacePath,
+                startedAt: latestRun.startedAt,
+                endedAt: latestRun.endedAt
+              }
+            : undefined,
+          eventCount,
+          lastEvent: lastEvent
+            ? {
+                type: lastEvent.type,
+                level: lastEvent.level,
+                message: lastEvent.message,
+                createdAt: lastEvent.createdAt
+              }
+            : undefined,
+          claimedBy: workItem.claimedBy,
+          retryCount: workItem.retryCount,
+          updatedAt: workItem.updatedAt
+        };
+      })
+    );
   }
 
   async claimNextQueuedWorkItem(projectId: string, workerId: string, now = new Date()): Promise<WorkItem | null> {
