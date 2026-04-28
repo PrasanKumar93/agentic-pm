@@ -117,7 +117,6 @@ This slice does not implement:
 
 - Live streaming logs.
 - Authentication.
-- Linear webhook signature verification.
 
 Operator actions are covered in `OPERATOR_ACTIONS_SPEC.md`.
 Run event timeline behavior is covered in `RUN_DETAIL_TIMELINE_SPEC.md`.
@@ -136,5 +135,5 @@ Required checks:
 
 - `OPERATOR_ACTIONS_SPEC.md`: retry, cancel, pause, resume, start-now endpoints.
 - `RUN_DETAIL_TIMELINE_SPEC.md`: selected run event timeline and failure states.
-- `LINEAR_INTEGRATION_SPEC.md`: webhook security, state transitions, comments.
+- `LINEAR_INTEGRATION_SPEC.md`: Linear setup, webhook security, state transitions, comments.
 - `RUN_EVENTS_SPEC.md`: event streaming, pagination, and artifact drill-down.

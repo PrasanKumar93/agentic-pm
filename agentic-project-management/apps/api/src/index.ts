@@ -1,6 +1,7 @@
 import "dotenv/config";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import cors from "@fastify/cors";
-import Fastify from "fastify";
+import Fastify, { type FastifyRequest } from "fastify";
 import type { DispatchActionName, OperatorActionName } from "@agentic-pm/core";
 import {
   AgenticRepository,
@@ -15,6 +16,8 @@ import {
 const host = process.env.API_HOST ?? "0.0.0.0";
 const port = Number(process.env.API_PORT ?? 4000);
 const projectId = process.env.AGENTIC_PM_PROJECT_ID ?? "project_local";
+const linearWebhookSecret = process.env.LINEAR_WEBHOOK_SECRET;
+const linearWebhookToleranceMs = readPositiveNumber(process.env.LINEAR_WEBHOOK_TOLERANCE_MS, 60_000);
 
 const mongo = await connectMongo(readMongoConfig());
 const collections = getCollections(mongo.db);
@@ -26,6 +29,46 @@ const app = Fastify({
 });
 const allowedOperatorActions = new Set<OperatorActionName>(["start", "retry", "pause", "resume", "cancel"]);
 const allowedDispatchActions = new Set<DispatchActionName>(["pause", "resume", "start_eligible"]);
+
+type RawBodyRequest = FastifyRequest & {
+  rawBody?: Buffer;
+};
+
+type LinearWebhookPayload = {
+  action?: string;
+  createdAt?: string;
+  data?: unknown;
+  type?: string;
+  url?: string;
+  webhookTimestamp?: number;
+};
+
+type VerificationResult =
+  | {
+      ok: true;
+    }
+  | {
+      ok: false;
+      error: string;
+      statusCode: number;
+    };
+
+app.removeContentTypeParser("application/json");
+app.addContentTypeParser("application/json", { parseAs: "buffer" }, (request, body, done) => {
+  const rawBody = body as Buffer;
+  (request as RawBodyRequest).rawBody = rawBody;
+
+  if (rawBody.length === 0) {
+    done(null, {});
+    return;
+  }
+
+  try {
+    done(null, JSON.parse(rawBody.toString("utf8")));
+  } catch (error) {
+    done(error as Error, undefined);
+  }
+});
 
 await app.register(cors, {
   origin: true
@@ -168,16 +211,29 @@ app.get("/runs/:runId/artifacts", async (request) => {
 });
 
 app.post("/webhooks/linear", async (request, reply) => {
+  const body = (request.body ?? {}) as LinearWebhookPayload;
+  const verification = verifyLinearWebhook(request as RawBodyRequest, body);
+  if (!verification.ok) {
+    return reply.code(verification.statusCode).send({
+      error: verification.error
+    });
+  }
+
   await repository.appendEvent({
     type: "tracker.linear.webhook.received",
     level: "info",
     message: "Received Linear webhook",
     payload: {
-      body: request.body
+      action: body.action,
+      body: request.body,
+      deliveryId: firstHeader(request.headers["linear-delivery"]),
+      event: firstHeader(request.headers["linear-event"]),
+      type: body.type,
+      url: body.url
     }
   });
 
-  return reply.code(202).send({ ok: true });
+  return { ok: true };
 });
 
 const shutdown = async () => {
@@ -190,3 +246,74 @@ process.on("SIGINT", () => void shutdown());
 process.on("SIGTERM", () => void shutdown());
 
 await app.listen({ host, port });
+
+function verifyLinearWebhook(request: RawBodyRequest, payload: LinearWebhookPayload): VerificationResult {
+  if (!linearWebhookSecret) {
+    return {
+      ok: false,
+      error: "Linear webhook secret is not configured",
+      statusCode: 503
+    };
+  }
+
+  const rawBody = request.rawBody;
+  if (!rawBody) {
+    return {
+      ok: false,
+      error: "Raw request body is unavailable",
+      statusCode: 400
+    };
+  }
+
+  const signature = firstHeader(request.headers["linear-signature"]);
+  if (!signature || !verifyHmacSignature(rawBody, signature, linearWebhookSecret)) {
+    return {
+      ok: false,
+      error: "Invalid Linear webhook signature",
+      statusCode: 401
+    };
+  }
+
+  if (!Number.isFinite(payload.webhookTimestamp)) {
+    return {
+      ok: false,
+      error: "Linear webhook timestamp is missing",
+      statusCode: 401
+    };
+  }
+
+  const skewMs = Math.abs(Date.now() - Number(payload.webhookTimestamp));
+  if (skewMs > linearWebhookToleranceMs) {
+    return {
+      ok: false,
+      error: "Linear webhook timestamp is outside the allowed tolerance",
+      statusCode: 401
+    };
+  }
+
+  return { ok: true };
+}
+
+function verifyHmacSignature(rawBody: Buffer, signature: string, secret: string): boolean {
+  if (!/^[0-9a-f]+$/i.test(signature) || signature.length !== 64) {
+    return false;
+  }
+
+  const headerSignature = Buffer.from(signature, "hex");
+  const computedSignature = createHmac("sha256", secret).update(rawBody).digest();
+
+  if (headerSignature.length !== computedSignature.length) {
+    return false;
+  }
+
+  return timingSafeEqual(computedSignature, headerSignature);
+}
+
+function firstHeader(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function readPositiveNumber(value: string | undefined, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}

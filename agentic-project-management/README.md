@@ -41,3 +41,4 @@ The first usable loop will be:
 - [Run Detail Timeline Spec](docs/RUN_DETAIL_TIMELINE_SPEC.md)
 - [Dispatch Controls Spec](docs/DISPATCH_CONTROLS_SPEC.md)
 - [Worker Cancellation Spec](docs/WORKER_CANCELLATION_SPEC.md)
+- [Linear Integration Spec](docs/LINEAR_INTEGRATION_SPEC.md)

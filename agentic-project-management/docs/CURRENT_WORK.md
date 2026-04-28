@@ -20,13 +20,13 @@ Date: 2026-04-29
 - Run detail timeline backed by `/runs/:runId/events`.
 - Dispatch controls for project-level pause/resume and start eligible.
 - Worker-side cancellation checks for active agent sessions.
+- Linear webhook signature validation and setup guide.
 
 ## In Progress
 
-- Linear webhook signature validation and Linear setup guide.
+- Action result banners in the dashboard.
 
 ## Next Queue
 
-- Action result banners in the dashboard.
 - Codex runtime hardening: event streaming, cancellation, artifacts, and review packet capture.
 - Pull request creation and manual merge gate.

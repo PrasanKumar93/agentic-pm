@@ -28,7 +28,8 @@
 ## Milestone 3: Linear Loop
 
 - [ ] Configure Linear API key and team key.
-- [ ] Add webhook signature validation.
+- [x] Add webhook signature validation.
+- [x] Add Linear setup guide.
 - [ ] Poll Linear active states.
 - [ ] Upsert Linear issues into MongoDB.
 - [ ] Move issues to `Agent Running` when claimed.
