@@ -3,6 +3,7 @@ import {
   CheckCircle2,
   CirclePause,
   Database,
+  FileText,
   Play,
   RefreshCw,
   RotateCcw,
@@ -73,6 +74,16 @@ type RunEventSummary = {
   createdAt: string;
 };
 
+type ArtifactSummary = {
+  id: string;
+  runId: string;
+  type: "log" | "patch" | "pr" | "screenshot" | "video" | "test_report" | "review_packet" | "plan";
+  uri: string;
+  summary?: string;
+  metadata?: Record<string, unknown>;
+  createdAt: string;
+};
+
 type WorkItemsResponse = {
   data: WorkItemSummary[];
   meta?: {
@@ -100,6 +111,10 @@ type RunEventsResponse = {
   data: RunEventSummary[];
 };
 
+type ArtifactsResponse = {
+  data: ArtifactSummary[];
+};
+
 type DashboardData = {
   items: WorkItemSummary[];
   dispatch: DispatchControl;
@@ -109,6 +124,11 @@ type DashboardData = {
 
 type RunEventsData = {
   events: RunEventSummary[];
+  error?: string;
+};
+
+type RunArtifactsData = {
+  artifacts: ArtifactSummary[];
   error?: string;
 };
 
@@ -131,7 +151,9 @@ export default async function DashboardPage({
   const actionFeedback = parseActionFeedback(resolvedSearchParams);
   const lanes = buildLanes(dashboard.items);
   const selected = selectRunDetailItem(dashboard.items);
-  const runEvents = selected?.latestRun ? await fetchRunEvents(selected.latestRun.id) : { events: [] };
+  const [runEvents, runArtifacts] = selected?.latestRun
+    ? await Promise.all([fetchRunEvents(selected.latestRun.id), fetchRunArtifacts(selected.latestRun.id)])
+    : [{ events: [] }, { artifacts: [] }];
   const recentEvents = getRecentEvents(runEvents.events);
 
   return (
@@ -361,6 +383,32 @@ export default async function DashboardPage({
                     <div className="timelineNotice">No run events captured yet.</div>
                   )}
                 </div>
+
+                <div className="artifactList">
+                  <div className="eventTimelineHeader">
+                    <span>Artifacts</span>
+                    <strong>{runArtifacts.artifacts.length} items</strong>
+                  </div>
+
+                  {runArtifacts.error ? (
+                    <div className="timelineNotice">{runArtifacts.error}</div>
+                  ) : runArtifacts.artifacts.length > 0 ? (
+                    <div className="artifactStack">
+                      {runArtifacts.artifacts.map((artifact) => (
+                        <div className="artifactItem" key={artifact.id}>
+                          <FileText size={14} />
+                          <div>
+                            <strong>{formatArtifactType(artifact.type)}</strong>
+                            <p>{artifact.summary ?? artifact.uri}</p>
+                            <span>{formatArtifactUri(artifact.uri)} · {formatRelativeTime(artifact.createdAt)}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="timelineNotice">No artifacts captured yet.</div>
+                  )}
+                </div>
               </>
             ) : (
               <div className="emptyState detailEmpty">
@@ -441,6 +489,29 @@ async function fetchRunEvents(runId: string): Promise<RunEventsData> {
     return {
       events: [],
       error: `Could not load run events: ${message}`
+    };
+  }
+}
+
+async function fetchRunArtifacts(runId: string): Promise<RunArtifactsData> {
+  try {
+    const response = await fetch(`${apiUrl}/runs/${runId}/artifacts`, {
+      cache: "no-store"
+    });
+
+    if (!response.ok) {
+      throw new Error(`API returned ${response.status}`);
+    }
+
+    const payload = (await response.json()) as ArtifactsResponse;
+    return {
+      artifacts: payload.data
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown API error";
+    return {
+      artifacts: [],
+      error: `Could not load artifacts: ${message}`
     };
   }
 }
@@ -560,6 +631,16 @@ function ActionIcon({
 
 function formatStatus(status: string): string {
   return status.replaceAll("_", " ");
+}
+
+function formatArtifactType(type: string): string {
+  return type.replaceAll("_", " ");
+}
+
+function formatArtifactUri(uri: string): string {
+  const normalized = uri.replaceAll("\\", "/");
+  const parts = normalized.split("/");
+  return parts.slice(-2).join("/");
 }
 
 function formatRelativeTime(value: string): string {

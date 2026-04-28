@@ -45,6 +45,7 @@
 - [ ] Replace fake runtime with Codex runtime adapter.
 - [ ] Stream Codex events into MongoDB.
 - [x] Add worker-side cancellation checks.
-- [ ] Add stall detection.
-- [ ] Add artifact capture for logs and patches.
+- [x] Add stall detection.
+- [x] Add artifact capture for logs and patches.
+- [x] Generate local review packet artifacts.
 - [ ] Create PR and review packet from agent output.

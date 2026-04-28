@@ -44,3 +44,4 @@ The first usable loop will be:
 - [Linear Integration Spec](docs/LINEAR_INTEGRATION_SPEC.md)
 - [Action Feedback Spec](docs/ACTION_FEEDBACK_SPEC.md)
 - [Agent Runtime Spec](docs/AGENT_RUNTIME_SPEC.md)
+- [Artifact Capture Spec](docs/ARTIFACT_CAPTURE_SPEC.md)

@@ -23,11 +23,12 @@ Date: 2026-04-29
 - Linear webhook signature validation and setup guide.
 - Action result banners in the dashboard.
 - Hardened CLI runtime adapter and runtime portability spec.
+- Local artifact capture for logs, patches, and review packets.
 
 ## In Progress
 
-- Artifact capture and review packet generation.
+- Pull request creation and manual merge gate.
 
 ## Next Queue
 
-- Pull request creation and manual merge gate.
+- Linear state sync and run comments.
