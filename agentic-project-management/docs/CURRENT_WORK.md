@@ -25,11 +25,13 @@ Date: 2026-04-29
 - Hardened CLI runtime adapter and runtime portability spec.
 - Local artifact capture for logs, patches, and review packets.
 - First-class Cursor Agent CLI runtime mode.
+- Runtime startup preflight for Codex and Cursor.
 
 ## In Progress
 
-- Pull request creation and manual merge gate.
+- Runtime event parsing for structured Codex and Cursor output.
 
 ## Next Queue
 
+- Pull request creation and manual merge gate.
 - Linear state sync and run comments.

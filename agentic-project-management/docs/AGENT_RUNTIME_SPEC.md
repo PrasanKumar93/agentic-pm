@@ -11,6 +11,7 @@ Symphony should orchestrate work, not be permanently coupled to one coding tool.
 
 All runtimes implement the same interface:
 
+- `preflight()`: optionally validate the selected runtime before dispatch starts.
 - `start(input)`: prepare a session in a workspace.
 - `run(session, prompt)`: stream normalized events.
 - `cancel(session, reason)`: stop the active session.
@@ -27,6 +28,13 @@ Normalized event types:
 - `session.failed`
 
 The worker persists non-heartbeat events into MongoDB and uses heartbeats for responsive cancellation checks.
+
+Startup preflight checks are persisted as project events:
+
+- `worker.runtime_preflight_passed`
+- `worker.runtime_preflight_failed`
+
+If a selected runtime fails preflight, the worker logs the failed checks, closes MongoDB, and exits before claiming work.
 
 ## 3. Supported Runtime Modes
 
@@ -50,6 +58,7 @@ CODEX_ARGS=app-server
 
 Codex inherits the hardened process behavior:
 
+- Startup preflight checks `codex --version`.
 - Prompt delivered through `stdin`.
 - `stdout` and `stderr` streamed as events.
 - Heartbeats while waiting for output.
@@ -77,7 +86,13 @@ cursor-agent --print --output-format stream-json "<rendered prompt>"
 
 Set `CURSOR_FORCE=true` only inside disposable workspaces where the orchestrator is allowed to let Cursor make direct file changes without confirmation.
 
-Cursor auth can come from `CURSOR_API_KEY` in `.env` or from an existing `cursor-agent login` session. A preflight should eventually run `cursor-agent status` before dispatching work to this runtime.
+Cursor auth can come from `CURSOR_API_KEY` in `.env` or from an existing `cursor-agent login` session. Preflight checks the configured auth path before dispatching work to this runtime.
+
+Cursor startup preflight checks:
+
+- `cursor-agent --version`
+- `cursor-agent status` when `CURSOR_API_KEY` is not set
+- `CURSOR_API_KEY` presence when the key is set in `.env`
 
 Optional controls:
 
@@ -138,5 +153,4 @@ Desktop-only editor automation is not an MVP target because it is fragile, hard 
 ## 6. Next Runtime Work
 
 - Add runtime-specific parsers for JSON event streams when a tool supports them.
-- Add preflight checks that report whether `codex` and `cursor-agent` are installed and authenticated.
 - Add per-runtime safety profiles for allowed file writes and command execution.

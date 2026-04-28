@@ -1,12 +1,42 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createId } from "@agentic-pm/core";
-import type { AgentEvent, AgentRuntime, AgentSession, AgentStartInput } from "./runtime.js";
+import type {
+  AgentEvent,
+  AgentRuntime,
+  AgentRuntimePreflightCheck,
+  AgentRuntimePreflightResult,
+  AgentRuntimePreflightStatus,
+  AgentSession,
+  AgentStartInput
+} from "./runtime.js";
+
+export interface ProcessCliCommandPreflightCheck {
+  kind?: "command";
+  name: string;
+  args: string[];
+  command?: string;
+  env?: NodeJS.ProcessEnv;
+  timeoutMs?: number;
+  successExitCodes?: number[];
+  failureMessage?: string;
+}
+
+export interface ProcessCliStaticPreflightCheck {
+  kind: "static";
+  name: string;
+  status: AgentRuntimePreflightStatus;
+  message: string;
+  payload?: Record<string, unknown>;
+}
+
+export type ProcessCliPreflightCheck = ProcessCliCommandPreflightCheck | ProcessCliStaticPreflightCheck;
 
 export interface ProcessCliRuntimeConfig {
   name: string;
   command: string;
   args: string[];
   promptMode?: "stdin" | "argument";
+  preflightChecks?: ProcessCliPreflightCheck[];
   turnTimeoutMs: number;
   stallTimeoutMs?: number;
   cancelGraceMs?: number;
@@ -33,6 +63,29 @@ export class ProcessCliRuntime implements AgentRuntime {
 
   constructor(private readonly config: ProcessCliRuntimeConfig) {
     this.name = config.name;
+  }
+
+  async preflight(): Promise<AgentRuntimePreflightResult> {
+    const checks: AgentRuntimePreflightCheck[] = [];
+
+    for (const check of this.config.preflightChecks ?? []) {
+      if (check.kind === "static") {
+        checks.push({
+          name: check.name,
+          status: check.status,
+          message: check.message,
+          payload: check.payload
+        });
+        continue;
+      }
+
+      checks.push(await this.runCommandPreflightCheck(check));
+    }
+
+    return {
+      ok: checks.every((check) => check.status !== "failed"),
+      checks
+    };
   }
 
   async start(input: AgentStartInput): Promise<AgentSession> {
@@ -234,6 +287,95 @@ export class ProcessCliRuntime implements AgentRuntime {
     return args;
   }
 
+  private async runCommandPreflightCheck(check: ProcessCliCommandPreflightCheck): Promise<AgentRuntimePreflightCheck> {
+    const command = check.command ?? this.config.command;
+    const args = check.args;
+    const timeoutMs = check.timeoutMs ?? 10_000;
+    const successExitCodes = check.successExitCodes ?? [0];
+
+    return new Promise((resolve) => {
+      let stdout = "";
+      let stderr = "";
+      let settled = false;
+
+      const child = spawn(command, args, {
+        env: {
+          ...process.env,
+          ...this.config.env,
+          ...check.env
+        }
+      });
+
+      const settle = (result: AgentRuntimePreflightCheck) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timeout);
+        resolve(result);
+      };
+
+      const timeout = setTimeout(() => {
+        child.kill("SIGKILL");
+        settle({
+          name: check.name,
+          status: "failed",
+          message: check.failureMessage ?? `${check.name} timed out after ${timeoutMs}ms`,
+          payload: {
+            args,
+            command,
+            timeoutMs
+          }
+        });
+      }, timeoutMs);
+
+      child.stdout.on("data", (chunk: Buffer) => {
+        stdout = appendPreview(stdout, chunk.toString());
+      });
+
+      child.stderr.on("data", (chunk: Buffer) => {
+        stderr = appendPreview(stderr, chunk.toString());
+      });
+
+      child.on("error", (error: NodeJS.ErrnoException) => {
+        settle({
+          name: check.name,
+          status: "failed",
+          message: check.failureMessage ?? `${command} could not be executed: ${error.message}`,
+          payload: {
+            args,
+            code: error.code,
+            command
+          }
+        });
+      });
+
+      child.on("close", (code, signal) => {
+        if (settled) {
+          return;
+        }
+
+        const exitCode = code ?? -1;
+        const passed = code !== null && successExitCodes.includes(code);
+        settle({
+          name: check.name,
+          status: passed ? "passed" : "failed",
+          message: passed
+            ? `${check.name} passed`
+            : check.failureMessage ?? `${check.name} failed with exit code ${exitCode}`,
+          payload: {
+            args,
+            code,
+            command,
+            signal,
+            stderr: stderr.trim() || undefined,
+            stdout: stdout.trim() || undefined
+          }
+        });
+      });
+    });
+  }
+
   private signalProcess(child: ChildProcessWithoutNullStreams, signal: NodeJS.Signals): void {
     if (!child.pid) {
       return;
@@ -250,4 +392,10 @@ export class ProcessCliRuntime implements AgentRuntime {
       child.kill(signal);
     }
   }
+}
+
+function appendPreview(current: string, next: string): string {
+  const maxLength = 4000;
+  const combined = `${current}${next}`;
+  return combined.length > maxLength ? combined.slice(0, maxLength) : combined;
 }

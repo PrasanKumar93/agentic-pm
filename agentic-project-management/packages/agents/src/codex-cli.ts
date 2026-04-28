@@ -14,6 +14,14 @@ export class CodexCliRuntime extends ProcessCliRuntime {
       name: "codex-cli",
       command: config.command,
       args: config.args,
+      preflightChecks: [
+        {
+          name: "codex executable",
+          args: ["--version"],
+          timeoutMs: 5000,
+          failureMessage: "Codex CLI is not available. Install it or set CODEX_COMMAND to the executable path."
+        }
+      ],
       turnTimeoutMs: config.turnTimeoutMs,
       stallTimeoutMs: config.stallTimeoutMs,
       cancelGraceMs: config.cancelGraceMs

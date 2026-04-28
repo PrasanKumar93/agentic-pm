@@ -41,6 +41,7 @@
 
 - [ ] Verify Codex app-server protocol locally.
 - [x] Add configurable Codex, Cursor, and generic CLI runtime adapters.
+- [x] Add startup preflight checks for Codex and Cursor runtime setup.
 - [x] Add process runtime heartbeat, stall timeout, and cancellation hardening.
 - [ ] Run a real Codex runtime adapter from the worker.
 - [ ] Verify Cursor Agent CLI noninteractive mode locally.

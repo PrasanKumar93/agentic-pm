@@ -10,6 +10,7 @@ import {
   FakeAgentRuntime,
   GenericCliRuntime,
   type AgentRuntime,
+  type AgentRuntimePreflightResult,
   type AgentSession
 } from "@agentic-pm/agents";
 import { expandEnvReference, loadWorkflowDocument, renderWorkflowPrompt } from "@agentic-pm/config";
@@ -57,6 +58,12 @@ interface CapturedAgentEvent {
   message: string;
   payload?: Record<string, unknown>;
   createdAt: Date;
+}
+
+const runtimePreflight = await runRuntimePreflight(runtime);
+if (!runtimePreflight.ok) {
+  await mongo.client.close();
+  throw new Error(buildRuntimePreflightFailureMessage(runtime.name, runtimePreflight));
 }
 
 await eventSink.emit({
@@ -604,6 +611,7 @@ function createRuntime(): AgentRuntime {
       outputFormat: parseCursorOutputFormat(process.env.CURSOR_OUTPUT_FORMAT),
       model: process.env.CURSOR_MODEL,
       force: readBoolean(process.env.CURSOR_FORCE, false),
+      apiKeyConfigured: Boolean(process.env.CURSOR_API_KEY?.trim()),
       turnTimeoutMs,
       stallTimeoutMs,
       cancelGraceMs
@@ -627,6 +635,54 @@ function createRuntime(): AgentRuntime {
   }
 
   return new FakeAgentRuntime();
+}
+
+async function runRuntimePreflight(agentRuntime: AgentRuntime): Promise<AgentRuntimePreflightResult> {
+  const result = agentRuntime.preflight
+    ? await agentRuntime.preflight()
+    : {
+        ok: true,
+        checks: []
+      };
+
+  const failedChecks = result.checks.filter((check) => check.status === "failed");
+  const level: EventLevel = result.ok ? "info" : "error";
+  const type = result.ok ? "worker.runtime_preflight_passed" : "worker.runtime_preflight_failed";
+  const message = result.checks.length
+    ? `Runtime preflight ${result.ok ? "passed" : "failed"} for ${agentRuntime.name}`
+    : `Runtime ${agentRuntime.name} has no preflight checks`;
+
+  const payload = {
+    checks: result.checks,
+    failedCheckCount: failedChecks.length,
+    runtime: agentRuntime.name
+  };
+
+  await eventSink.emit({
+    type,
+    level,
+    message,
+    payload
+  });
+
+  await repository.appendEvent({
+    projectId,
+    type,
+    level,
+    message,
+    payload
+  });
+
+  return result;
+}
+
+function buildRuntimePreflightFailureMessage(runtimeName: string, result: AgentRuntimePreflightResult): string {
+  const details = result.checks
+    .filter((check) => check.status === "failed")
+    .map((check) => `${check.name}: ${check.message}`)
+    .join("; ");
+
+  return `Runtime preflight failed for ${runtimeName}${details ? ` (${details})` : ""}`;
 }
 
 function parseCommandArgs(value: string | undefined, fallback: string[]): string[] {

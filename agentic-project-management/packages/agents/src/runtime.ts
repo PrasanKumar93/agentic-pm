@@ -27,8 +27,23 @@ export interface AgentEvent {
   payload?: Record<string, unknown>;
 }
 
+export type AgentRuntimePreflightStatus = "passed" | "warning" | "failed";
+
+export interface AgentRuntimePreflightCheck {
+  name: string;
+  status: AgentRuntimePreflightStatus;
+  message: string;
+  payload?: Record<string, unknown>;
+}
+
+export interface AgentRuntimePreflightResult {
+  ok: boolean;
+  checks: AgentRuntimePreflightCheck[];
+}
+
 export interface AgentRuntime {
   readonly name: string;
+  preflight?(): Promise<AgentRuntimePreflightResult>;
   start(input: AgentStartInput): Promise<AgentSession>;
   run(session: AgentSession, prompt: string): AsyncIterable<AgentEvent>;
   cancel(session: AgentSession, reason: string): Promise<void>;
