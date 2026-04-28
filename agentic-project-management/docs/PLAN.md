@@ -100,7 +100,7 @@ flowchart LR
   Orchestrator --> Queue["Run Queue"]
   Queue --> Worker["Agent Worker"]
   Worker --> Workspace["Per-Issue Workspace"]
-  Workspace --> Agent["Agent Runtime<br/>Codex app-server first"]
+  Workspace --> Agent["Agent Runtime<br/>Codex + Cursor CLI"]
   Agent --> Git["Git + PR + CI"]
   Agent --> Tracker
   Worker --> Events["Event Log + Artifacts"]
@@ -209,7 +209,8 @@ agent:
   max_turns: 20
   max_retry_backoff_ms: 300000
 codex:
-  command: "codex app-server"
+  command: "codex"
+  args: ["exec", "--json", "--ask-for-approval", "never", "--sandbox", "workspace-write", "-"]
   turn_timeout_ms: 3600000
   stall_timeout_ms: 300000
 hooks:
@@ -451,7 +452,7 @@ Deliver a local-only system that can run against one repo and one tracker.
 - Linear adapter
 - Polling loop
 - Workspace manager
-- Codex app-server runner
+- Codex and Cursor CLI runners
 - Structured logs
 - MongoDB persistence
 - Basic CLI commands
@@ -593,6 +594,7 @@ agentic-project-management/
 - Add Codex, Cursor, and generic CLI adapters.
 - Add runtime setup preflight.
 - Parse Cursor `stream-json` into sanitized events.
+- Parse Codex `exec --json` into sanitized events.
 - Stream events into persistence.
 - Detect stall and timeout.
 - Support cancellation.

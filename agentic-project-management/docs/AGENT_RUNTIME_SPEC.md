@@ -52,19 +52,37 @@ First-class CLI process runtime for Codex.
 
 ```env
 AGENT_RUNTIME=codex
+OPENAI_API_KEY=
 CODEX_COMMAND=codex
-CODEX_ARGS=app-server
+CODEX_ARGS=exec --json --ask-for-approval never --sandbox workspace-write -
 ```
 
 Codex inherits the hardened process behavior:
 
 - Startup preflight checks `codex --version`.
+- Startup preflight checks `codex exec --help`.
+- Startup preflight checks `codex login status` when `OPENAI_API_KEY` is not set.
 - Prompt delivered through `stdin`.
-- `stdout` and `stderr` streamed as events.
+- `stdout` JSONL parsed into sanitized Symphony events.
+- Non-JSON `stdout` and `stderr` streamed as events.
 - Heartbeats while waiting for output.
 - Turn timeout.
 - Stall timeout.
 - Process-group cancellation with SIGTERM, then SIGKILL after a grace period.
+
+Codex uses the CLI's noninteractive exec mode. The runtime sends the rendered Symphony prompt to stdin:
+
+```txt
+codex exec --json --ask-for-approval never --sandbox workspace-write -
+```
+
+When Codex emits JSONL, the adapter converts each line into sanitized Symphony events:
+
+- assistant text becomes `message`
+- tool, status, and system events become metadata-first `message` events
+- user prompt events store prompt length instead of raw prompt text
+- error events become `stderr`
+- non-JSON output falls back to `stdout`
 
 ### `cursor`
 
@@ -137,7 +155,7 @@ AGENT_RUNTIME_CANCEL_GRACE_MS=5000
 Argument values can be whitespace-separated:
 
 ```env
-CODEX_ARGS=app-server
+CODEX_ARGS=exec --json --ask-for-approval never --sandbox workspace-write -
 ```
 
 Or JSON for quoted arguments:
@@ -160,5 +178,4 @@ Desktop-only editor automation is not an MVP target because it is fragile, hard 
 
 ## 6. Next Runtime Work
 
-- Add a Codex app-server event parser after the local protocol is verified.
 - Add per-runtime safety profiles for allowed file writes and command execution.

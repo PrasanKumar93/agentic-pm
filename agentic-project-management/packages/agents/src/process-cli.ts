@@ -16,6 +16,7 @@ export interface ProcessCliCommandPreflightCheck {
   args: string[];
   command?: string;
   env?: NodeJS.ProcessEnv;
+  includeOutput?: boolean;
   timeoutMs?: number;
   successExitCodes?: number[];
   failureMessage?: string;
@@ -292,6 +293,7 @@ export class ProcessCliRuntime implements AgentRuntime {
     const args = check.args;
     const timeoutMs = check.timeoutMs ?? 10_000;
     const successExitCodes = check.successExitCodes ?? [0];
+    const includeOutput = check.includeOutput ?? true;
 
     return new Promise((resolve) => {
       let stdout = "";
@@ -357,20 +359,25 @@ export class ProcessCliRuntime implements AgentRuntime {
 
         const exitCode = code ?? -1;
         const passed = code !== null && successExitCodes.includes(code);
+        const payload: Record<string, unknown> = {
+          args,
+          code,
+          command,
+          signal
+        };
+
+        if (includeOutput) {
+          payload.stderr = stderr.trim() || undefined;
+          payload.stdout = stdout.trim() || undefined;
+        }
+
         settle({
           name: check.name,
           status: passed ? "passed" : "failed",
           message: passed
             ? `${check.name} passed`
             : check.failureMessage ?? `${check.name} failed with exit code ${exitCode}`,
-          payload: {
-            args,
-            code,
-            command,
-            signal,
-            stderr: stderr.trim() || undefined,
-            stdout: stdout.trim() || undefined
-          }
+          payload
         });
       });
     });

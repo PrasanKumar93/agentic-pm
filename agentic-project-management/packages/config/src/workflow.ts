@@ -30,7 +30,7 @@ const agentSchema = z.object({
 
 const codexSchema = z.object({
   command: z.string().default("codex"),
-  args: z.array(z.string()).default(["app-server"]),
+  args: z.array(z.string()).default(["exec", "--json", "--ask-for-approval", "never", "--sandbox", "workspace-write", "-"]),
   turn_timeout_ms: z.number().int().positive().default(3_600_000),
   stall_timeout_ms: z.number().int().positive().default(300_000)
 });

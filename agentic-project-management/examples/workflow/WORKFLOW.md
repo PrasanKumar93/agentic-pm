@@ -16,7 +16,7 @@ agent:
   max_retry_backoff_ms: 300000
 codex:
   command: "codex"
-  args: ["app-server"]
+  args: ["exec", "--json", "--ask-for-approval", "never", "--sandbox", "workspace-write", "-"]
   turn_timeout_ms: 3600000
   stall_timeout_ms: 300000
 hooks:

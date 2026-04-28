@@ -86,6 +86,7 @@ function buildCursorPreflightChecks(config: CursorCliRuntimeConfig): ProcessCliP
   checks.push({
     name: "cursor-agent authentication",
     args: ["status"],
+    includeOutput: false,
     timeoutMs: 10_000,
     failureMessage: "Cursor Agent CLI is not authenticated. Run cursor-agent login or set CURSOR_API_KEY."
   });

@@ -27,10 +27,11 @@ Date: 2026-04-29
 - First-class Cursor Agent CLI runtime mode.
 - Runtime startup preflight for Codex and Cursor.
 - Cursor `stream-json` parsing into sanitized runtime events.
+- Codex `exec --json` defaults and sanitized JSONL parsing.
 
 ## In Progress
 
-- Codex app-server protocol verification and event parsing.
+- Real Codex worker smoke test.
 
 ## Next Queue
 

@@ -1,8 +1,10 @@
-import { ProcessCliRuntime } from "./process-cli.js";
+import { ProcessCliRuntime, type ProcessCliPreflightCheck } from "./process-cli.js";
+import type { AgentEvent, AgentSession } from "./runtime.js";
 
 export interface CodexCliRuntimeConfig {
   command: string;
   args: string[];
+  apiKeyConfigured?: boolean;
   turnTimeoutMs: number;
   stallTimeoutMs?: number;
   cancelGraceMs?: number;
@@ -14,17 +16,305 @@ export class CodexCliRuntime extends ProcessCliRuntime {
       name: "codex-cli",
       command: config.command,
       args: config.args,
-      preflightChecks: [
-        {
-          name: "codex executable",
-          args: ["--version"],
-          timeoutMs: 5000,
-          failureMessage: "Codex CLI is not available. Install it or set CODEX_COMMAND to the executable path."
-        }
-      ],
+      preflightChecks: buildCodexPreflightChecks(config),
       turnTimeoutMs: config.turnTimeoutMs,
       stallTimeoutMs: config.stallTimeoutMs,
       cancelGraceMs: config.cancelGraceMs
     });
   }
+
+  override async *run(session: AgentSession, prompt: string): AsyncIterable<AgentEvent> {
+    const parser = new CodexJsonLineParser();
+
+    for await (const event of super.run(session, prompt)) {
+      if (event.type === "stdout") {
+        yield* parser.push(event.message);
+        continue;
+      }
+
+      if (event.type === "session.completed" || event.type === "session.failed") {
+        yield* parser.flush();
+      }
+
+      yield event;
+    }
+  }
+}
+
+function buildCodexPreflightChecks(config: CodexCliRuntimeConfig): ProcessCliPreflightCheck[] {
+  const checks: ProcessCliPreflightCheck[] = [
+    {
+      name: "codex executable",
+      args: ["--version"],
+      timeoutMs: 5000,
+      failureMessage: "Codex CLI is not available. Install it or set CODEX_COMMAND to the executable path."
+    },
+    {
+      name: "codex exec json support",
+      args: ["exec", "--help"],
+      includeOutput: false,
+      timeoutMs: 5000,
+      failureMessage: "Codex CLI does not expose the noninteractive exec command required by Symphony."
+    }
+  ];
+
+  if (config.apiKeyConfigured) {
+    checks.push({
+      kind: "static" as const,
+      name: "codex authentication",
+      status: "passed" as const,
+      message: "OPENAI_API_KEY is configured; Codex will validate it when the run starts.",
+      payload: {
+        source: "OPENAI_API_KEY"
+      }
+    });
+    return checks;
+  }
+
+  checks.push({
+    name: "codex authentication",
+    args: ["login", "status"],
+    includeOutput: false,
+    timeoutMs: 5000,
+    failureMessage: "Codex CLI is not authenticated. Run codex login or set OPENAI_API_KEY."
+  });
+
+  return checks;
+}
+
+class CodexJsonLineParser {
+  private buffer = "";
+
+  *push(chunk: string): Iterable<AgentEvent> {
+    this.buffer += chunk;
+    const lines = this.buffer.split(/\r?\n/);
+    this.buffer = lines.pop() ?? "";
+
+    for (const line of lines) {
+      yield* parseCodexJsonLine(line);
+    }
+  }
+
+  *flush(): Iterable<AgentEvent> {
+    if (!this.buffer.trim()) {
+      this.buffer = "";
+      return;
+    }
+
+    const line = this.buffer;
+    this.buffer = "";
+    yield* parseCodexJsonLine(line);
+  }
+}
+
+function parseCodexJsonLine(line: string): AgentEvent[] {
+  const trimmed = line.trim();
+  if (!trimmed) {
+    return [];
+  }
+
+  const parsed = parseJsonObject(trimmed);
+  if (!parsed) {
+    return [
+      {
+        type: "stdout",
+        message: line
+      }
+    ];
+  }
+
+  const codexType = readString(parsed, "type") ?? "event";
+  const payload = buildCodexPayload(parsed);
+  const role = readString(parsed, "role") ?? readNestedString(parsed, ["item", "role"]);
+  const itemType = readNestedString(parsed, ["item", "type"]);
+
+  if (role === "user" || itemType === "user_message" || codexType.includes("user")) {
+    return [
+      {
+        type: "message",
+        message: "Codex user prompt accepted",
+        payload: {
+          ...payload,
+          promptLength: extractCodexText(parsed)?.length
+        }
+      }
+    ];
+  }
+
+  if (role === "assistant" || itemType === "assistant_message" || codexType.includes("assistant")) {
+    const text = extractCodexText(parsed);
+    return [
+      {
+        type: "message",
+        message: text || "Codex assistant event",
+        payload
+      }
+    ];
+  }
+
+  if (codexType.includes("error")) {
+    return [
+      {
+        type: "stderr",
+        message: extractCodexText(parsed) || readString(parsed, "message") || "Codex error event",
+        payload
+      }
+    ];
+  }
+
+  if (codexType.includes("tool") || codexType.includes("command") || itemType?.includes("tool")) {
+    return [
+      {
+        type: "message",
+        message: `Codex tool event${itemType ? ` ${itemType}` : ""}`,
+        payload
+      }
+    ];
+  }
+
+  const text = extractCodexText(parsed);
+  return [
+    {
+      type: "message",
+      message: text || `Codex ${codexType} event`,
+      payload
+    }
+  ];
+}
+
+function parseJsonObject(value: string): Record<string, unknown> | undefined {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return isRecord(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function buildCodexPayload(event: Record<string, unknown>): Record<string, unknown> {
+  return compactPayload({
+    codexType: readString(event, "type"),
+    durationMs: readNumber(event, "duration_ms") ?? readNumber(event, "durationMs"),
+    exitCode: readNumber(event, "exit_code") ?? readNumber(event, "exitCode"),
+    itemId: readNestedString(event, ["item", "id"]) ?? readString(event, "item_id"),
+    itemType: readNestedString(event, ["item", "type"]),
+    model: readString(event, "model"),
+    provider: "codex",
+    requestId: readString(event, "request_id") ?? readString(event, "requestId"),
+    role: readString(event, "role") ?? readNestedString(event, ["item", "role"]),
+    sessionId: readString(event, "session_id") ?? readString(event, "sessionId"),
+    status: readString(event, "status"),
+    toolName: extractToolName(event),
+    turnId: readString(event, "turn_id") ?? readString(event, "turnId"),
+    usage: sanitizeUsage(event.usage)
+  });
+}
+
+function extractCodexText(event: Record<string, unknown>): string | undefined {
+  const direct =
+    readString(event, "message") ??
+    readString(event, "text") ??
+    readString(event, "delta") ??
+    readString(event, "result") ??
+    readString(event, "output_text");
+  if (direct) {
+    return direct;
+  }
+
+  const item = event.item;
+  if (isRecord(item)) {
+    const itemText =
+      readString(item, "message") ??
+      readString(item, "text") ??
+      readString(item, "output_text") ??
+      extractTextContent(item.content);
+    if (itemText) {
+      return itemText;
+    }
+  }
+
+  return extractTextContent(event.content);
+}
+
+function extractTextContent(content: unknown): string | undefined {
+  if (typeof content === "string") {
+    return content;
+  }
+
+  if (!Array.isArray(content)) {
+    return undefined;
+  }
+
+  const text = content
+    .map((item) => {
+      if (typeof item === "string") {
+        return item;
+      }
+      if (!isRecord(item)) {
+        return undefined;
+      }
+      return readString(item, "text") ?? readString(item, "content") ?? readString(item, "output_text");
+    })
+    .filter((item): item is string => Boolean(item))
+    .join("");
+
+  return text || undefined;
+}
+
+function extractToolName(event: Record<string, unknown>): string | undefined {
+  const directName = readString(event, "name") ?? readString(event, "tool_name") ?? readString(event, "toolName");
+  if (directName) {
+    return directName;
+  }
+
+  const tool = event.tool;
+  if (isRecord(tool)) {
+    return readString(tool, "name");
+  }
+
+  const item = event.item;
+  return isRecord(item) ? readString(item, "name") ?? readString(item, "tool_name") : undefined;
+}
+
+function sanitizeUsage(value: unknown): Record<string, unknown> | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  return compactPayload({
+    cachedInputTokens: readNumber(value, "cached_input_tokens"),
+    inputTokens: readNumber(value, "input_tokens"),
+    outputTokens: readNumber(value, "output_tokens"),
+    totalTokens: readNumber(value, "total_tokens")
+  });
+}
+
+function readString(record: Record<string, unknown>, key: string): string | undefined {
+  const value = record[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+function readNestedString(record: Record<string, unknown>, path: string[]): string | undefined {
+  let current: unknown = record;
+  for (const key of path) {
+    if (!isRecord(current)) {
+      return undefined;
+    }
+    current = current[key];
+  }
+
+  return typeof current === "string" ? current : undefined;
+}
+
+function readNumber(record: Record<string, unknown>, key: string): number | undefined {
+  const value = record[key];
+  return typeof value === "number" ? value : undefined;
+}
+
+function compactPayload(payload: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(payload).filter(([, value]) => value !== undefined));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

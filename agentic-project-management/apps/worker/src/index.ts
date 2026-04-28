@@ -598,6 +598,7 @@ function createRuntime(): AgentRuntime {
     return new CodexCliRuntime({
       command: process.env.CODEX_COMMAND ?? workflow.config.codex.command,
       args: parseCommandArgs(process.env.CODEX_ARGS, workflow.config.codex.args),
+      apiKeyConfigured: Boolean(process.env.OPENAI_API_KEY?.trim()),
       turnTimeoutMs,
       stallTimeoutMs,
       cancelGraceMs
