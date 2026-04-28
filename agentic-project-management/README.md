@@ -43,3 +43,4 @@ The first usable loop will be:
 - [Worker Cancellation Spec](docs/WORKER_CANCELLATION_SPEC.md)
 - [Linear Integration Spec](docs/LINEAR_INTEGRATION_SPEC.md)
 - [Action Feedback Spec](docs/ACTION_FEEDBACK_SPEC.md)
+- [Agent Runtime Spec](docs/AGENT_RUNTIME_SPEC.md)

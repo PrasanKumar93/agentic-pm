@@ -40,6 +40,8 @@
 ## Milestone 4: Codex Loop
 
 - [ ] Verify Codex app-server protocol locally.
+- [x] Add configurable Codex and generic CLI runtime adapters.
+- [x] Add process runtime heartbeat, stall timeout, and cancellation hardening.
 - [ ] Replace fake runtime with Codex runtime adapter.
 - [ ] Stream Codex events into MongoDB.
 - [x] Add worker-side cancellation checks.

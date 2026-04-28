@@ -1,7 +1,13 @@
 import "dotenv/config";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { CodexCliRuntime, FakeAgentRuntime, type AgentRuntime, type AgentSession } from "@agentic-pm/agents";
+import {
+  CodexCliRuntime,
+  FakeAgentRuntime,
+  GenericCliRuntime,
+  type AgentRuntime,
+  type AgentSession
+} from "@agentic-pm/agents";
 import { expandEnvReference, loadWorkflowDocument, renderWorkflowPrompt } from "@agentic-pm/config";
 import { createId, type Issue, type Run } from "@agentic-pm/core";
 import {
@@ -305,15 +311,70 @@ function createTracker(): TrackerAdapter {
 }
 
 function createRuntime(): AgentRuntime {
-  if (process.env.AGENT_RUNTIME === "codex") {
+  const requestedRuntime = process.env.AGENT_RUNTIME ?? "fake";
+  const turnTimeoutMs = readPositiveNumber(
+    process.env.AGENT_RUNTIME_TURN_TIMEOUT_MS ?? process.env.CODEX_TURN_TIMEOUT_MS,
+    workflow.config.codex.turn_timeout_ms
+  );
+  const stallTimeoutMs = readPositiveNumber(
+    process.env.AGENT_RUNTIME_STALL_TIMEOUT_MS ?? process.env.CODEX_STALL_TIMEOUT_MS,
+    workflow.config.codex.stall_timeout_ms
+  );
+  const cancelGraceMs = readPositiveNumber(process.env.AGENT_RUNTIME_CANCEL_GRACE_MS, 5000);
+
+  if (requestedRuntime === "codex") {
     return new CodexCliRuntime({
-      command: workflow.config.codex.command,
-      args: workflow.config.codex.args,
-      turnTimeoutMs: workflow.config.codex.turn_timeout_ms
+      command: process.env.CODEX_COMMAND ?? workflow.config.codex.command,
+      args: parseCommandArgs(process.env.CODEX_ARGS, workflow.config.codex.args),
+      turnTimeoutMs,
+      stallTimeoutMs,
+      cancelGraceMs
+    });
+  }
+
+  if (requestedRuntime === "generic") {
+    const command = process.env.AGENT_RUNTIME_COMMAND;
+    if (!command) {
+      throw new Error("AGENT_RUNTIME_COMMAND is required when AGENT_RUNTIME=generic");
+    }
+
+    return new GenericCliRuntime({
+      name: process.env.AGENT_RUNTIME_NAME,
+      command,
+      args: parseCommandArgs(process.env.AGENT_RUNTIME_ARGS, []),
+      turnTimeoutMs,
+      stallTimeoutMs,
+      cancelGraceMs
     });
   }
 
   return new FakeAgentRuntime();
+}
+
+function parseCommandArgs(value: string | undefined, fallback: string[]): string[] {
+  if (!value) {
+    return fallback;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return [];
+  }
+
+  if (trimmed.startsWith("[")) {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (!Array.isArray(parsed) || parsed.some((item) => typeof item !== "string")) {
+      throw new Error("Runtime args JSON must be an array of strings");
+    }
+    return parsed;
+  }
+
+  return trimmed.split(/\s+/).filter(Boolean);
+}
+
+function readPositiveNumber(value: string | undefined, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function sleep(ms: number): Promise<void> {

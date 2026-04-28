@@ -1,6 +1,7 @@
 import { ProcessCliRuntime } from "./process-cli.js";
 
-export interface CodexCliRuntimeConfig {
+export interface GenericCliRuntimeConfig {
+  name?: string;
   command: string;
   args: string[];
   turnTimeoutMs: number;
@@ -8,10 +9,10 @@ export interface CodexCliRuntimeConfig {
   cancelGraceMs?: number;
 }
 
-export class CodexCliRuntime extends ProcessCliRuntime {
-  constructor(config: CodexCliRuntimeConfig) {
+export class GenericCliRuntime extends ProcessCliRuntime {
+  constructor(config: GenericCliRuntimeConfig) {
     super({
-      name: "codex-cli",
+      name: config.name ?? "generic-cli",
       command: config.command,
       args: config.args,
       turnTimeoutMs: config.turnTimeoutMs,

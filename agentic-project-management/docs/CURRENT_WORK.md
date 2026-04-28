@@ -22,10 +22,11 @@ Date: 2026-04-29
 - Worker-side cancellation checks for active agent sessions.
 - Linear webhook signature validation and setup guide.
 - Action result banners in the dashboard.
+- Hardened CLI runtime adapter and runtime portability spec.
 
 ## In Progress
 
-- Codex runtime hardening: event streaming, cancellation, artifacts, and review packet capture.
+- Artifact capture and review packet generation.
 
 ## Next Queue
 
