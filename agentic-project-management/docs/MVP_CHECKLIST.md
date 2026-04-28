@@ -13,16 +13,17 @@
 
 ## Milestone 2: First Local Loop
 
-- [ ] Install dependencies.
-- [ ] Validate TypeScript builds.
-- [ ] Run MongoDB and Redis locally.
-- [ ] Seed a fake tracker issue.
-- [ ] Claim an issue as a work item.
-- [ ] Create a workspace for the issue.
-- [ ] Run a fake agent and capture events.
-- [ ] Show the run in the dashboard from live API data.
-- [ ] Control work item queue state from dashboard operator actions.
-- [ ] Show the selected run event timeline in the dashboard.
+- [x] Install dependencies.
+- [x] Validate TypeScript builds.
+- [x] Run MongoDB and Redis locally.
+- [x] Seed a fake tracker issue.
+- [x] Claim an issue as a work item.
+- [x] Create a workspace for the issue.
+- [x] Run a fake agent and capture events.
+- [x] Show the run in the dashboard from live API data.
+- [x] Control work item queue state from dashboard operator actions.
+- [x] Show the selected run event timeline in the dashboard.
+- [x] Control project dispatch from the dashboard toolbar.
 
 ## Milestone 3: Linear Loop
 

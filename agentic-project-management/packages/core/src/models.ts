@@ -34,6 +34,7 @@ export type ArtifactType =
 export type EventLevel = "debug" | "info" | "warn" | "error";
 
 export type OperatorActionName = "start" | "retry" | "pause" | "resume" | "cancel";
+export type DispatchActionName = "pause" | "resume" | "start_eligible";
 
 export interface Project {
   id: string;
@@ -86,6 +87,16 @@ export interface WorkItem {
   lastRunId?: string;
   retryCount: number;
   nextAttemptAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface DispatchControl {
+  projectId: string;
+  paused: boolean;
+  pausedBy?: string;
+  pausedReason?: string;
+  pausedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -185,5 +196,12 @@ export interface OperatorActionResult {
   workItem: WorkItem;
   fromStatus: WorkItemStatus;
   toStatus: WorkItemStatus;
+  message: string;
+}
+
+export interface DispatchActionResult {
+  action: DispatchActionName;
+  dispatch: DispatchControl;
+  affectedWorkItemCount: number;
   message: string;
 }

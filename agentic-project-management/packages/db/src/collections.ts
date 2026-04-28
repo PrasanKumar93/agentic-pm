@@ -1,5 +1,5 @@
 import type { Collection, Db } from "mongodb";
-import type { Artifact, Issue, Project, RepositoryRef, Run, RunEvent, WorkItem } from "@agentic-pm/core";
+import type { Artifact, DispatchControl, Issue, Project, RepositoryRef, Run, RunEvent, WorkItem } from "@agentic-pm/core";
 
 export interface TrackerConnection {
   id: string;
@@ -50,6 +50,7 @@ export interface AgenticCollections {
   runEvents: Collection<RunEvent>;
   artifacts: Collection<Artifact>;
   operatorActions: Collection<OperatorAction>;
+  dispatchControls: Collection<DispatchControl>;
   workflowSnapshots: Collection<WorkflowSnapshot>;
   secretReferences: Collection<SecretReference>;
 }
@@ -65,6 +66,7 @@ export function getCollections(db: Db): AgenticCollections {
     runEvents: db.collection<RunEvent>("run_events"),
     artifacts: db.collection<Artifact>("artifacts"),
     operatorActions: db.collection<OperatorAction>("operator_actions"),
+    dispatchControls: db.collection<DispatchControl>("dispatch_controls"),
     workflowSnapshots: db.collection<WorkflowSnapshot>("workflow_snapshots"),
     secretReferences: db.collection<SecretReference>("secrets_references")
   };
@@ -83,6 +85,7 @@ export async function ensureIndexes(collections: AgenticCollections): Promise<vo
     collections.runEvents.createIndex({ runId: 1, createdAt: 1 }),
     collections.artifacts.createIndex({ runId: 1, createdAt: 1 }),
     collections.operatorActions.createIndex({ workItemId: 1, createdAt: -1 }),
+    collections.dispatchControls.createIndex({ projectId: 1 }, { unique: true }),
     collections.workflowSnapshots.createIndex({ projectId: 1, createdAt: -1 })
   ]);
 }

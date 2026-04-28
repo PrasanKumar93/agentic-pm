@@ -160,6 +160,10 @@ a:hover {
   gap: 8px;
 }
 
+.toolbar form {
+  display: flex;
+}
+
 .notice {
   align-items: center;
   background: #edf7f5;

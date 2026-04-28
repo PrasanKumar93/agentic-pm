@@ -1,7 +1,7 @@
 import "dotenv/config";
 import cors from "@fastify/cors";
 import Fastify from "fastify";
-import type { OperatorActionName } from "@agentic-pm/core";
+import type { DispatchActionName, OperatorActionName } from "@agentic-pm/core";
 import {
   AgenticRepository,
   connectMongo,
@@ -14,6 +14,7 @@ import {
 
 const host = process.env.API_HOST ?? "0.0.0.0";
 const port = Number(process.env.API_PORT ?? 4000);
+const projectId = process.env.AGENTIC_PM_PROJECT_ID ?? "project_local";
 
 const mongo = await connectMongo(readMongoConfig());
 const collections = getCollections(mongo.db);
@@ -24,6 +25,7 @@ const app = Fastify({
   logger: true
 });
 const allowedOperatorActions = new Set<OperatorActionName>(["start", "retry", "pause", "resume", "cancel"]);
+const allowedDispatchActions = new Set<DispatchActionName>(["pause", "resume", "start_eligible"]);
 
 await app.register(cors, {
   origin: true
@@ -48,6 +50,48 @@ app.get("/work-items", async (request) => {
     meta: {
       limit,
       count: data.length,
+      generatedAt: new Date().toISOString()
+    }
+  };
+});
+
+app.get("/dispatch-control", async () => {
+  return {
+    data: await repository.getDispatchControl(projectId),
+    meta: {
+      projectId,
+      generatedAt: new Date().toISOString()
+    }
+  };
+});
+
+app.post("/dispatch-control/actions/:action", async (request, reply) => {
+  const { action } = request.params as {
+    action: string;
+  };
+
+  if (!allowedDispatchActions.has(action as DispatchActionName)) {
+    return reply.code(400).send({
+      error: `Unknown dispatch action: ${action}`
+    });
+  }
+
+  const body = (request.body ?? {}) as {
+    actorId?: string;
+    reason?: string;
+  };
+
+  const result = await repository.performDispatchAction({
+    projectId,
+    action: action as DispatchActionName,
+    actorId: body.actorId,
+    reason: body.reason
+  });
+
+  return {
+    data: result,
+    meta: {
+      action,
       generatedAt: new Date().toISOString()
     }
   };

@@ -34,7 +34,9 @@ The first usable loop will be:
 ## Docs
 
 - [Plan](docs/PLAN.md)
+- [Current Work](docs/CURRENT_WORK.md)
 - [MVP Checklist](docs/MVP_CHECKLIST.md)
 - [Live Dashboard Spec](docs/LIVE_DASHBOARD_SPEC.md)
 - [Operator Actions Spec](docs/OPERATOR_ACTIONS_SPEC.md)
 - [Run Detail Timeline Spec](docs/RUN_DETAIL_TIMELINE_SPEC.md)
+- [Dispatch Controls Spec](docs/DISPATCH_CONTROLS_SPEC.md)

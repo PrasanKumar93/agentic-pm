@@ -1,8 +1,11 @@
-import type { Db } from "mongodb";
+import type { Db, UpdateFilter, WithId } from "mongodb";
 import {
   createId,
   nextRetryAt,
   type Artifact,
+  type DispatchActionName,
+  type DispatchActionResult,
+  type DispatchControl,
   type Issue,
   type OperatorActionName,
   type OperatorActionResult,
@@ -15,6 +18,7 @@ import {
 import { getCollections, type AgenticCollections } from "./collections.js";
 
 const activeRunStatuses: Run["status"][] = ["preparing", "running", "stalled", "retrying"];
+const startEligibleStatuses: WorkItemStatus[] = ["paused", "blocked", "failed", "cancelled"];
 
 export class WorkItemNotFoundError extends Error {
   constructor(workItemId: string) {
@@ -117,6 +121,26 @@ export class AgenticRepository {
   async getWorkItemSummary(workItemId: string): Promise<WorkItemSummary | null> {
     const workItem = await this.collections.workItems.findOne({ id: workItemId });
     return workItem ? this.toWorkItemSummary(workItem) : null;
+  }
+
+  async getDispatchControl(projectId: string): Promise<DispatchControl> {
+    const existing = await this.collections.dispatchControls.findOne({ projectId });
+    if (existing) {
+      return this.toDispatchControl(existing);
+    }
+
+    const now = new Date();
+    return {
+      projectId,
+      paused: false,
+      createdAt: now,
+      updatedAt: now
+    };
+  }
+
+  async isDispatchPaused(projectId: string): Promise<boolean> {
+    const control = await this.collections.dispatchControls.findOne({ projectId });
+    return control?.paused ?? false;
   }
 
   async claimNextQueuedWorkItem(projectId: string, workerId: string, now = new Date()): Promise<WorkItem | null> {
@@ -324,6 +348,101 @@ export class AgenticRepository {
     };
   }
 
+  async performDispatchAction(input: {
+    projectId: string;
+    action: DispatchActionName;
+    actorId?: string;
+    reason?: string;
+  }): Promise<DispatchActionResult> {
+    const actorId = input.actorId || "local-operator";
+    const now = new Date();
+
+    if (input.action === "start_eligible") {
+      const result = await this.collections.workItems.updateMany(
+        {
+          projectId: input.projectId,
+          status: { $in: startEligibleStatuses }
+        },
+        {
+          $set: {
+            status: "queued",
+            updatedAt: now
+          },
+          $unset: {
+            claimedBy: "",
+            nextAttemptAt: ""
+          }
+        }
+      );
+
+      await this.recordDispatchAction({
+        projectId: input.projectId,
+        actorId,
+        action: input.action,
+        reason: input.reason,
+        affectedWorkItemCount: result.modifiedCount,
+        createdAt: now
+      });
+
+      return {
+        action: input.action,
+        dispatch: await this.getDispatchControl(input.projectId),
+        affectedWorkItemCount: result.modifiedCount,
+        message: `Queued ${result.modifiedCount} eligible work items`
+      };
+    }
+
+    const paused = input.action === "pause";
+    const update: UpdateFilter<DispatchControl> =
+      input.action === "pause"
+        ? {
+            $set: {
+              paused,
+              pausedBy: actorId,
+              pausedReason: input.reason,
+              pausedAt: now,
+              updatedAt: now
+            },
+            $setOnInsert: {
+              projectId: input.projectId,
+              createdAt: now
+            }
+          }
+        : {
+            $set: {
+              paused,
+              updatedAt: now
+            },
+            $setOnInsert: {
+              projectId: input.projectId,
+              createdAt: now
+            },
+            $unset: {
+              pausedBy: "" as const,
+              pausedReason: "" as const,
+              pausedAt: "" as const
+            }
+          };
+
+    await this.collections.dispatchControls.updateOne({ projectId: input.projectId }, update, { upsert: true });
+
+    await this.recordDispatchAction({
+      projectId: input.projectId,
+      actorId,
+      action: input.action,
+      reason: input.reason,
+      affectedWorkItemCount: 0,
+      createdAt: now
+    });
+
+    return {
+      action: input.action,
+      dispatch: await this.getDispatchControl(input.projectId),
+      affectedWorkItemCount: 0,
+      message: paused ? "Dispatch paused" : "Dispatch resumed"
+    };
+  }
+
   async appendEvent(event: Omit<RunEvent, "id" | "createdAt"> & { id?: string; createdAt?: Date }): Promise<RunEvent> {
     const stored: RunEvent = {
       ...event,
@@ -350,6 +469,45 @@ export class AgenticRepository {
 
   async listArtifacts(runId: string): Promise<Artifact[]> {
     return this.collections.artifacts.find({ runId }).sort({ createdAt: 1 }).toArray();
+  }
+
+  private async recordDispatchAction(input: {
+    projectId: string;
+    actorId: string;
+    action: DispatchActionName;
+    reason?: string;
+    affectedWorkItemCount: number;
+    createdAt: Date;
+  }): Promise<void> {
+    await this.collections.operatorActions.insertOne({
+      id: createId("act"),
+      projectId: input.projectId,
+      actorId: input.actorId,
+      action: `dispatch.${input.action}`,
+      payload: {
+        reason: input.reason,
+        affectedWorkItemCount: input.affectedWorkItemCount
+      },
+      createdAt: input.createdAt
+    });
+
+    await this.appendEvent({
+      projectId: input.projectId,
+      type: `dispatch.${input.action}`,
+      level: "info",
+      message: `${input.actorId} requested ${input.action.replace("_", " ")}`,
+      payload: {
+        actorId: input.actorId,
+        reason: input.reason,
+        affectedWorkItemCount: input.affectedWorkItemCount
+      },
+      createdAt: input.createdAt
+    });
+  }
+
+  private toDispatchControl(dispatch: DispatchControl | WithId<DispatchControl>): DispatchControl {
+    const { _id: _ignored, ...control } = dispatch as WithId<DispatchControl>;
+    return control;
   }
 
   private resolveActionTransition(

@@ -88,6 +88,10 @@ async function reconcileTracker(): Promise<void> {
 }
 
 async function dispatchOne(): Promise<void> {
+  if (await repository.isDispatchPaused(projectId)) {
+    return;
+  }
+
   const workItem = await repository.claimNextQueuedWorkItem(projectId, workerId);
   if (!workItem) {
     return;

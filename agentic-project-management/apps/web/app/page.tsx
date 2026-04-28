@@ -9,7 +9,7 @@ import {
   Square,
   XCircle
 } from "lucide-react";
-import { submitWorkItemAction } from "./actions";
+import { submitDispatchAction, submitWorkItemAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -81,12 +81,27 @@ type WorkItemsResponse = {
   };
 };
 
+type DispatchControl = {
+  projectId: string;
+  paused: boolean;
+  pausedBy?: string;
+  pausedReason?: string;
+  pausedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type DispatchControlResponse = {
+  data: DispatchControl;
+};
+
 type RunEventsResponse = {
   data: RunEventSummary[];
 };
 
 type DashboardData = {
   items: WorkItemSummary[];
+  dispatch: DispatchControl;
   generatedAt?: string;
   error?: string;
 };
@@ -136,13 +151,23 @@ export default async function DashboardPage() {
             <a className="iconButton" href="/" title="Refresh">
               <RefreshCw size={16} />
             </a>
-            <button disabled title="Pause dispatch">
-              <CirclePause size={16} />
-            </button>
-            <button className="primary" disabled title="Start eligible">
-              <Play size={16} />
-              Start eligible
-            </button>
+            <form action={submitDispatchAction}>
+              <button
+                name="action"
+                title={dashboard.dispatch.paused ? "Resume dispatch" : "Pause dispatch"}
+                type="submit"
+                value={dashboard.dispatch.paused ? "resume" : "pause"}
+              >
+                {dashboard.dispatch.paused ? <Play size={16} /> : <CirclePause size={16} />}
+                {dashboard.dispatch.paused ? "Resume dispatch" : "Pause dispatch"}
+              </button>
+            </form>
+            <form action={submitDispatchAction}>
+              <button className="primary" name="action" title="Start eligible" type="submit" value="start_eligible">
+                <Play size={16} />
+                Start eligible
+              </button>
+            </form>
           </div>
         </header>
 
@@ -157,6 +182,7 @@ export default async function DashboardPage() {
             <span>
               Live API data
               {dashboard.generatedAt ? ` · refreshed ${formatRelativeTime(dashboard.generatedAt)}` : ""}
+              {dashboard.dispatch.paused ? " · dispatch paused" : ""}
             </span>
           </section>
         )}
@@ -325,9 +351,12 @@ export default async function DashboardPage() {
 
 async function fetchDashboardData(): Promise<DashboardData> {
   try {
-    const response = await fetch(`${apiUrl}/work-items?limit=50`, {
-      cache: "no-store"
-    });
+    const [response, dispatch] = await Promise.all([
+      fetch(`${apiUrl}/work-items?limit=50`, {
+        cache: "no-store"
+      }),
+      fetchDispatchControl()
+    ]);
 
     if (!response.ok) {
       throw new Error(`API returned ${response.status}`);
@@ -336,14 +365,33 @@ async function fetchDashboardData(): Promise<DashboardData> {
     const payload = (await response.json()) as WorkItemsResponse;
     return {
       items: payload.data,
+      dispatch,
       generatedAt: payload.meta?.generatedAt
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown API error";
     return {
       items: [],
+      dispatch: createDefaultDispatchControl(),
       error: `API unavailable at ${apiUrl}: ${message}`
     };
+  }
+}
+
+async function fetchDispatchControl(): Promise<DispatchControl> {
+  try {
+    const response = await fetch(`${apiUrl}/dispatch-control`, {
+      cache: "no-store"
+    });
+
+    if (!response.ok) {
+      throw new Error(`API returned ${response.status}`);
+    }
+
+    const payload = (await response.json()) as DispatchControlResponse;
+    return payload.data;
+  } catch {
+    return createDefaultDispatchControl();
   }
 }
 
@@ -368,6 +416,16 @@ async function fetchRunEvents(runId: string): Promise<RunEventsData> {
       error: `Could not load run events: ${message}`
     };
   }
+}
+
+function createDefaultDispatchControl(): DispatchControl {
+  const now = new Date().toISOString();
+  return {
+    projectId: "project_local",
+    paused: false,
+    createdAt: now,
+    updatedAt: now
+  };
 }
 
 function buildLanes(items: WorkItemSummary[]) {
