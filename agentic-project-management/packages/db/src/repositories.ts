@@ -4,12 +4,31 @@ import {
   nextRetryAt,
   type Artifact,
   type Issue,
+  type OperatorActionName,
+  type OperatorActionResult,
   type Run,
   type RunEvent,
   type WorkItem,
+  type WorkItemStatus,
   type WorkItemSummary
 } from "@agentic-pm/core";
 import { getCollections, type AgenticCollections } from "./collections.js";
+
+const activeRunStatuses: Run["status"][] = ["preparing", "running", "stalled", "retrying"];
+
+export class WorkItemNotFoundError extends Error {
+  constructor(workItemId: string) {
+    super(`Work item not found: ${workItemId}`);
+    this.name = "WorkItemNotFoundError";
+  }
+}
+
+export class InvalidWorkItemActionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidWorkItemActionError";
+  }
+}
 
 export class AgenticRepository {
   readonly collections: AgenticCollections;
@@ -92,56 +111,12 @@ export class AgenticRepository {
 
   async listWorkItemSummaries(limit = 50): Promise<WorkItemSummary[]> {
     const workItems = await this.listWorkItems(limit);
+    return Promise.all(workItems.map((workItem) => this.toWorkItemSummary(workItem)));
+  }
 
-    return Promise.all(
-      workItems.map(async (workItem) => {
-        const issue = await this.collections.issues.findOne({ id: workItem.issueId });
-        const latestRun = workItem.lastRunId
-          ? await this.collections.runs.findOne({ id: workItem.lastRunId })
-          : await this.collections.runs.findOne({ workItemId: workItem.id }, { sort: { startedAt: -1 } });
-
-        const [eventCount, lastEvent] = latestRun
-          ? await Promise.all([
-              this.collections.runEvents.countDocuments({ runId: latestRun.id }),
-              this.collections.runEvents.findOne({ runId: latestRun.id }, { sort: { createdAt: -1 } })
-            ])
-          : [0, null] as const;
-
-        return {
-          id: workItem.id,
-          status: workItem.status,
-          issue: {
-            id: issue?.id ?? workItem.issueId,
-            identifier: issue?.identifier ?? "Unknown",
-            title: issue?.title ?? "Issue unavailable",
-            state: issue?.state ?? "Unknown",
-            url: issue?.url
-          },
-          latestRun: latestRun
-            ? {
-                id: latestRun.id,
-                status: latestRun.status,
-                agentRuntime: latestRun.agentRuntime,
-                workspacePath: latestRun.workspacePath,
-                startedAt: latestRun.startedAt,
-                endedAt: latestRun.endedAt
-              }
-            : undefined,
-          eventCount,
-          lastEvent: lastEvent
-            ? {
-                type: lastEvent.type,
-                level: lastEvent.level,
-                message: lastEvent.message,
-                createdAt: lastEvent.createdAt
-              }
-            : undefined,
-          claimedBy: workItem.claimedBy,
-          retryCount: workItem.retryCount,
-          updatedAt: workItem.updatedAt
-        };
-      })
-    );
+  async getWorkItemSummary(workItemId: string): Promise<WorkItemSummary | null> {
+    const workItem = await this.collections.workItems.findOne({ id: workItemId });
+    return workItem ? this.toWorkItemSummary(workItem) : null;
   }
 
   async claimNextQueuedWorkItem(projectId: string, workerId: string, now = new Date()): Promise<WorkItem | null> {
@@ -262,6 +237,93 @@ export class AgenticRepository {
     );
   }
 
+  async performWorkItemAction(input: {
+    workItemId: string;
+    action: OperatorActionName;
+    actorId?: string;
+    reason?: string;
+  }): Promise<OperatorActionResult> {
+    const workItem = await this.collections.workItems.findOne({ id: input.workItemId });
+    if (!workItem) {
+      throw new WorkItemNotFoundError(input.workItemId);
+    }
+
+    const actorId = input.actorId || "local-operator";
+    const fromStatus = workItem.status;
+    const transition = this.resolveActionTransition(workItem, input.action);
+    const now = new Date();
+
+    const update = this.buildActionUpdate({
+      workItem,
+      action: input.action,
+      toStatus: transition.toStatus,
+      now
+    });
+
+    await this.collections.workItems.updateOne({ id: workItem.id }, update);
+
+    if (input.action === "cancel" && workItem.lastRunId) {
+      await this.collections.runs.updateOne(
+        {
+          id: workItem.lastRunId,
+          status: { $in: activeRunStatuses }
+        },
+        {
+          $set: {
+            status: "cancelled",
+            exitReason: `cancelled by ${actorId}`,
+            endedAt: now,
+            updatedAt: now
+          }
+        }
+      );
+    }
+
+    await this.collections.operatorActions.insertOne({
+      id: createId("act"),
+      projectId: workItem.projectId,
+      workItemId: workItem.id,
+      runId: workItem.lastRunId,
+      actorId,
+      action: input.action,
+      payload: {
+        reason: input.reason,
+        fromStatus,
+        toStatus: transition.toStatus
+      },
+      createdAt: now
+    });
+
+    await this.appendEvent({
+      projectId: workItem.projectId,
+      workItemId: workItem.id,
+      runId: workItem.lastRunId,
+      type: `operator.${input.action}`,
+      level: "info",
+      message: `${actorId} requested ${input.action}`,
+      payload: {
+        actorId,
+        reason: input.reason,
+        fromStatus,
+        toStatus: transition.toStatus
+      },
+      createdAt: now
+    });
+
+    const updated = await this.collections.workItems.findOne({ id: workItem.id });
+    if (!updated) {
+      throw new WorkItemNotFoundError(workItem.id);
+    }
+
+    return {
+      action: input.action,
+      workItem: updated,
+      fromStatus,
+      toStatus: updated.status,
+      message: transition.message
+    };
+  }
+
   async appendEvent(event: Omit<RunEvent, "id" | "createdAt"> & { id?: string; createdAt?: Date }): Promise<RunEvent> {
     const stored: RunEvent = {
       ...event,
@@ -288,5 +350,129 @@ export class AgenticRepository {
 
   async listArtifacts(runId: string): Promise<Artifact[]> {
     return this.collections.artifacts.find({ runId }).sort({ createdAt: 1 }).toArray();
+  }
+
+  private resolveActionTransition(
+    workItem: WorkItem,
+    action: OperatorActionName
+  ): { toStatus: WorkItemStatus; message: string } {
+    const status = workItem.status;
+
+    if (status === "completed") {
+      throw new InvalidWorkItemActionError("Completed work items cannot be changed by operator actions");
+    }
+
+    switch (action) {
+      case "start":
+        if (status === "running") {
+          throw new InvalidWorkItemActionError("Cannot start a running work item");
+        }
+        if (status === "queued") {
+          return { toStatus: "queued", message: "Work item is already queued" };
+        }
+        return { toStatus: "queued", message: "Work item queued for dispatch" };
+
+      case "retry":
+        if (status === "running") {
+          throw new InvalidWorkItemActionError("Cannot retry a running work item");
+        }
+        if (status === "queued") {
+          return { toStatus: "queued", message: "Work item is already queued" };
+        }
+        return { toStatus: "queued", message: "Work item queued for retry" };
+
+      case "pause":
+        if (status === "cancelled") {
+          throw new InvalidWorkItemActionError("Cannot pause a cancelled work item");
+        }
+        if (status === "paused") {
+          return { toStatus: "paused", message: "Work item is already paused" };
+        }
+        return { toStatus: "paused", message: "Work item paused" };
+
+      case "resume":
+        if (status !== "paused" && status !== "blocked" && status !== "queued") {
+          throw new InvalidWorkItemActionError(`Cannot resume a ${status} work item`);
+        }
+        if (status === "queued") {
+          return { toStatus: "queued", message: "Work item is already queued" };
+        }
+        return { toStatus: "queued", message: "Work item resumed" };
+
+      case "cancel":
+        if (status === "cancelled") {
+          return { toStatus: "cancelled", message: "Work item is already cancelled" };
+        }
+        return { toStatus: "cancelled", message: "Work item cancelled" };
+    }
+  }
+
+  private buildActionUpdate(input: {
+    workItem: WorkItem;
+    action: OperatorActionName;
+    toStatus: WorkItemStatus;
+    now: Date;
+  }) {
+    const retryIncrement = input.action === "retry" && input.workItem.status !== "queued" ? 1 : 0;
+
+    return {
+      $set: {
+        status: input.toStatus,
+        retryCount: input.workItem.retryCount + retryIncrement,
+        updatedAt: input.now
+      },
+      $unset: {
+        claimedBy: "" as const,
+        nextAttemptAt: "" as const
+      }
+    };
+  }
+
+  private async toWorkItemSummary(workItem: WorkItem): Promise<WorkItemSummary> {
+    const issue = await this.collections.issues.findOne({ id: workItem.issueId });
+    const latestRun = workItem.lastRunId
+      ? await this.collections.runs.findOne({ id: workItem.lastRunId })
+      : await this.collections.runs.findOne({ workItemId: workItem.id }, { sort: { startedAt: -1 } });
+
+    const [eventCount, lastEvent] = latestRun
+      ? await Promise.all([
+          this.collections.runEvents.countDocuments({ runId: latestRun.id }),
+          this.collections.runEvents.findOne({ runId: latestRun.id }, { sort: { createdAt: -1 } })
+        ])
+      : [0, null] as const;
+
+    return {
+      id: workItem.id,
+      status: workItem.status,
+      issue: {
+        id: issue?.id ?? workItem.issueId,
+        identifier: issue?.identifier ?? "Unknown",
+        title: issue?.title ?? "Issue unavailable",
+        state: issue?.state ?? "Unknown",
+        url: issue?.url
+      },
+      latestRun: latestRun
+        ? {
+            id: latestRun.id,
+            status: latestRun.status,
+            agentRuntime: latestRun.agentRuntime,
+            workspacePath: latestRun.workspacePath,
+            startedAt: latestRun.startedAt,
+            endedAt: latestRun.endedAt
+          }
+        : undefined,
+      eventCount,
+      lastEvent: lastEvent
+        ? {
+            type: lastEvent.type,
+            level: lastEvent.level,
+            message: lastEvent.message,
+            createdAt: lastEvent.createdAt
+          }
+        : undefined,
+      claimedBy: workItem.claimedBy,
+      retryCount: workItem.retryCount,
+      updatedAt: workItem.updatedAt
+    };
   }
 }

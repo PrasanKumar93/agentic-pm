@@ -33,6 +33,8 @@ export type ArtifactType =
 
 export type EventLevel = "debug" | "info" | "warn" | "error";
 
+export type OperatorActionName = "start" | "retry" | "pause" | "resume" | "cancel";
+
 export interface Project {
   id: string;
   name: string;
@@ -176,4 +178,12 @@ export interface ReviewPacket {
   risks: string[];
   followUps: string[];
   artifacts: Artifact[];
+}
+
+export interface OperatorActionResult {
+  action: OperatorActionName;
+  workItem: WorkItem;
+  fromStatus: WorkItemStatus;
+  toStatus: WorkItemStatus;
+  message: string;
 }

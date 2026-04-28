@@ -213,7 +213,7 @@ h2 {
 .metrics {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(4, minmax(140px, 1fr));
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
 }
 
 .metric,
@@ -286,7 +286,7 @@ h2 {
   display: grid;
   font-size: 13px;
   gap: 12px;
-  grid-template-columns: 82px minmax(180px, 1fr) 150px 120px 80px;
+  grid-template-columns: 82px minmax(180px, 1fr) 150px 120px 80px 92px;
   min-height: 46px;
   padding: 0 12px;
 }
@@ -294,6 +294,24 @@ h2 {
 .row a,
 .row strong {
   font-weight: 800;
+}
+
+.actionGroup {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.actionButton {
+  height: 30px;
+  justify-content: center;
+  min-height: 30px;
+  padding: 0;
+  width: 32px;
+}
+
+.dangerAction {
+  color: var(--red);
 }
 
 .row:first-child {
@@ -477,7 +495,7 @@ h2 {
   }
 
   .row {
-    grid-template-columns: 70px minmax(130px, 1fr) 130px;
+    grid-template-columns: 70px minmax(130px, 1fr) 130px 74px;
   }
 
   .row span:nth-child(4),

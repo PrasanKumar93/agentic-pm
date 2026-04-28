@@ -21,6 +21,7 @@
 - [ ] Create a workspace for the issue.
 - [ ] Run a fake agent and capture events.
 - [ ] Show the run in the dashboard from live API data.
+- [ ] Control work item queue state from dashboard operator actions.
 
 ## Milestone 3: Linear Loop
 

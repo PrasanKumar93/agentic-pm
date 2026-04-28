@@ -12,6 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@agentic-pm/core": "workspace:*",
     "@agentic-pm/db": "workspace:*",
     "@fastify/cors": "^10.0.2",
     "dotenv": "^16.4.7",

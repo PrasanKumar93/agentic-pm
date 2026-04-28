@@ -71,6 +71,7 @@ The metrics cards are derived from returned work items:
 
 - `Queued`: `status === "queued"`
 - `Running`: `status === "running"`
+- `Paused`: `status === "paused"`
 - `Review`: `status === "waiting_for_review"`
 - `Blocked`: `status === "blocked"`
 
@@ -113,11 +114,12 @@ If the API cannot be reached, the dashboard should still render and show:
 
 This slice does not implement:
 
-- Operator actions such as retry/cancel/start.
 - Live streaming logs.
 - Authentication.
 - Full run-event drill-down.
 - Linear webhook signature verification.
+
+Operator actions are covered in `OPERATOR_ACTIONS_SPEC.md`.
 
 ## 5. Validation
 

@@ -6,8 +6,10 @@ import {
   RefreshCw,
   RotateCcw,
   ShieldCheck,
-  Square
+  Square,
+  XCircle
 } from "lucide-react";
+import { submitWorkItemAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -169,6 +171,7 @@ export default async function DashboardPage() {
                   <span>Status</span>
                   <span>Owner</span>
                   <span>Updated</span>
+                  <span>Actions</span>
                 </div>
                 {dashboard.items.map((row) => (
                   <div className="row" key={row.id}>
@@ -183,6 +186,22 @@ export default async function DashboardPage() {
                     <span className={`pill ${row.status}`}>{formatStatus(row.status)}</span>
                     <span>{row.claimedBy ?? row.latestRun?.agentRuntime ?? "unclaimed"}</span>
                     <span>{formatRelativeTime(row.updatedAt)}</span>
+                    <form action={submitWorkItemAction} className="actionGroup">
+                      <input name="workItemId" type="hidden" value={row.id} />
+                      {getAvailableActions(row.status).map((action) => (
+                        <button
+                          aria-label={action.label}
+                          className={`actionButton ${action.name === "cancel" ? "dangerAction" : ""}`}
+                          key={action.name}
+                          name="action"
+                          title={action.label}
+                          type="submit"
+                          value={action.name}
+                        >
+                          <ActionIcon action={action.name} />
+                        </button>
+                      ))}
+                    </form>
                   </div>
                 ))}
               </div>
@@ -287,6 +306,7 @@ function buildLanes(items: WorkItemSummary[]) {
   return [
     { label: "Queued", value: countStatus(items, "queued"), tone: "neutral" },
     { label: "Running", value: countStatus(items, "running"), tone: "blue" },
+    { label: "Paused", value: countStatus(items, "paused"), tone: "neutral" },
     { label: "Review", value: countStatus(items, "waiting_for_review"), tone: "amber" },
     { label: "Blocked", value: countStatus(items, "blocked"), tone: "red" }
   ];
@@ -302,6 +322,65 @@ function selectRunDetailItem(items: WorkItemSummary[]): WorkItemSummary | undefi
     items.find((item) => item.status === "waiting_for_review") ??
     items[0]
   );
+}
+
+function getAvailableActions(status: WorkItemStatus): Array<{
+  name: "start" | "retry" | "pause" | "resume" | "cancel";
+  label: string;
+}> {
+  switch (status) {
+    case "queued":
+      return [
+        { name: "pause", label: "Pause" },
+        { name: "cancel", label: "Cancel" }
+      ];
+    case "running":
+      return [
+        { name: "pause", label: "Pause" },
+        { name: "cancel", label: "Cancel" }
+      ];
+    case "waiting_for_review":
+      return [
+        { name: "retry", label: "Retry" },
+        { name: "cancel", label: "Cancel" }
+      ];
+    case "paused":
+    case "blocked":
+      return [
+        { name: "resume", label: "Resume" },
+        { name: "cancel", label: "Cancel" }
+      ];
+    case "failed":
+      return [
+        { name: "retry", label: "Retry" },
+        { name: "cancel", label: "Cancel" }
+      ];
+    case "cancelled":
+      return [
+        { name: "start", label: "Start" },
+        { name: "retry", label: "Retry" }
+      ];
+    case "completed":
+      return [];
+  }
+}
+
+function ActionIcon({
+  action
+}: {
+  action: "start" | "retry" | "pause" | "resume" | "cancel";
+}) {
+  switch (action) {
+    case "start":
+    case "resume":
+      return <Play size={14} />;
+    case "retry":
+      return <RotateCcw size={14} />;
+    case "pause":
+      return <CirclePause size={14} />;
+    case "cancel":
+      return <XCircle size={14} />;
+  }
 }
 
 function formatStatus(status: string): string {

@@ -29,6 +29,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@agentic-pm/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@agentic-pm/db':
         specifier: workspace:*
         version: link:../../packages/db
