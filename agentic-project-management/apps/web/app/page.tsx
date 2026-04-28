@@ -1,5 +1,6 @@
 import {
   AlertTriangle,
+  CheckCircle2,
   CirclePause,
   Database,
   Play,
@@ -111,10 +112,23 @@ type RunEventsData = {
   error?: string;
 };
 
+type DashboardSearchParams = Record<string, string | string[] | undefined>;
+
+type ActionFeedback = {
+  tone: "success" | "error";
+  message: string;
+};
+
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams
+}: {
+  searchParams?: Promise<DashboardSearchParams>;
+}) {
   const dashboard = await fetchDashboardData();
+  const resolvedSearchParams = searchParams ? await searchParams : {};
+  const actionFeedback = parseActionFeedback(resolvedSearchParams);
   const lanes = buildLanes(dashboard.items);
   const selected = selectRunDetailItem(dashboard.items);
   const runEvents = selected?.latestRun ? await fetchRunEvents(selected.latestRun.id) : { events: [] };
@@ -186,6 +200,19 @@ export default async function DashboardPage() {
             </span>
           </section>
         )}
+
+        {actionFeedback ? (
+          <section
+            className={`actionBanner ${actionFeedback.tone === "error" ? "actionBannerError" : "actionBannerSuccess"}`}
+            role={actionFeedback.tone === "error" ? "alert" : "status"}
+          >
+            {actionFeedback.tone === "error" ? <AlertTriangle size={16} /> : <CheckCircle2 size={16} />}
+            <span>{actionFeedback.message}</span>
+            <a className="bannerDismiss" href="/" title="Dismiss">
+              <XCircle size={14} />
+            </a>
+          </section>
+        ) : null}
 
         <section className="metrics">
           {lanes.map((lane) => (
@@ -426,6 +453,24 @@ function createDefaultDispatchControl(): DispatchControl {
     createdAt: now,
     updatedAt: now
   };
+}
+
+function parseActionFeedback(params: DashboardSearchParams): ActionFeedback | undefined {
+  const feedback = firstParam(params.feedback);
+  const message = firstParam(params.message)?.trim();
+
+  if ((feedback !== "success" && feedback !== "error") || !message) {
+    return undefined;
+  }
+
+  return {
+    tone: feedback,
+    message: message.slice(0, 220)
+  };
+}
+
+function firstParam(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
 }
 
 function buildLanes(items: WorkItemSummary[]) {

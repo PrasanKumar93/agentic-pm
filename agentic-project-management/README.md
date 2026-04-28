@@ -42,3 +42,4 @@ The first usable loop will be:
 - [Dispatch Controls Spec](docs/DISPATCH_CONTROLS_SPEC.md)
 - [Worker Cancellation Spec](docs/WORKER_CANCELLATION_SPEC.md)
 - [Linear Integration Spec](docs/LINEAR_INTEGRATION_SPEC.md)
+- [Action Feedback Spec](docs/ACTION_FEEDBACK_SPEC.md)

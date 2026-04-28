@@ -21,12 +21,12 @@ Date: 2026-04-29
 - Dispatch controls for project-level pause/resume and start eligible.
 - Worker-side cancellation checks for active agent sessions.
 - Linear webhook signature validation and setup guide.
+- Action result banners in the dashboard.
 
 ## In Progress
 
-- Action result banners in the dashboard.
+- Codex runtime hardening: event streaming, cancellation, artifacts, and review packet capture.
 
 ## Next Queue
 
-- Codex runtime hardening: event streaming, cancellation, artifacts, and review packet capture.
 - Pull request creation and manual merge gate.

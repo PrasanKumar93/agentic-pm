@@ -24,6 +24,7 @@
 - [x] Control work item queue state from dashboard operator actions.
 - [x] Show the selected run event timeline in the dashboard.
 - [x] Control project dispatch from the dashboard toolbar.
+- [x] Show action result banners after dashboard actions.
 
 ## Milestone 3: Linear Loop
 

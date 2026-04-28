@@ -143,6 +143,8 @@ The dashboard shows compact row-level actions:
 
 Action buttons submit through server-side form actions, call the API, and revalidate `/`.
 
+Action result banners are covered in `ACTION_FEEDBACK_SPEC.md`.
+
 ## 6. Validation
 
 Required checks:
@@ -154,7 +156,5 @@ Required checks:
 
 ## 7. Future Work
 
-- Add global `start eligible`.
 - Add confirmation modals for high-impact actions once real repos/PRs are connected.
 - Add action to request changes and comment back to Linear.
-- Add action result banners/toasts in the dashboard.

@@ -183,6 +183,50 @@ a:hover {
   color: #92402c;
 }
 
+.actionBanner {
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  font-size: 13px;
+  gap: 10px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  min-height: 42px;
+  padding: 0 10px 0 12px;
+}
+
+.actionBanner span {
+  overflow-wrap: anywhere;
+}
+
+.actionBannerSuccess {
+  background: #edf8f1;
+  border-color: #bddfc9;
+  color: #236145;
+}
+
+.actionBannerError {
+  background: #fff0ec;
+  border-color: #f0c5b8;
+  color: #92402c;
+}
+
+.bannerDismiss {
+  align-items: center;
+  border: 1px solid currentColor;
+  border-radius: 7px;
+  display: inline-flex;
+  height: 28px;
+  justify-content: center;
+  opacity: 0.72;
+  width: 30px;
+}
+
+.bannerDismiss:hover {
+  opacity: 1;
+  text-decoration: none;
+}
+
 .eyebrow {
   color: var(--muted);
   font-size: 12px;
