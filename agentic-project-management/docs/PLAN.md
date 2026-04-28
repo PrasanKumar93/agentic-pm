@@ -75,7 +75,7 @@ The OpenAI article and spec suggest several important design principles:
 - `packages/config`: `WORKFLOW.md` parser, typed config, live reload
 - `packages/trackers`: Linear, GitHub Issues, Jira adapters
 - `packages/workspaces`: workspace lifecycle, repo clone/worktree hooks
-- `packages/agents`: Codex/app-server adapter plus future agent runtime adapters
+- `packages/agents`: Codex, Cursor, and generic agent runtime adapters
 - `packages/git`: branch, PR, rebase, CI, and merge helpers
 - `packages/observability`: logs, traces, events, metrics
 - `packages/db`: MongoDB schemas, repositories, and typed data access
@@ -277,15 +277,16 @@ Recommended external tracker states:
 
 ## 9. Agent Runtime Strategy
 
-### Phase 1 Runtime
+### Phase 1 Runtimes
 
-Use Codex app-server as the first runtime adapter because Symphony is centered on Codex orchestration.
+Codex and Cursor Agent CLI are first-class MVP runtimes. Codex remains the reference runtime because Symphony is centered on Codex orchestration, while Cursor validates that the control plane can orchestrate other popular coding agents through the same adapter boundary.
 
 Adapter responsibilities:
 
+- Validate runtime setup before dispatch.
 - Start agent process in the workspace.
 - Send rendered prompt.
-- Stream events to the worker.
+- Stream normalized events to the worker.
 - Capture token/cost/status metadata when available.
 - Detect stalls and protocol errors.
 - Stop or kill process on cancellation.
@@ -294,16 +295,24 @@ Adapter responsibilities:
 
 ```ts
 export interface AgentRuntime {
+  preflight?(): Promise<AgentRuntimePreflightResult>;
   start(input: AgentStartInput): Promise<AgentSession>;
-  sendTurn(session: AgentSession, prompt: string): AsyncIterable<AgentEvent>;
+  run(session: AgentSession, prompt: string): AsyncIterable<AgentEvent>;
   cancel(session: AgentSession, reason: string): Promise<void>;
 }
 ```
 
+Implemented MVP adapters:
+
+- `fake`: safe smoke-test runtime.
+- `codex`: CLI process runtime with stdin prompts, heartbeat, timeout, stall detection, and process-group cancellation.
+- `cursor`: Cursor Agent CLI runtime using print mode, prompt-as-argument, preflight, and sanitized `stream-json` parsing.
+- `generic`: noninteractive CLI wrapper for other tools.
+
 ### Future Runtimes
 
 - OpenAI Agents SDK based implementation
-- Local CLI agent
+- Claude Code or other local CLI agents
 - GitHub Copilot Coding Agent integration
 - Custom MCP-based tool runner
 
@@ -581,7 +590,9 @@ agentic-project-management/
 ### Day 6: Agent Runner
 
 - Implement `AgentRuntime` interface.
-- Add Codex app-server adapter.
+- Add Codex, Cursor, and generic CLI adapters.
+- Add runtime setup preflight.
+- Parse Cursor `stream-json` into sanitized events.
 - Stream events into persistence.
 - Detect stall and timeout.
 - Support cancellation.
@@ -599,7 +610,7 @@ agentic-project-management/
 - Should the first tracker be Linear only, or Linear plus GitHub Issues?
 - Should persistence use local MongoDB from day one, or MongoDB Atlas for the first hosted version?
 - Should workers run directly on the host or inside Docker containers first?
-- Should Codex be the only MVP runtime, or should the runtime interface support OpenAI Agents SDK immediately?
+- Which runtime should be added after Codex, Cursor, and generic CLI support?
 - Should merge be manual-only in MVP, or allow approval-gated automatic merge?
 - Should the product be single-tenant local first or hosted multi-tenant from the beginning?
 
@@ -620,7 +631,7 @@ Start with a local, trusted-environment implementation:
 2. Fake tracker adapter and deterministic orchestrator tests.
 3. Linear adapter.
 4. Workspace manager.
-5. Codex app-server runtime adapter.
+5. Codex, Cursor, and generic CLI runtime adapters.
 6. Event persistence and logs.
 7. Minimal dashboard.
 8. Retry/stall/cancel behavior.
