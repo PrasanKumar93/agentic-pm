@@ -43,9 +43,10 @@
 - [x] Add configurable Codex, Cursor, and generic CLI runtime adapters.
 - [x] Add startup preflight checks for Codex and Cursor runtime setup.
 - [x] Add process runtime heartbeat, stall timeout, and cancellation hardening.
+- [x] Parse Cursor `stream-json` output into sanitized runtime events.
 - [ ] Run a real Codex runtime adapter from the worker.
 - [ ] Verify Cursor Agent CLI noninteractive mode locally.
-- [ ] Stream parsed Codex and Cursor events into MongoDB.
+- [ ] Stream parsed Codex app-server events into MongoDB.
 - [x] Add worker-side cancellation checks.
 - [x] Add stall detection.
 - [x] Add artifact capture for logs and patches.

@@ -26,10 +26,11 @@ Date: 2026-04-29
 - Local artifact capture for logs, patches, and review packets.
 - First-class Cursor Agent CLI runtime mode.
 - Runtime startup preflight for Codex and Cursor.
+- Cursor `stream-json` parsing into sanitized runtime events.
 
 ## In Progress
 
-- Runtime event parsing for structured Codex and Cursor output.
+- Codex app-server protocol verification and event parsing.
 
 ## Next Queue
 

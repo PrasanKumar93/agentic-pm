@@ -94,6 +94,14 @@ Cursor startup preflight checks:
 - `cursor-agent status` when `CURSOR_API_KEY` is not set
 - `CURSOR_API_KEY` presence when the key is set in `.env`
 
+When Cursor emits `stream-json`, the adapter converts each NDJSON line into sanitized Symphony events:
+
+- assistant/result text becomes `message`
+- tool, user, and system events become metadata-only `message` events
+- non-JSON output falls back to `stdout`
+
+The parser intentionally stores user prompt length instead of raw prompt text.
+
 Optional controls:
 
 ```env
@@ -152,5 +160,5 @@ Desktop-only editor automation is not an MVP target because it is fragile, hard 
 
 ## 6. Next Runtime Work
 
-- Add runtime-specific parsers for JSON event streams when a tool supports them.
+- Add a Codex app-server event parser after the local protocol is verified.
 - Add per-runtime safety profiles for allowed file writes and command execution.
