@@ -5,7 +5,7 @@ Date: 2026-04-29
 
 ## 1. Purpose
 
-Symphony should orchestrate work, not be permanently coupled to one coding tool. Codex is the first-class MVP runtime, but the control plane should run other capable agents through runtime adapters when they expose a safe noninteractive CLI, local server, or API.
+Symphony should orchestrate work, not be permanently coupled to one coding tool. Codex and Cursor Agent CLI are first-class MVP runtimes, and the control plane should run other capable agents through adapters when they expose a safe noninteractive CLI, local server, or API.
 
 ## 2. Runtime Contract
 
@@ -57,6 +57,37 @@ Codex inherits the hardened process behavior:
 - Stall timeout.
 - Process-group cancellation with SIGTERM, then SIGKILL after a grace period.
 
+### `cursor`
+
+First-class CLI process runtime for Cursor Agent CLI.
+
+```env
+AGENT_RUNTIME=cursor
+CURSOR_API_KEY=
+CURSOR_COMMAND=cursor-agent
+CURSOR_OUTPUT_FORMAT=stream-json
+CURSOR_FORCE=false
+```
+
+Cursor uses the CLI's noninteractive print mode. The runtime appends the rendered Symphony prompt as the final positional argument:
+
+```txt
+cursor-agent --print --output-format stream-json "<rendered prompt>"
+```
+
+Set `CURSOR_FORCE=true` only inside disposable workspaces where the orchestrator is allowed to let Cursor make direct file changes without confirmation.
+
+Cursor auth can come from `CURSOR_API_KEY` in `.env` or from an existing `cursor-agent login` session. A preflight should eventually run `cursor-agent status` before dispatching work to this runtime.
+
+Optional controls:
+
+```env
+CURSOR_MODEL=
+CURSOR_ARGS=
+```
+
+When `CURSOR_ARGS` is set, it replaces the default Cursor arguments and the prompt is still appended as the final argument.
+
 ### `generic`
 
 Generic noninteractive CLI runtime for other tools or wrappers.
@@ -68,7 +99,7 @@ AGENT_RUNTIME_COMMAND=./tools/run-cursor-agent
 AGENT_RUNTIME_ARGS=--json --non-interactive
 ```
 
-Use this for Cursor, Claude Code, OpenAI Agents SDK runners, or internal agent tools when they can accept a prompt and run inside a workspace without manual editor interaction.
+Use this for Claude Code, OpenAI Agents SDK runners, internal agent tools, or wrappers when they can accept a prompt through stdin and run inside a workspace without manual editor interaction.
 
 ## 4. Runtime Environment
 
@@ -94,9 +125,9 @@ AGENT_RUNTIME_ARGS=["run","--profile","agent mode"]
 
 ## 5. Tool Policy
 
-Codex remains the reference runtime for the MVP because it maps directly to the Symphony-style orchestration model.
+Codex remains the reference runtime for the MVP because it maps directly to the Symphony-style orchestration model. Cursor Agent CLI is also first-class because it supports noninteractive automation through `cursor-agent --print`.
 
-Cursor and other popular tools are supported through the adapter boundary when one of these is true:
+Other popular tools are supported through the adapter boundary when one of these is true:
 
 - The tool exposes a noninteractive CLI.
 - The tool exposes a local server or API.
@@ -106,7 +137,6 @@ Desktop-only editor automation is not an MVP target because it is fragile, hard 
 
 ## 6. Next Runtime Work
 
-- Capture structured artifacts from runtime output.
-- Generate a review packet artifact at the end of each successful run.
 - Add runtime-specific parsers for JSON event streams when a tool supports them.
-- Add dashboard artifact drill-down.
+- Add preflight checks that report whether `codex` and `cursor-agent` are installed and authenticated.
+- Add per-runtime safety profiles for allowed file writes and command execution.

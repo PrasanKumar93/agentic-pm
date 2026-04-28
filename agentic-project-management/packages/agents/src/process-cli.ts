@@ -6,6 +6,7 @@ export interface ProcessCliRuntimeConfig {
   name: string;
   command: string;
   args: string[];
+  promptMode?: "stdin" | "argument";
   turnTimeoutMs: number;
   stallTimeoutMs?: number;
   cancelGraceMs?: number;
@@ -13,6 +14,7 @@ export interface ProcessCliRuntimeConfig {
 }
 
 interface ActiveCliProcess {
+  args: string[];
   child: ChildProcessWithoutNullStreams;
   closed: boolean;
   closeEventQueued: boolean;
@@ -35,7 +37,8 @@ export class ProcessCliRuntime implements AgentRuntime {
 
   async start(input: AgentStartInput): Promise<AgentSession> {
     const id = createId("agent");
-    const child = spawn(this.config.command, this.config.args, {
+    const args = this.buildArgs(input.prompt);
+    const child = spawn(this.config.command, args, {
       cwd: input.workspacePath,
       detached: process.platform !== "win32",
       env: {
@@ -46,6 +49,7 @@ export class ProcessCliRuntime implements AgentRuntime {
     });
 
     const active: ActiveCliProcess = {
+      args,
       child,
       closed: false,
       closeEventQueued: false,
@@ -88,7 +92,7 @@ export class ProcessCliRuntime implements AgentRuntime {
         type: "session.started",
         message: `${this.name} session started`,
         payload: {
-          args: this.config.args,
+          args: this.redactPromptArg(active.args),
           command: this.config.command,
           pid: child.pid,
           sessionId: session.id
@@ -119,8 +123,10 @@ export class ProcessCliRuntime implements AgentRuntime {
       }
     });
 
-    child.stdin.write(prompt);
-    child.stdin.write("\n");
+    if (this.config.promptMode !== "argument") {
+      child.stdin.write(prompt);
+      child.stdin.write("\n");
+    }
     child.stdin.end();
 
     const deadline = Date.now() + this.config.turnTimeoutMs;
@@ -210,6 +216,22 @@ export class ProcessCliRuntime implements AgentRuntime {
         this.signalProcess(active.child, "SIGKILL");
       }
     }, cancelGraceMs);
+  }
+
+  private buildArgs(prompt: string): string[] {
+    if (this.config.promptMode === "argument") {
+      return [...this.config.args, prompt];
+    }
+
+    return this.config.args;
+  }
+
+  private redactPromptArg(args: string[]): string[] {
+    if (this.config.promptMode === "argument") {
+      return [...args.slice(0, -1), "<prompt>"];
+    }
+
+    return args;
   }
 
   private signalProcess(child: ChildProcessWithoutNullStreams, signal: NodeJS.Signals): void {

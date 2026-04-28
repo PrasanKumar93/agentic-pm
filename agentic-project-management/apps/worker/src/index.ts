@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import {
   CodexCliRuntime,
+  CursorCliRuntime,
   FakeAgentRuntime,
   GenericCliRuntime,
   type AgentRuntime,
@@ -596,6 +597,19 @@ function createRuntime(): AgentRuntime {
     });
   }
 
+  if (requestedRuntime === "cursor") {
+    return new CursorCliRuntime({
+      command: process.env.CURSOR_COMMAND,
+      args: parseOptionalCommandArgs(process.env.CURSOR_ARGS),
+      outputFormat: parseCursorOutputFormat(process.env.CURSOR_OUTPUT_FORMAT),
+      model: process.env.CURSOR_MODEL,
+      force: readBoolean(process.env.CURSOR_FORCE, false),
+      turnTimeoutMs,
+      stallTimeoutMs,
+      cancelGraceMs
+    });
+  }
+
   if (requestedRuntime === "generic") {
     const command = process.env.AGENT_RUNTIME_COMMAND;
     if (!command) {
@@ -634,6 +648,30 @@ function parseCommandArgs(value: string | undefined, fallback: string[]): string
   }
 
   return trimmed.split(/\s+/).filter(Boolean);
+}
+
+function parseOptionalCommandArgs(value: string | undefined): string[] | undefined {
+  if (!value?.trim()) {
+    return undefined;
+  }
+
+  return parseCommandArgs(value, []);
+}
+
+function parseCursorOutputFormat(value: string | undefined): "text" | "json" | "stream-json" | undefined {
+  if (value === "text" || value === "json" || value === "stream-json") {
+    return value;
+  }
+
+  return undefined;
+}
+
+function readBoolean(value: string | undefined, fallback: boolean): boolean {
+  if (!value) {
+    return fallback;
+  }
+
+  return ["1", "true", "yes", "on"].includes(value.toLowerCase());
 }
 
 function readPositiveNumber(value: string | undefined, fallback: number): number {

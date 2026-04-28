@@ -24,6 +24,7 @@ Date: 2026-04-29
 - Action result banners in the dashboard.
 - Hardened CLI runtime adapter and runtime portability spec.
 - Local artifact capture for logs, patches, and review packets.
+- First-class Cursor Agent CLI runtime mode.
 
 ## In Progress
 

@@ -37,13 +37,14 @@
 - [ ] Comment run start/failure/review packet back to Linear.
 - [ ] Move completed agent output to `Human Review`.
 
-## Milestone 4: Codex Loop
+## Milestone 4: Agent Runtime Loop
 
 - [ ] Verify Codex app-server protocol locally.
-- [x] Add configurable Codex and generic CLI runtime adapters.
+- [x] Add configurable Codex, Cursor, and generic CLI runtime adapters.
 - [x] Add process runtime heartbeat, stall timeout, and cancellation hardening.
-- [ ] Replace fake runtime with Codex runtime adapter.
-- [ ] Stream Codex events into MongoDB.
+- [ ] Run a real Codex runtime adapter from the worker.
+- [ ] Verify Cursor Agent CLI noninteractive mode locally.
+- [ ] Stream parsed Codex and Cursor events into MongoDB.
 - [x] Add worker-side cancellation checks.
 - [x] Add stall detection.
 - [x] Add artifact capture for logs and patches.
