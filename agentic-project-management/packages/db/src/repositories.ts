@@ -1,8 +1,9 @@
-import type { Db, UpdateFilter, WithId } from "mongodb";
+import type { Db, Filter, UpdateFilter, WithId } from "mongodb";
 import {
   createId,
   nextRetryAt,
   type Artifact,
+  type DesiredAgentRuntime,
   type DispatchActionName,
   type DispatchActionResult,
   type DispatchControl,
@@ -297,15 +298,31 @@ export class AgenticRepository {
     projectId: string,
     workerId: string,
     now = new Date(),
+    runtimeClaims: DesiredAgentRuntime[] = [],
   ): Promise<WorkItem | null> {
-    const claimed = await this.collections.workItems.findOneAndUpdate(
+    const filters: Filter<WorkItem>[] = [
       {
-        projectId,
-        status: "queued",
         $or: [
           { nextAttemptAt: { $exists: false } },
           { nextAttemptAt: { $lte: now } },
         ],
+      },
+    ];
+
+    if (runtimeClaims.length > 0) {
+      filters.push({
+        $or: [
+          { desiredRuntime: { $exists: false } },
+          { desiredRuntime: { $in: runtimeClaims } },
+        ],
+      });
+    }
+
+    const claimed = await this.collections.workItems.findOneAndUpdate(
+      {
+        projectId,
+        status: "queued",
+        $and: filters,
       },
       {
         $set: {
@@ -321,6 +338,86 @@ export class AgenticRepository {
     );
 
     return claimed;
+  }
+
+  async setWorkItemRuntimePreference(input: {
+    workItemId: string;
+    desiredRuntime?: DesiredAgentRuntime;
+    actorId?: string;
+    reason?: string;
+  }): Promise<WorkItem> {
+    const workItem = await this.collections.workItems.findOne({
+      id: input.workItemId,
+    });
+    if (!workItem) {
+      throw new WorkItemNotFoundError(input.workItemId);
+    }
+
+    if (workItem.status === "running") {
+      throw new InvalidWorkItemActionError(
+        "Cannot change runtime preference for a running work item",
+      );
+    }
+
+    const actorId = input.actorId || "local-operator";
+    const now = new Date();
+    const update: UpdateFilter<WorkItem> = input.desiredRuntime
+      ? {
+          $set: {
+            desiredRuntime: input.desiredRuntime,
+            updatedAt: now,
+          },
+        }
+      : {
+          $set: {
+            updatedAt: now,
+          },
+          $unset: {
+            desiredRuntime: "" as const,
+          },
+        };
+
+    await this.collections.workItems.updateOne({ id: workItem.id }, update);
+
+    await this.collections.operatorActions.insertOne({
+      id: createId("act"),
+      projectId: workItem.projectId,
+      workItemId: workItem.id,
+      runId: workItem.lastRunId,
+      actorId,
+      action: "runtime.select",
+      payload: {
+        reason: input.reason,
+        fromRuntime: workItem.desiredRuntime,
+        toRuntime: input.desiredRuntime,
+      },
+      createdAt: now,
+    });
+
+    await this.appendEvent({
+      projectId: workItem.projectId,
+      workItemId: workItem.id,
+      runId: workItem.lastRunId,
+      type: "operator.runtime_selected",
+      level: "info",
+      message: `${actorId} selected ${input.desiredRuntime ?? "default"} runtime`,
+      payload: {
+        actorId,
+        reason: input.reason,
+        fromRuntime: workItem.desiredRuntime,
+        toRuntime: input.desiredRuntime,
+      },
+      createdAt: now,
+    });
+
+    const updated = await this.collections.workItems.findOne({
+      id: workItem.id,
+    });
+    if (!updated) {
+      throw new WorkItemNotFoundError(workItem.id);
+    }
+
+    return updated;
   }
 
   async createRun(input: {
@@ -959,6 +1056,7 @@ export class AgenticRepository {
     return {
       id: workItem.id,
       status: workItem.status,
+      desiredRuntime: workItem.desiredRuntime,
       issue: {
         id: issue?.id ?? workItem.issueId,
         identifier: issue?.identifier ?? "Unknown",

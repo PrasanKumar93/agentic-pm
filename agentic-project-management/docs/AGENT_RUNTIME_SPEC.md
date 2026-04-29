@@ -7,6 +7,8 @@ Date: 2026-04-29
 
 Symphony should orchestrate work, not be permanently coupled to one coding tool. Codex and Cursor Agent CLI are first-class MVP runtimes, and the control plane should run other capable agents through adapters when they expose a safe noninteractive CLI, local server, or API.
 
+Runtime routing is tracked per work item through `desiredRuntime`. A worker claims queued work when the item is unassigned or its desired runtime matches the worker's configured `AGENT_RUNTIME`.
+
 ## 2. Runtime Contract
 
 All runtimes implement the same interface:
@@ -35,11 +37,11 @@ The worker classifies persisted runtime events so the dashboard can highlight re
 
 Default severities:
 
-| Runtime event | Persisted level |
-| --- | --- |
-| `session.failed` | `error` |
-| `stderr` | `error` |
-| other non-heartbeat events | `info` |
+| Runtime event              | Persisted level |
+| -------------------------- | --------------- |
+| `session.failed`           | `error`         |
+| `stderr`                   | `error`         |
+| other non-heartbeat events | `info`          |
 
 Known warning-shaped stderr is downgraded to `warn` and annotated with `severityReason: "known_stderr_warning"`.
 
@@ -60,7 +62,20 @@ Startup preflight checks are persisted as project events:
 
 If a selected runtime fails preflight, the worker logs the failed checks, closes MongoDB, and exits before claiming work.
 
-## 4. Supported Runtime Modes
+## 4. Runtime Selection
+
+Dashboard operators can set a work item's desired runtime to:
+
+- `codex`
+- `cursor`
+- `fake`
+- `generic`
+
+`default` clears the preference. Cleared work can be claimed by any worker for the selected project.
+
+Running work items cannot change runtime preference; the selection affects future dispatch only.
+
+## 5. Supported Runtime Modes
 
 ### `fake`
 
@@ -184,7 +199,7 @@ AGENT_RUNTIME_ARGS=--json --non-interactive
 
 Use this for Claude Code, OpenAI Agents SDK runners, internal agent tools, or wrappers when they can accept a prompt through stdin and run inside a workspace without manual editor interaction.
 
-## 5. Runtime Environment
+## 6. Runtime Environment
 
 Common controls:
 
@@ -206,7 +221,7 @@ Or JSON for quoted arguments:
 AGENT_RUNTIME_ARGS=["run","--profile","agent mode"]
 ```
 
-## 6. Tool Policy
+## 7. Tool Policy
 
 Codex remains the reference runtime for the MVP because it maps directly to the Symphony-style orchestration model. Cursor Agent CLI is also first-class because it supports noninteractive automation through `cursor-agent --print`.
 
@@ -218,6 +233,6 @@ Other popular tools are supported through the adapter boundary when one of these
 
 Desktop-only editor automation is not an MVP target because it is fragile, hard to cancel reliably, and hard to audit. It can be added later as a specialized adapter if needed.
 
-## 7. Next Runtime Work
+## 8. Next Runtime Work
 
 - Add per-runtime safety profiles for allowed file writes and command execution.

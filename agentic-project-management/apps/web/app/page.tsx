@@ -11,11 +11,16 @@ import {
   Play,
   RefreshCw,
   RotateCcw,
+  Save,
   ShieldCheck,
   Square,
   XCircle,
 } from "lucide-react";
-import { submitDispatchAction, submitWorkItemAction } from "./actions";
+import {
+  submitDispatchAction,
+  submitRuntimePreference,
+  submitWorkItemAction,
+} from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +33,8 @@ type WorkItemStatus =
   | "failed"
   | "completed"
   | "cancelled";
+
+type DesiredAgentRuntime = "fake" | "codex" | "cursor" | "generic";
 
 type RunStatus =
   | "queued"
@@ -43,6 +50,7 @@ type RunStatus =
 type WorkItemSummary = {
   id: string;
   status: WorkItemStatus;
+  desiredRuntime?: DesiredAgentRuntime;
   issue: {
     id: string;
     identifier: string;
@@ -263,6 +271,17 @@ const statusFilterTabs: StatusFilterTab[] = [
   { value: "failed", label: "Failed" },
   { value: "completed", label: "Completed" },
   { value: "cancelled", label: "Cancelled" },
+];
+
+const runtimeOptions: Array<{
+  value: "default" | DesiredAgentRuntime;
+  label: string;
+}> = [
+  { value: "default", label: "Default" },
+  { value: "codex", label: "Codex" },
+  { value: "cursor", label: "Cursor" },
+  { value: "fake", label: "Fake" },
+  { value: "generic", label: "Generic" },
 ];
 
 export default async function DashboardPage({
@@ -525,8 +544,9 @@ export default async function DashboardPage({
                       <span>Issue</span>
                       <span>Title</span>
                       <span>Status</span>
-                      <span>Owner</span>
-                      <span>Updated</span>
+                      <span>Runtime</span>
+                      <span className="ownerCell">Owner</span>
+                      <span className="updatedCell">Updated</span>
                       <span>Actions</span>
                     </div>
                     {filteredItems.map((row) => (
@@ -549,12 +569,56 @@ export default async function DashboardPage({
                         <span className={`pill ${row.status}`}>
                           {formatStatus(row.status)}
                         </span>
-                        <span>
+                        <form
+                          action={submitRuntimePreference}
+                          className="runtimeForm"
+                        >
+                          <input
+                            name="projectId"
+                            type="hidden"
+                            value={dashboard.selectedProjectId}
+                          />
+                          <input
+                            name="status"
+                            type="hidden"
+                            value={statusFilter}
+                          />
+                          <input
+                            name="workItemId"
+                            type="hidden"
+                            value={row.id}
+                          />
+                          <select
+                            aria-label={`Runtime for ${row.issue.identifier}`}
+                            defaultValue={row.desiredRuntime ?? "default"}
+                            disabled={row.status === "running"}
+                            name="desiredRuntime"
+                            title="Desired runtime"
+                          >
+                            {runtimeOptions.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            aria-label={`Save runtime for ${row.issue.identifier}`}
+                            className="actionButton runtimeSubmit"
+                            disabled={row.status === "running"}
+                            title="Save runtime"
+                            type="submit"
+                          >
+                            <Save size={14} />
+                          </button>
+                        </form>
+                        <span className="ownerCell">
                           {row.claimedBy ??
                             row.latestRun?.agentRuntime ??
                             "unclaimed"}
                         </span>
-                        <span>{formatRelativeTime(row.updatedAt)}</span>
+                        <span className="updatedCell">
+                          {formatRelativeTime(row.updatedAt)}
+                        </span>
                         <div className="actionGroup">
                           <a
                             aria-label="Inspect run"

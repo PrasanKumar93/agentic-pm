@@ -6,6 +6,7 @@ import Fastify, { type FastifyRequest } from "fastify";
 import type {
   Artifact,
   ArtifactType,
+  DesiredAgentRuntime,
   DispatchActionName,
   Issue,
   OperatorActionName,
@@ -57,6 +58,12 @@ const allowedDispatchActions = new Set<DispatchActionName>([
   "pause",
   "resume",
   "start_eligible",
+]);
+const allowedDesiredRuntimes = new Set<DesiredAgentRuntime>([
+  "fake",
+  "codex",
+  "cursor",
+  "generic",
 ]);
 const readableTextArtifactTypes = new Set<ArtifactType>([
   "log",
@@ -334,6 +341,61 @@ app.post("/work-items/:workItemId/actions/:action", async (request, reply) => {
   }
 });
 
+app.post("/work-items/:workItemId/runtime", async (request, reply) => {
+  const { workItemId } = request.params as {
+    workItemId: string;
+  };
+  const body = (request.body ?? {}) as {
+    actorId?: string;
+    desiredRuntime?: string | null;
+    reason?: string;
+  };
+
+  if (!isRuntimePreferenceInput(body.desiredRuntime)) {
+    return reply.code(400).send({
+      error: `Unknown runtime preference: ${String(body.desiredRuntime)}`,
+    });
+  }
+
+  try {
+    await repository.setWorkItemRuntimePreference({
+      workItemId,
+      desiredRuntime: readDesiredRuntime(body.desiredRuntime),
+      actorId: body.actorId,
+      reason: body.reason,
+    });
+
+    const data = await repository.getWorkItemSummary(workItemId);
+    if (!data) {
+      return reply.code(404).send({
+        error: `Work item not found: ${workItemId}`,
+      });
+    }
+
+    return {
+      data,
+      meta: {
+        action: "runtime.select",
+        generatedAt: new Date().toISOString(),
+      },
+    };
+  } catch (error) {
+    if (error instanceof WorkItemNotFoundError) {
+      return reply.code(404).send({
+        error: error.message,
+      });
+    }
+
+    if (error instanceof InvalidWorkItemActionError) {
+      return reply.code(409).send({
+        error: error.message,
+      });
+    }
+
+    throw error;
+  }
+});
+
 app.get("/runs/:runId/events", async (request) => {
   const { runId } = request.params as { runId: string };
   return {
@@ -586,6 +648,24 @@ function readProjectId(value: string | undefined): string | undefined {
   const projectId = value?.trim();
   return projectId && /^[A-Za-z0-9_.:-]{1,128}$/.test(projectId)
     ? projectId
+    : undefined;
+}
+
+function isRuntimePreferenceInput(value: string | null | undefined): boolean {
+  return (
+    value === undefined ||
+    value === null ||
+    value === "" ||
+    value === "default" ||
+    allowedDesiredRuntimes.has(value as DesiredAgentRuntime)
+  );
+}
+
+function readDesiredRuntime(
+  value: string | null | undefined,
+): DesiredAgentRuntime | undefined {
+  return allowedDesiredRuntimes.has(value as DesiredAgentRuntime)
+    ? (value as DesiredAgentRuntime)
     : undefined;
 }
 

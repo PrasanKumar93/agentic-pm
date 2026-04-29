@@ -619,7 +619,7 @@ h2 {
   display: grid;
   font-size: 13px;
   gap: 12px;
-  grid-template-columns: 82px minmax(180px, 1fr) 150px 120px 80px 152px;
+  grid-template-columns: 82px minmax(180px, 1fr) 130px 176px 120px 80px 152px;
   min-height: 46px;
   padding: 0 12px;
 }
@@ -638,6 +638,35 @@ h2 {
 .actionGroup form {
   display: flex;
   gap: 6px;
+}
+
+.runtimeForm {
+  align-items: center;
+  display: grid;
+  gap: 6px;
+  grid-template-columns: minmax(92px, 1fr) auto;
+}
+
+.runtimeForm select {
+  appearance: none;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  height: 30px;
+  min-width: 0;
+  padding: 0 26px 0 9px;
+}
+
+.runtimeForm select:disabled {
+  background: #f4f5f3;
+  color: var(--muted);
+}
+
+.runtimeSubmit {
+  color: var(--teal);
 }
 
 .actionButton {
@@ -1056,6 +1085,12 @@ h2 {
     grid-template-columns: 70px minmax(110px, 1fr) 120px 130px;
   }
 
+  .ownerCell,
+  .runtimeForm,
+  .updatedCell {
+    display: none;
+  }
+
   .actionButton {
     height: 28px;
     min-height: 28px;
@@ -1065,10 +1100,5 @@ h2 {
   .actionGroup,
   .actionGroup form {
     gap: 4px;
-  }
-
-  .row span:nth-child(4),
-  .row span:nth-child(5) {
-    display: none;
   }
 }

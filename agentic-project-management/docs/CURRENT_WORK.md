@@ -44,11 +44,12 @@ Date: 2026-04-29
 - Webhook replay audit view in the dashboard.
 - Dry-run-first local cleanup command for smoke/test MongoDB data.
 - Project-scoped dashboard filtering for work, dispatch, and webhook audit views.
+- Per-work-item runtime selector for Codex, Cursor, fake, and generic worker routing.
 
 ## In Progress
 
-- Runtime selector for Codex/Cursor task intake.
+- Repository selection while creating work items.
 
 ## Next Queue
 
-- Repository selection while creating work items.
+- Task intake form for local tracker-backed work items.

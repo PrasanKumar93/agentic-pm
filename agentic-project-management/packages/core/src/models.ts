@@ -1,4 +1,5 @@
 export type TrackerKind = "linear" | "github" | "jira" | "fake";
+export type DesiredAgentRuntime = "fake" | "codex" | "cursor" | "generic";
 
 export type WorkItemStatus =
   | "queued"
@@ -33,7 +34,13 @@ export type ArtifactType =
 
 export type EventLevel = "debug" | "info" | "warn" | "error";
 
-export type OperatorActionName = "start" | "retry" | "pause" | "resume" | "cancel" | "complete";
+export type OperatorActionName =
+  | "start"
+  | "retry"
+  | "pause"
+  | "resume"
+  | "cancel"
+  | "complete";
 export type DispatchActionName = "pause" | "resume" | "start_eligible";
 
 export interface Project {
@@ -83,6 +90,7 @@ export interface WorkItem {
   projectId: string;
   status: WorkItemStatus;
   desiredState?: string;
+  desiredRuntime?: DesiredAgentRuntime;
   claimedBy?: string;
   lastRunId?: string;
   retryCount: number;
@@ -128,6 +136,7 @@ export interface RunEventSummary {
 export interface WorkItemSummary {
   id: string;
   status: WorkItemStatus;
+  desiredRuntime?: DesiredAgentRuntime;
   issue: IssueSummary;
   latestRun?: RunSummary;
   eventCount: number;

@@ -17,6 +17,13 @@ const allowedDispatchActions = new Set<DispatchAction>([
   "resume",
   "start_eligible",
 ]);
+const allowedDesiredRuntimes = new Set<DesiredRuntimePreference>([
+  "default",
+  "fake",
+  "codex",
+  "cursor",
+  "generic",
+]);
 const allowedViews = new Set(["audit"]);
 const allowedStatusFilters = new Set([
   "queued",
@@ -37,6 +44,12 @@ type WorkItemAction =
   | "cancel"
   | "complete";
 type DispatchAction = "pause" | "resume" | "start_eligible";
+type DesiredRuntimePreference =
+  | "default"
+  | "fake"
+  | "codex"
+  | "cursor"
+  | "generic";
 
 type ReturnState = {
   projectId?: string;
@@ -47,6 +60,7 @@ type ReturnState = {
 
 type ActionResponse = {
   data?: {
+    desiredRuntime?: string;
     status?: string;
     issue?: {
       identifier?: string;
@@ -159,12 +173,73 @@ export async function submitDispatchAction(formData: FormData): Promise<void> {
   redirect(redirectUrl);
 }
 
+export async function submitRuntimePreference(
+  formData: FormData,
+): Promise<void> {
+  const workItemId = String(formData.get("workItemId") ?? "");
+  const desiredRuntime = String(formData.get("desiredRuntime") ?? "default");
+  const returnState = readReturnState(formData);
+  let redirectUrl = createFeedbackUrl(
+    "error",
+    "Choose a valid runtime.",
+    returnState,
+  );
+
+  if (workItemId && isDesiredRuntimePreference(desiredRuntime)) {
+    try {
+      const response = await fetch(
+        `${apiUrl}/work-items/${workItemId}/runtime`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            actorId: "dashboard",
+            desiredRuntime,
+          }),
+          cache: "no-store",
+        },
+      );
+
+      const payload = await readActionResponse(response);
+      redirectUrl = response.ok
+        ? createFeedbackUrl(
+            "success",
+            formatRuntimeSuccess(desiredRuntime, payload),
+            returnState,
+          )
+        : createFeedbackUrl(
+            "error",
+            payload.error ??
+              `Runtime preference failed with HTTP ${response.status}.`,
+            returnState,
+          );
+    } catch (error) {
+      redirectUrl = createFeedbackUrl(
+        "error",
+        formatRequestError("Runtime preference failed", error),
+        returnState,
+      );
+    }
+  }
+
+  revalidatePath("/");
+  redirect(redirectUrl);
+}
+
 function isWorkItemAction(value: string): value is WorkItemAction {
   return allowedActions.has(value as WorkItemAction);
 }
 
 function isDispatchAction(value: string): value is DispatchAction {
   return allowedDispatchActions.has(value as DispatchAction);
+}
+
+function isDesiredRuntimePreference(
+  value: string,
+): value is DesiredRuntimePreference {
+  return allowedDesiredRuntimes.has(value as DesiredRuntimePreference);
 }
 
 async function readActionResponse(response: Response): Promise<ActionResponse> {
@@ -225,7 +300,7 @@ function readReturnState(formData: FormData): ReturnState {
 }
 
 function isSafeQueryValue(value: string): boolean {
-  return /^[A-Za-z0-9_-]{1,128}$/.test(value);
+  return /^[A-Za-z0-9_.:-]{1,128}$/.test(value);
 }
 
 function formatWorkItemSuccess(
@@ -262,6 +337,18 @@ function formatDispatchSuccess(action: DispatchAction): string {
     case "start_eligible":
       return "Eligible queued work started.";
   }
+}
+
+function formatRuntimeSuccess(
+  desiredRuntime: DesiredRuntimePreference,
+  payload: ActionResponse,
+): string {
+  const identifier = payload.data?.issue?.identifier ?? "work item";
+  const runtime =
+    desiredRuntime === "default"
+      ? "default runtime"
+      : formatStatus(desiredRuntime);
+  return `Set ${identifier} to ${runtime}.`;
 }
 
 function formatRequestError(prefix: string, error: unknown): string {

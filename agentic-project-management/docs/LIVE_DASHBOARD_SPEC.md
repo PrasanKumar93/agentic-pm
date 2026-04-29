@@ -18,6 +18,7 @@ This spec covers the first live data slice:
 - Work board status filters are URL-backed and preserve operator context after actions.
 - The Audit nav exposes recent webhook delivery attempts and replay outcomes.
 - Project selection scopes work items, dispatch controls, and webhook audit rows.
+- Work item runtime selection lets the operator route queued work to Codex, Cursor, fake, or generic workers.
 
 ## 2. Contract
 
@@ -217,11 +218,14 @@ Each row shows:
 - Issue identifier
 - Issue title
 - Work item status
+- Desired runtime selector
 - Claimed worker or `unclaimed`
 - Relative updated time
 - An inspect action that selects the row for the run detail panel via `?workItemId=<id>`
 
 Inspect links preserve the active status filter. Dashboard action redirects preserve the active filter and selected work item when possible.
+
+Runtime selector submissions also preserve the active project, status filter, and selected work item.
 
 If no work items exist, show an empty state that tells the operator to run the worker or connect a tracker.
 

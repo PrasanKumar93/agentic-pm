@@ -12,29 +12,53 @@ import {
   type AgentRuntime,
   type AgentEvent,
   type AgentRuntimePreflightResult,
-  type AgentSession
+  type AgentSession,
 } from "@agentic-pm/agents";
-import { expandEnvReference, loadWorkflowDocument, renderWorkflowPrompt } from "@agentic-pm/config";
-import { createId, type Artifact, type ArtifactType, type EventLevel, type Issue, type Run } from "@agentic-pm/core";
+import {
+  expandEnvReference,
+  loadWorkflowDocument,
+  renderWorkflowPrompt,
+} from "@agentic-pm/config";
+import {
+  createId,
+  type Artifact,
+  type ArtifactType,
+  type DesiredAgentRuntime,
+  type EventLevel,
+  type Issue,
+  type Run,
+} from "@agentic-pm/core";
 import {
   AgenticRepository,
   connectMongo,
   ensureIndexes,
   getCollections,
   readMongoConfig,
-  type RunStopRequest
+  type RunStopRequest,
 } from "@agentic-pm/db";
-import { buildPullRequestDraft, createGitHubPullRequest, type GitHubPullRequestResult } from "@agentic-pm/git";
+import {
+  buildPullRequestDraft,
+  createGitHubPullRequest,
+  type GitHubPullRequestResult,
+} from "@agentic-pm/git";
 import { ConsoleEventSink } from "@agentic-pm/observability";
-import { FakeTrackerAdapter, LinearTrackerAdapter, type TrackerAdapter } from "@agentic-pm/trackers";
+import {
+  FakeTrackerAdapter,
+  LinearTrackerAdapter,
+  type TrackerAdapter,
+} from "@agentic-pm/trackers";
 import { WorkspaceManager } from "@agentic-pm/workspaces";
 
 const workerId = process.env.AGENTIC_PM_WORKER_ID ?? createId("worker");
 const projectId = process.env.AGENTIC_PM_PROJECT_ID ?? "project_local";
 const projectSlug = process.env.AGENTIC_PM_PROJECT_SLUG ?? "local";
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
-const workflowRoot = resolve(process.env.AGENTIC_PM_WORKFLOW_ROOT ?? `${repoRoot}/examples/workflow`);
-const artifactRoot = resolve(process.env.AGENTIC_PM_ARTIFACT_ROOT ?? `${repoRoot}/artifacts`);
+const workflowRoot = resolve(
+  process.env.AGENTIC_PM_WORKFLOW_ROOT ?? `${repoRoot}/examples/workflow`,
+);
+const artifactRoot = resolve(
+  process.env.AGENTIC_PM_ARTIFACT_ROOT ?? `${repoRoot}/artifacts`,
+);
 const eventSink = new ConsoleEventSink();
 const runOnce = process.env.AGENTIC_PM_RUN_ONCE === "true";
 const execFileAsync = promisify(execFile);
@@ -48,11 +72,12 @@ await ensureIndexes(getCollections(mongo.db));
 const repository = new AgenticRepository(mongo.db);
 const trackerSettings = readTrackerSettings();
 const tracker = createTracker();
-const runtime = createRuntime();
+const runtimeKind = readRuntimeKind();
+const runtime = createRuntime(runtimeKind);
 const workspaceRoot = expandEnvReference(workflow.config.workspace.root);
 const workspaces = new WorkspaceManager({
   root: workspaceRoot,
-  eventSink
+  eventSink,
 });
 
 interface CapturedAgentEvent {
@@ -72,8 +97,16 @@ interface TrackerSettings {
   failureState?: string;
 }
 
-type TrackerStateSyncReason = "run_started" | "run_failed" | "review_ready" | "setup_failed";
-type TrackerCommentKind = "run_started" | "run_failed" | "review_ready" | "setup_failed";
+type TrackerStateSyncReason =
+  | "run_started"
+  | "run_failed"
+  | "review_ready"
+  | "setup_failed";
+type TrackerCommentKind =
+  | "run_started"
+  | "run_failed"
+  | "review_ready"
+  | "setup_failed";
 type PullRequestMode = "disabled" | "local_draft" | "github_draft";
 
 interface AgentEventSeverity {
@@ -84,7 +117,9 @@ interface AgentEventSeverity {
 const runtimePreflight = await runRuntimePreflight(runtime);
 if (!runtimePreflight.ok) {
   await mongo.client.close();
-  throw new Error(buildRuntimePreflightFailureMessage(runtime.name, runtimePreflight));
+  throw new Error(
+    buildRuntimePreflightFailureMessage(runtime.name, runtimePreflight),
+  );
 }
 
 await eventSink.emit({
@@ -96,8 +131,9 @@ await eventSink.emit({
     projectId,
     projectSlug,
     tracker: tracker.kind,
-    runtime: runtime.name
-  }
+    runtimeKind,
+    runtime: runtime.name,
+  },
 });
 
 let stopping = false;
@@ -123,7 +159,7 @@ async function reconcileTracker(): Promise<void> {
   const issues = await tracker.listActiveIssues({
     activeStates: trackerSettings.activeStates,
     teamKey: trackerSettings.teamKey,
-    projectSlug: trackerSettings.projectSlug
+    projectSlug: trackerSettings.projectSlug,
   });
 
   for (const issue of issues) {
@@ -136,8 +172,8 @@ async function reconcileTracker(): Promise<void> {
       message: `Reconciled ${storedIssue.identifier}`,
       payload: {
         issueId: storedIssue.id,
-        state: storedIssue.state
-      }
+        state: storedIssue.state,
+      },
     });
   }
 }
@@ -147,7 +183,12 @@ async function dispatchOne(): Promise<void> {
     return;
   }
 
-  const workItem = await repository.claimNextQueuedWorkItem(projectId, workerId);
+  const workItem = await repository.claimNextQueuedWorkItem(
+    projectId,
+    workerId,
+    new Date(),
+    [runtimeKind],
+  );
   if (!workItem) {
     return;
   }
@@ -165,13 +206,16 @@ async function dispatchOne(): Promise<void> {
     const workspacePath = await workspaces.prepareIssueWorkspace({
       projectSlug,
       issue,
-      hooks: process.env.AGENTIC_PM_ENABLE_HOOKS === "true" ? workflow.config.hooks : {}
+      hooks:
+        process.env.AGENTIC_PM_ENABLE_HOOKS === "true"
+          ? workflow.config.hooks
+          : {},
     });
 
     run = await repository.createRun({
       workItem,
       workspacePath,
-      agentRuntime: runtime.name
+      agentRuntime: runtime.name,
     });
 
     await repository.setRunStatus(run.id, "running");
@@ -183,8 +227,8 @@ async function dispatchOne(): Promise<void> {
       level: "info",
       message: `Started run for ${issue.identifier}`,
       payload: {
-        workspacePath
-      }
+        workspacePath,
+      },
     });
 
     await syncTrackerIssueState({
@@ -192,32 +236,32 @@ async function dispatchOne(): Promise<void> {
       workItem,
       run,
       stateName: trackerSettings.runningState,
-      reason: "run_started"
+      reason: "run_started",
     });
     await commentOnTrackerIssue({
       issue,
       workItem,
       run,
       kind: "run_started",
-      body: buildRunStartedComment(issue, run)
+      body: buildRunStartedComment(issue, run),
     });
 
     const prompt = await renderWorkflowPrompt(workflow, {
       issue,
       repository: {
-        name: projectSlug
+        name: projectSlug,
       },
-      run
+      run,
     });
 
     const session = await runtime.start({
       workspacePath,
-      prompt
+      prompt,
     });
 
     const stopBeforeEvents = await repository.getRunStopRequest({
       runId: run.id,
-      workItemId: workItem.id
+      workItemId: workItem.id,
     });
     if (stopBeforeEvents.shouldStop) {
       await stopRun({ run, workItem, session, stopRequest: stopBeforeEvents });
@@ -230,13 +274,16 @@ async function dispatchOne(): Promise<void> {
 
       if (agentEvent.type !== "heartbeat") {
         const severity = classifyAgentEventSeverity(agentEvent);
-        const payload = buildAgentEventPayload(agentEvent.payload, severity.reason);
+        const payload = buildAgentEventPayload(
+          agentEvent.payload,
+          severity.reason,
+        );
         capturedAgentEvents.push({
           type: agentEvent.type,
           level: severity.level,
           message: agentEvent.message,
           payload,
-          createdAt: new Date()
+          createdAt: new Date(),
         });
 
         await repository.appendEvent({
@@ -246,7 +293,7 @@ async function dispatchOne(): Promise<void> {
           type: `agent.${agentEvent.type}`,
           level: severity.level,
           message: agentEvent.message,
-          payload
+          payload,
         });
       }
 
@@ -256,7 +303,7 @@ async function dispatchOne(): Promise<void> {
 
       const stopRequest = await repository.getRunStopRequest({
         runId: run.id,
-        workItemId: workItem.id
+        workItemId: workItem.id,
       });
       if (stopRequest.shouldStop) {
         await stopRun({ run, workItem, session, stopRequest });
@@ -266,34 +313,54 @@ async function dispatchOne(): Promise<void> {
 
     const stopBeforeFinalize = await repository.getRunStopRequest({
       runId: run.id,
-      workItemId: workItem.id
+      workItemId: workItem.id,
     });
     if (stopBeforeFinalize.shouldStop) {
-      await stopRun({ run, workItem, session, stopRequest: stopBeforeFinalize });
+      await stopRun({
+        run,
+        workItem,
+        session,
+        stopRequest: stopBeforeFinalize,
+      });
       return;
     }
 
     if (failed) {
-      const logArtifact = await captureRunLogArtifact({ run, workItem, issue, capturedAgentEvents });
+      const logArtifact = await captureRunLogArtifact({
+        run,
+        workItem,
+        issue,
+        capturedAgentEvents,
+      });
       await repository.setRunStatus(run.id, "failed", "agent failed");
       await repository.markWorkItemStatus(workItem.id, "failed");
       await syncFailureTrackerState({
         issue,
         workItem,
         run,
-        reason: "run_failed"
+        reason: "run_failed",
       });
       await commentOnTrackerIssue({
         issue,
         workItem,
         run,
         kind: "run_failed",
-        body: buildRunFailedComment(issue, run, "agent failed", logArtifact ? [logArtifact] : [])
+        body: buildRunFailedComment(
+          issue,
+          run,
+          "agent failed",
+          logArtifact ? [logArtifact] : [],
+        ),
       });
       return;
     }
 
-    const artifacts = await captureReviewArtifacts({ run, workItem, issue, capturedAgentEvents });
+    const artifacts = await captureReviewArtifacts({
+      run,
+      workItem,
+      issue,
+      capturedAgentEvents,
+    });
     await repository.setRunStatus(run.id, "waiting_for_review");
     await repository.markWorkItemStatus(workItem.id, "waiting_for_review");
     await syncTrackerIssueState({
@@ -301,21 +368,26 @@ async function dispatchOne(): Promise<void> {
       workItem,
       run,
       stateName: trackerSettings.reviewState,
-      reason: "review_ready"
+      reason: "review_ready",
     });
     await commentOnTrackerIssue({
       issue,
       workItem,
       run,
       kind: "review_ready",
-      body: buildReviewComment(issue, run, artifacts)
+      body: buildReviewComment(issue, run, artifacts),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await repository.markWorkItemStatus(workItem.id, "failed");
 
     if (run) {
-      const logArtifact = await captureRunLogArtifact({ run, workItem, issue, capturedAgentEvents });
+      const logArtifact = await captureRunLogArtifact({
+        run,
+        workItem,
+        issue,
+        capturedAgentEvents,
+      });
       await repository.setRunStatus(run.id, "failed", message);
       await repository.appendEvent({
         projectId,
@@ -323,20 +395,25 @@ async function dispatchOne(): Promise<void> {
         runId: run.id,
         type: "run.failed",
         level: "error",
-        message
+        message,
       });
       await syncFailureTrackerState({
         issue,
         workItem,
         run,
-        reason: "run_failed"
+        reason: "run_failed",
       });
       await commentOnTrackerIssue({
         issue,
         workItem,
         run,
         kind: "run_failed",
-        body: buildRunFailedComment(issue, run, message, logArtifact ? [logArtifact] : [])
+        body: buildRunFailedComment(
+          issue,
+          run,
+          message,
+          logArtifact ? [logArtifact] : [],
+        ),
       });
       return;
     }
@@ -346,18 +423,18 @@ async function dispatchOne(): Promise<void> {
       workItemId: workItem.id,
       type: "run.setup_failed",
       level: "error",
-      message
+      message,
     });
     await syncFailureTrackerState({
       issue,
       workItem,
-      reason: "setup_failed"
+      reason: "setup_failed",
     });
     await commentOnTrackerIssue({
       issue,
       workItem,
       kind: "setup_failed",
-      body: buildSetupFailedComment(issue, message)
+      body: buildSetupFailedComment(issue, message),
     });
   }
 }
@@ -385,8 +462,8 @@ async function stopRun(input: {
     message: reason,
     payload: {
       runStatus: input.stopRequest.runStatus,
-      workItemStatus: input.stopRequest.workItemStatus
-    }
+      workItemStatus: input.stopRequest.workItemStatus,
+    },
   });
 }
 
@@ -394,32 +471,32 @@ function classifyAgentEventSeverity(event: AgentEvent): AgentEventSeverity {
   if (event.type === "session.failed") {
     return {
       level: "error",
-      reason: "session_failed"
+      reason: "session_failed",
     };
   }
 
   if (event.type !== "stderr") {
     return {
-      level: "info"
+      level: "info",
     };
   }
 
   if (isKnownWarningStderr(event.message)) {
     return {
       level: "warn",
-      reason: "known_stderr_warning"
+      reason: "known_stderr_warning",
     };
   }
 
   return {
     level: "error",
-    reason: "stderr"
+    reason: "stderr",
   };
 }
 
 function buildAgentEventPayload(
   payload: Record<string, unknown> | undefined,
-  severityReason: string | undefined
+  severityReason: string | undefined,
 ): Record<string, unknown> | undefined {
   if (!severityReason) {
     return payload;
@@ -427,7 +504,7 @@ function buildAgentEventPayload(
 
   return {
     ...(payload ?? {}),
-    severityReason
+    severityReason,
   };
 }
 
@@ -449,8 +526,11 @@ function isKnownWarningStderr(message: string): boolean {
     return false;
   }
 
-  const isWarningException = /\b(deprecationwarning|experimentalwarning)\b/i.test(normalized);
-  return isWarningException || !/\b(error|failed|fatal|exception)\b/.test(lower);
+  const isWarningException =
+    /\b(deprecationwarning|experimentalwarning)\b/i.test(normalized);
+  return (
+    isWarningException || !/\b(error|failed|fatal|exception)\b/.test(lower)
+  );
 }
 
 async function captureReviewArtifacts(input: {
@@ -470,7 +550,10 @@ async function captureReviewArtifacts(input: {
     artifacts.push(patchArtifact);
   }
 
-  const pullRequestArtifact = await capturePullRequestArtifact(input, artifacts);
+  const pullRequestArtifact = await capturePullRequestArtifact(
+    input,
+    artifacts,
+  );
   if (pullRequestArtifact) {
     artifacts.push(pullRequestArtifact);
   }
@@ -485,8 +568,8 @@ async function captureReviewArtifacts(input: {
     metadata: {
       issueId: input.issue.id,
       issueIdentifier: input.issue.identifier,
-      artifactCount: artifacts.length
-    }
+      artifactCount: artifacts.length,
+    },
   });
 
   if (reviewPacket) {
@@ -512,8 +595,8 @@ async function captureRunLogArtifact(input: {
     metadata: {
       eventCount: input.capturedAgentEvents.length,
       issueId: input.issue.id,
-      issueIdentifier: input.issue.identifier
-    }
+      issueIdentifier: input.issue.identifier,
+    },
   });
 }
 
@@ -523,10 +606,17 @@ async function capturePatchArtifact(input: {
   issue: Issue;
 }): Promise<Artifact | undefined> {
   try {
-    const { stdout } = await execFileAsync("git", ["rev-parse", "--show-toplevel"], {
-      cwd: input.run.workspacePath
-    });
-    if ((await normalizePath(stdout.trim())) !== (await normalizePath(input.run.workspacePath))) {
+    const { stdout } = await execFileAsync(
+      "git",
+      ["rev-parse", "--show-toplevel"],
+      {
+        cwd: input.run.workspacePath,
+      },
+    );
+    if (
+      (await normalizePath(stdout.trim())) !==
+      (await normalizePath(input.run.workspacePath))
+    ) {
       return undefined;
     }
   } catch {
@@ -534,12 +624,18 @@ async function capturePatchArtifact(input: {
   }
 
   try {
-    const { stdout } = await execFileAsync("git", ["diff", "--patch", "--binary"], {
-      cwd: input.run.workspacePath,
-      maxBuffer: 20 * 1024 * 1024
-    });
+    const { stdout } = await execFileAsync(
+      "git",
+      ["diff", "--patch", "--binary"],
+      {
+        cwd: input.run.workspacePath,
+        maxBuffer: 20 * 1024 * 1024,
+      },
+    );
     const untrackedPatch = await captureUntrackedPatch(input.run.workspacePath);
-    const patch = [stdout, untrackedPatch].filter((item) => item.trim()).join("\n");
+    const patch = [stdout, untrackedPatch]
+      .filter((item) => item.trim())
+      .join("\n");
 
     if (!patch.trim()) {
       return undefined;
@@ -554,11 +650,16 @@ async function capturePatchArtifact(input: {
       content: patch,
       metadata: {
         issueId: input.issue.id,
-        issueIdentifier: input.issue.identifier
-      }
+        issueIdentifier: input.issue.identifier,
+      },
     });
   } catch (error) {
-    await recordArtifactWarning(input.run, input.workItem, "Patch artifact capture skipped", error);
+    await recordArtifactWarning(
+      input.run,
+      input.workItem,
+      "Patch artifact capture skipped",
+      error,
+    );
     return undefined;
   }
 }
@@ -572,14 +673,21 @@ async function normalizePath(path: string): Promise<string> {
 }
 
 async function captureUntrackedPatch(workspacePath: string): Promise<string> {
-  const { stdout } = await execFileAsync("git", ["ls-files", "--others", "--exclude-standard"], {
-    cwd: workspacePath
-  });
+  const { stdout } = await execFileAsync(
+    "git",
+    ["ls-files", "--others", "--exclude-standard"],
+    {
+      cwd: workspacePath,
+    },
+  );
   const files = stdout.split(/\r?\n/).filter(Boolean);
   const patches: string[] = [];
 
   for (const file of files) {
-    const patch = await readGitDiffAllowingDifference(["diff", "--patch", "--binary", "--no-index", "--", "/dev/null", file], workspacePath);
+    const patch = await readGitDiffAllowingDifference(
+      ["diff", "--patch", "--binary", "--no-index", "--", "/dev/null", file],
+      workspacePath,
+    );
     if (patch.trim()) {
       patches.push(patch);
     }
@@ -588,11 +696,14 @@ async function captureUntrackedPatch(workspacePath: string): Promise<string> {
   return patches.join("\n");
 }
 
-async function readGitDiffAllowingDifference(args: string[], cwd: string): Promise<string> {
+async function readGitDiffAllowingDifference(
+  args: string[],
+  cwd: string,
+): Promise<string> {
   try {
     const { stdout } = await execFileAsync("git", args, {
       cwd,
-      maxBuffer: 20 * 1024 * 1024
+      maxBuffer: 20 * 1024 * 1024,
     });
     return stdout;
   } catch (error) {
@@ -604,7 +715,11 @@ async function readGitDiffAllowingDifference(args: string[], cwd: string): Promi
 }
 
 function isExecErrorWithStdout(error: unknown): error is { stdout: string } {
-  return typeof error === "object" && error !== null && typeof (error as { stdout?: unknown }).stdout === "string";
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    typeof (error as { stdout?: unknown }).stdout === "string"
+  );
 }
 
 async function registerTextArtifact(input: {
@@ -631,9 +746,9 @@ async function registerTextArtifact(input: {
       metadata: {
         ...input.metadata,
         byteLength: Buffer.byteLength(input.content, "utf8"),
-        local: true
+        local: true,
       },
-      createdAt: new Date()
+      createdAt: new Date(),
     });
 
     await repository.appendEvent({
@@ -646,13 +761,18 @@ async function registerTextArtifact(input: {
       payload: {
         artifactId: artifact.id,
         type: artifact.type,
-        uri: artifact.uri
-      }
+        uri: artifact.uri,
+      },
     });
 
     return artifact;
   } catch (error) {
-    await recordArtifactWarning(input.run, input.workItem, `Could not capture ${input.type} artifact`, error);
+    await recordArtifactWarning(
+      input.run,
+      input.workItem,
+      `Could not capture ${input.type} artifact`,
+      error,
+    );
     return undefined;
   }
 }
@@ -661,7 +781,7 @@ async function recordArtifactWarning(
   run: Run,
   workItem: { id: string; projectId: string },
   message: string,
-  error: unknown
+  error: unknown,
 ): Promise<void> {
   const detail = error instanceof Error ? error.message : String(error);
   await repository.appendEvent({
@@ -672,8 +792,8 @@ async function recordArtifactWarning(
     level: "warn",
     message,
     payload: {
-      detail
-    }
+      detail,
+    },
   });
 }
 
@@ -682,7 +802,7 @@ async function recordGitHubPullRequestWarning(
   workItem: { id: string; projectId: string },
   type: "github.pr.create_skipped" | "github.pr.create_failed",
   message: string,
-  error: unknown
+  error: unknown,
 ): Promise<void> {
   const detail = error instanceof Error ? error.message : String(error);
   await repository.appendEvent({
@@ -693,8 +813,8 @@ async function recordGitHubPullRequestWarning(
     level: "warn",
     message,
     payload: {
-      detail
-    }
+      detail,
+    },
   });
 }
 
@@ -704,7 +824,7 @@ async function capturePullRequestArtifact(
     workItem: { id: string; projectId: string };
     issue: Issue;
   },
-  artifacts: Artifact[]
+  artifacts: Artifact[],
 ): Promise<Artifact | undefined> {
   const prMode = readPullRequestMode();
   if (prMode === "disabled") {
@@ -720,14 +840,18 @@ async function capturePullRequestArtifact(
       workspacePath: input.run.workspacePath,
       baseBranch: readOptionalEnv("AGENTIC_PM_GITHUB_BASE_BRANCH"),
       remoteName,
-      artifacts
+      artifacts,
     });
 
     if (!draft) {
       return undefined;
     }
 
-    let remoteStatus: "not_requested" | "missing_config" | "created" | "failed" = "not_requested";
+    let remoteStatus:
+      | "not_requested"
+      | "missing_config"
+      | "created"
+      | "failed" = "not_requested";
     let remoteResult: GitHubPullRequestResult | undefined;
 
     if (prMode === "github_draft") {
@@ -738,7 +862,9 @@ async function capturePullRequestArtifact(
           input.workItem,
           "github.pr.create_skipped",
           "GitHub PR creation skipped",
-          new Error("AGENTIC_PM_GITHUB_REMOTE is required when AGENTIC_PM_PR_MODE=github_draft")
+          new Error(
+            "AGENTIC_PM_GITHUB_REMOTE is required when AGENTIC_PM_PR_MODE=github_draft",
+          ),
         );
       } else {
         try {
@@ -747,7 +873,7 @@ async function capturePullRequestArtifact(
             draft,
             remoteName,
             ghCommand: readOptionalEnv("AGENTIC_PM_GH_COMMAND"),
-            draftPr: readBoolean(process.env.AGENTIC_PM_GITHUB_PR_DRAFT, true)
+            draftPr: readBoolean(process.env.AGENTIC_PM_GITHUB_PR_DRAFT, true),
           });
           remoteStatus = "created";
           await repository.appendEvent({
@@ -763,8 +889,8 @@ async function capturePullRequestArtifact(
               commitSha: remoteResult.commitSha,
               draft: remoteResult.draft,
               remoteName: remoteResult.remoteName,
-              remotePrUrl: remoteResult.remotePrUrl
-            }
+              remotePrUrl: remoteResult.remotePrUrl,
+            },
           });
         } catch (error) {
           remoteStatus = "failed";
@@ -773,7 +899,7 @@ async function capturePullRequestArtifact(
             input.workItem,
             "github.pr.create_failed",
             "GitHub PR creation failed",
-            error
+            error,
           );
         }
       }
@@ -785,7 +911,11 @@ async function capturePullRequestArtifact(
       type: "pr",
       fileName: "pull-request.md",
       summary: `Pull request draft for ${input.issue.identifier}`,
-      content: buildPullRequestArtifactContent(draft.markdown, remoteResult, remoteStatus),
+      content: buildPullRequestArtifactContent(
+        draft.markdown,
+        remoteResult,
+        remoteStatus,
+      ),
       metadata: {
         baseBranch: draft.baseBranch,
         branchName: draft.branchName,
@@ -800,11 +930,16 @@ async function capturePullRequestArtifact(
         remotePrUrl: remoteResult?.remotePrUrl,
         remoteStatus,
         remoteUrl: draft.remoteUrl,
-        title: draft.title
-      }
+        title: draft.title,
+      },
     });
   } catch (error) {
-    await recordArtifactWarning(input.run, input.workItem, "Pull request draft artifact capture skipped", error);
+    await recordArtifactWarning(
+      input.run,
+      input.workItem,
+      "Pull request draft artifact capture skipped",
+      error,
+    );
     return undefined;
   }
 }
@@ -812,7 +947,7 @@ async function capturePullRequestArtifact(
 function buildPullRequestArtifactContent(
   draftMarkdown: string,
   remoteResult: GitHubPullRequestResult | undefined,
-  remoteStatus: string
+  remoteStatus: string,
 ): string {
   if (!remoteResult) {
     return draftMarkdown;
@@ -849,7 +984,7 @@ async function syncFailureTrackerState(input: {
     workItem: input.workItem,
     run: input.run,
     stateName: trackerSettings.failureState,
-    reason: input.reason
+    reason: input.reason,
   });
 }
 
@@ -863,13 +998,13 @@ async function syncTrackerIssueState(input: {
   try {
     await tracker.moveIssue({
       issueExternalId: input.issue.externalId,
-      stateName: input.stateName
+      stateName: input.stateName,
     });
 
     await repository.upsertIssue({
       ...input.issue,
       state: input.stateName,
-      updatedAt: new Date()
+      updatedAt: new Date(),
     });
 
     await repository.appendEvent({
@@ -884,8 +1019,8 @@ async function syncTrackerIssueState(input: {
         issueIdentifier: input.issue.identifier,
         reason: input.reason,
         stateName: input.stateName,
-        tracker: tracker.kind
-      }
+        tracker: tracker.kind,
+      },
     });
 
     return true;
@@ -904,8 +1039,8 @@ async function syncTrackerIssueState(input: {
         issueIdentifier: input.issue.identifier,
         reason: input.reason,
         stateName: input.stateName,
-        tracker: tracker.kind
-      }
+        tracker: tracker.kind,
+      },
     });
 
     return false;
@@ -922,7 +1057,7 @@ async function commentOnTrackerIssue(input: {
   try {
     await tracker.commentOnIssue({
       issueExternalId: input.issue.externalId,
-      body: input.body
+      body: input.body,
     });
 
     await repository.appendEvent({
@@ -938,8 +1073,8 @@ async function commentOnTrackerIssue(input: {
         commentKind: input.kind,
         issueExternalId: input.issue.externalId,
         issueIdentifier: input.issue.identifier,
-        tracker: tracker.kind
-      }
+        tracker: tracker.kind,
+      },
     });
 
     return true;
@@ -957,15 +1092,19 @@ async function commentOnTrackerIssue(input: {
         detail,
         issueExternalId: input.issue.externalId,
         issueIdentifier: input.issue.identifier,
-        tracker: tracker.kind
-      }
+        tracker: tracker.kind,
+      },
     });
 
     return false;
   }
 }
 
-function buildRunLog(issue: Issue, run: Run, events: CapturedAgentEvent[]): string {
+function buildRunLog(
+  issue: Issue,
+  run: Run,
+  events: CapturedAgentEvent[],
+): string {
   const lines = [
     `Run: ${run.id}`,
     `Issue: ${issue.identifier} ${issue.title}`,
@@ -974,11 +1113,13 @@ function buildRunLog(issue: Issue, run: Run, events: CapturedAgentEvent[]): stri
     `Captured events: ${events.length}`,
     "",
     "## Events",
-    ""
+    "",
   ];
 
   for (const event of events) {
-    lines.push(`[${event.createdAt.toISOString()}] ${event.level} ${event.type}`);
+    lines.push(
+      `[${event.createdAt.toISOString()}] ${event.level} ${event.type}`,
+    );
     lines.push(event.message.trim() || "(empty message)");
     if (event.payload) {
       lines.push(JSON.stringify(event.payload));
@@ -989,9 +1130,18 @@ function buildRunLog(issue: Issue, run: Run, events: CapturedAgentEvent[]): stri
   return `${lines.join("\n")}\n`;
 }
 
-function buildReviewPacket(issue: Issue, run: Run, artifacts: Artifact[]): string {
+function buildReviewPacket(
+  issue: Issue,
+  run: Run,
+  artifacts: Artifact[],
+): string {
   const artifactLines = artifacts.length
-    ? artifacts.map((artifact) => `- ${artifact.type}: ${artifact.summary ?? artifact.uri}`).join("\n")
+    ? artifacts
+        .map(
+          (artifact) =>
+            `- ${artifact.type}: ${artifact.summary ?? artifact.uri}`,
+        )
+        .join("\n")
     : "- No supporting artifacts were captured.";
 
   return `# Review Packet
@@ -1032,7 +1182,12 @@ Workspace: ${run.workspacePath}
 `;
 }
 
-function buildRunFailedComment(issue: Issue, run: Run, reason: string, artifacts: Artifact[]): string {
+function buildRunFailedComment(
+  issue: Issue,
+  run: Run,
+  reason: string,
+  artifacts: Artifact[],
+): string {
   const artifactLines = formatArtifactCommentLines(artifacts);
   return `Agent run ${run.id} failed for ${issue.identifier}.
 
@@ -1050,11 +1205,21 @@ Reason: ${reason}
 `;
 }
 
-function buildReviewComment(issue: Issue, run: Run, artifacts: Artifact[]): string {
-  const reviewPacket = artifacts.find((artifact) => artifact.type === "review_packet");
+function buildReviewComment(
+  issue: Issue,
+  run: Run,
+  artifacts: Artifact[],
+): string {
+  const reviewPacket = artifacts.find(
+    (artifact) => artifact.type === "review_packet",
+  );
   const pullRequest = artifacts.find((artifact) => artifact.type === "pr");
-  const reviewLine = reviewPacket ? `Review packet artifact: ${reviewPacket.id}` : "Review packet artifact: not captured";
-  const pullRequestLine = pullRequest ? `Pull request draft artifact: ${pullRequest.id}` : "Pull request draft artifact: not captured";
+  const reviewLine = reviewPacket
+    ? `Review packet artifact: ${reviewPacket.id}`
+    : "Review packet artifact: not captured";
+  const pullRequestLine = pullRequest
+    ? `Pull request draft artifact: ${pullRequest.id}`
+    : "Pull request draft artifact: not captured";
 
   return `Agent run ${run.id} finished for ${issue.identifier} and is ready for human review.
 
@@ -1070,19 +1235,32 @@ function formatArtifactCommentLines(artifacts: Artifact[]): string {
     return "- No artifacts were captured.";
   }
 
-  return artifacts.map((artifact) => `- ${artifact.type}: ${artifact.id}`).join("\n");
+  return artifacts
+    .map((artifact) => `- ${artifact.type}: ${artifact.id}`)
+    .join("\n");
 }
 
 function readTrackerSettings(): TrackerSettings {
-  const activeStates = readCommaSeparatedEnv("LINEAR_ACTIVE_STATES") ?? workflow.config.tracker.active_states;
+  const activeStates =
+    readCommaSeparatedEnv("LINEAR_ACTIVE_STATES") ??
+    workflow.config.tracker.active_states;
 
   return {
     activeStates,
-    teamKey: readOptionalEnv("LINEAR_TEAM_KEY") ?? workflow.config.tracker.team_key,
-    projectSlug: readOptionalEnv("LINEAR_PROJECT_SLUG") ?? workflow.config.tracker.project_slug,
-    runningState: readOptionalEnv("LINEAR_RUNNING_STATE") ?? workflow.config.tracker.running_state,
-    reviewState: readOptionalEnv("LINEAR_REVIEW_STATE") ?? workflow.config.tracker.review_state,
-    failureState: readOptionalEnv("LINEAR_FAILURE_STATE") ?? activeStates.find((state) => state === "Changes Requested")
+    teamKey:
+      readOptionalEnv("LINEAR_TEAM_KEY") ?? workflow.config.tracker.team_key,
+    projectSlug:
+      readOptionalEnv("LINEAR_PROJECT_SLUG") ??
+      workflow.config.tracker.project_slug,
+    runningState:
+      readOptionalEnv("LINEAR_RUNNING_STATE") ??
+      workflow.config.tracker.running_state,
+    reviewState:
+      readOptionalEnv("LINEAR_REVIEW_STATE") ??
+      workflow.config.tracker.review_state,
+    failureState:
+      readOptionalEnv("LINEAR_FAILURE_STATE") ??
+      activeStates.find((state) => state === "Changes Requested"),
   };
 }
 
@@ -1101,7 +1279,11 @@ function readCommaSeparatedEnv(key: string): string[] | undefined {
 
 function readPullRequestMode(): PullRequestMode {
   const value = process.env.AGENTIC_PM_PR_MODE?.trim();
-  if (value === "disabled" || value === "local_draft" || value === "github_draft") {
+  if (
+    value === "disabled" ||
+    value === "local_draft" ||
+    value === "github_draft"
+  ) {
     return value;
   }
 
@@ -1109,7 +1291,8 @@ function readPullRequestMode(): PullRequestMode {
 }
 
 function createTracker(): TrackerAdapter {
-  const requestedTracker = process.env.AGENTIC_PM_TRACKER ?? workflow.config.tracker.kind;
+  const requestedTracker =
+    process.env.AGENTIC_PM_TRACKER ?? workflow.config.tracker.kind;
 
   if (requestedTracker === "linear") {
     const apiKey = process.env.LINEAR_API_KEY;
@@ -1125,43 +1308,62 @@ function createTracker(): TrackerAdapter {
     externalId: "fake-1",
     identifier: "ENG-1",
     title: "Wire the first local agent run",
-    description: "A safe fake issue for verifying the orchestrator loop before connecting Linear.",
+    description:
+      "A safe fake issue for verifying the orchestrator loop before connecting Linear.",
     state: trackerSettings.activeStates[0] ?? "Ready for Agent",
     labels: ["agent"],
     blockedBy: [],
     repoRefs: [],
     createdAt: now,
-    updatedAt: now
+    updatedAt: now,
   };
 
   return new FakeTrackerAdapter([fakeIssue]);
 }
 
-function createRuntime(): AgentRuntime {
-  const requestedRuntime = process.env.AGENT_RUNTIME ?? "fake";
+function readRuntimeKind(): DesiredAgentRuntime {
+  const requestedRuntime = process.env.AGENT_RUNTIME;
+  return requestedRuntime === "codex" ||
+    requestedRuntime === "cursor" ||
+    requestedRuntime === "generic"
+    ? requestedRuntime
+    : "fake";
+}
+
+function createRuntime(requestedRuntime: DesiredAgentRuntime): AgentRuntime {
   const turnTimeoutMs = readPositiveNumber(
-    process.env.AGENT_RUNTIME_TURN_TIMEOUT_MS ?? process.env.CODEX_TURN_TIMEOUT_MS,
-    workflow.config.codex.turn_timeout_ms
+    process.env.AGENT_RUNTIME_TURN_TIMEOUT_MS ??
+      process.env.CODEX_TURN_TIMEOUT_MS,
+    workflow.config.codex.turn_timeout_ms,
   );
   const stallTimeoutMs = readPositiveNumber(
-    process.env.AGENT_RUNTIME_STALL_TIMEOUT_MS ?? process.env.CODEX_STALL_TIMEOUT_MS,
-    workflow.config.codex.stall_timeout_ms
+    process.env.AGENT_RUNTIME_STALL_TIMEOUT_MS ??
+      process.env.CODEX_STALL_TIMEOUT_MS,
+    workflow.config.codex.stall_timeout_ms,
   );
-  const cancelGraceMs = readPositiveNumber(process.env.AGENT_RUNTIME_CANCEL_GRACE_MS, 5000);
+  const cancelGraceMs = readPositiveNumber(
+    process.env.AGENT_RUNTIME_CANCEL_GRACE_MS,
+    5000,
+  );
 
   if (requestedRuntime === "codex") {
     const codexApiKey = readCodexApiKey();
     return new CodexCliRuntime({
       command: process.env.CODEX_COMMAND ?? workflow.config.codex.command,
-      args: parseCommandArgs(process.env.CODEX_ARGS, workflow.config.codex.args),
+      args: parseCommandArgs(
+        process.env.CODEX_ARGS,
+        workflow.config.codex.args,
+      ),
       apiKeyConfigured: Boolean(codexApiKey.value),
-      apiKeyEnv: codexApiKey.value ? { CODEX_API_KEY: codexApiKey.value } : undefined,
+      apiKeyEnv: codexApiKey.value
+        ? { CODEX_API_KEY: codexApiKey.value }
+        : undefined,
       apiKeySource: codexApiKey.source,
       model: process.env.CODEX_MODEL,
       reasoningEffort: process.env.CODEX_REASONING_EFFORT,
       turnTimeoutMs,
       stallTimeoutMs,
-      cancelGraceMs
+      cancelGraceMs,
     });
   }
 
@@ -1177,14 +1379,16 @@ function createRuntime(): AgentRuntime {
       apiKeyConfigured: Boolean(process.env.CURSOR_API_KEY?.trim()),
       turnTimeoutMs,
       stallTimeoutMs,
-      cancelGraceMs
+      cancelGraceMs,
     });
   }
 
   if (requestedRuntime === "generic") {
     const command = process.env.AGENT_RUNTIME_COMMAND;
     if (!command) {
-      throw new Error("AGENT_RUNTIME_COMMAND is required when AGENT_RUNTIME=generic");
+      throw new Error(
+        "AGENT_RUNTIME_COMMAND is required when AGENT_RUNTIME=generic",
+      );
     }
 
     return new GenericCliRuntime({
@@ -1193,7 +1397,7 @@ function createRuntime(): AgentRuntime {
       args: parseCommandArgs(process.env.AGENT_RUNTIME_ARGS, []),
       turnTimeoutMs,
       stallTimeoutMs,
-      cancelGraceMs
+      cancelGraceMs,
     });
   }
 
@@ -1205,7 +1409,7 @@ function readCodexApiKey(): { source?: string; value?: string } {
   if (codexApiKey) {
     return {
       source: "CODEX_API_KEY",
-      value: codexApiKey
+      value: codexApiKey,
     };
   }
 
@@ -1213,24 +1417,30 @@ function readCodexApiKey(): { source?: string; value?: string } {
   if (openAiApiKey) {
     return {
       source: "OPENAI_API_KEY",
-      value: openAiApiKey
+      value: openAiApiKey,
     };
   }
 
   return {};
 }
 
-async function runRuntimePreflight(agentRuntime: AgentRuntime): Promise<AgentRuntimePreflightResult> {
+async function runRuntimePreflight(
+  agentRuntime: AgentRuntime,
+): Promise<AgentRuntimePreflightResult> {
   const result = agentRuntime.preflight
     ? await agentRuntime.preflight()
     : {
         ok: true,
-        checks: []
+        checks: [],
       };
 
-  const failedChecks = result.checks.filter((check) => check.status === "failed");
+  const failedChecks = result.checks.filter(
+    (check) => check.status === "failed",
+  );
   const level: EventLevel = result.ok ? "info" : "error";
-  const type = result.ok ? "worker.runtime_preflight_passed" : "worker.runtime_preflight_failed";
+  const type = result.ok
+    ? "worker.runtime_preflight_passed"
+    : "worker.runtime_preflight_failed";
   const message = result.checks.length
     ? `Runtime preflight ${result.ok ? "passed" : "failed"} for ${agentRuntime.name}`
     : `Runtime ${agentRuntime.name} has no preflight checks`;
@@ -1238,14 +1448,14 @@ async function runRuntimePreflight(agentRuntime: AgentRuntime): Promise<AgentRun
   const payload = {
     checks: result.checks,
     failedCheckCount: failedChecks.length,
-    runtime: agentRuntime.name
+    runtime: agentRuntime.name,
   };
 
   await eventSink.emit({
     type,
     level,
     message,
-    payload
+    payload,
   });
 
   await repository.appendEvent({
@@ -1253,13 +1463,16 @@ async function runRuntimePreflight(agentRuntime: AgentRuntime): Promise<AgentRun
     type,
     level,
     message,
-    payload
+    payload,
   });
 
   return result;
 }
 
-function buildRuntimePreflightFailureMessage(runtimeName: string, result: AgentRuntimePreflightResult): string {
+function buildRuntimePreflightFailureMessage(
+  runtimeName: string,
+  result: AgentRuntimePreflightResult,
+): string {
   const details = result.checks
     .filter((check) => check.status === "failed")
     .map((check) => `${check.name}: ${check.message}`)
@@ -1268,7 +1481,10 @@ function buildRuntimePreflightFailureMessage(runtimeName: string, result: AgentR
   return `Runtime preflight failed for ${runtimeName}${details ? ` (${details})` : ""}`;
 }
 
-function parseCommandArgs(value: string | undefined, fallback: string[]): string[] {
+function parseCommandArgs(
+  value: string | undefined,
+  fallback: string[],
+): string[] {
   if (!value) {
     return fallback;
   }
@@ -1280,7 +1496,10 @@ function parseCommandArgs(value: string | undefined, fallback: string[]): string
 
   if (trimmed.startsWith("[")) {
     const parsed = JSON.parse(trimmed) as unknown;
-    if (!Array.isArray(parsed) || parsed.some((item) => typeof item !== "string")) {
+    if (
+      !Array.isArray(parsed) ||
+      parsed.some((item) => typeof item !== "string")
+    ) {
       throw new Error("Runtime args JSON must be an array of strings");
     }
     return parsed;
@@ -1289,7 +1508,9 @@ function parseCommandArgs(value: string | undefined, fallback: string[]): string
   return trimmed.split(/\s+/).filter(Boolean);
 }
 
-function parseOptionalCommandArgs(value: string | undefined): string[] | undefined {
+function parseOptionalCommandArgs(
+  value: string | undefined,
+): string[] | undefined {
   if (!value?.trim()) {
     return undefined;
   }
@@ -1297,7 +1518,9 @@ function parseOptionalCommandArgs(value: string | undefined): string[] | undefin
   return parseCommandArgs(value, []);
 }
 
-function parseCursorOutputFormat(value: string | undefined): "text" | "json" | "stream-json" | undefined {
+function parseCursorOutputFormat(
+  value: string | undefined,
+): "text" | "json" | "stream-json" | undefined {
   if (value === "text" || value === "json" || value === "stream-json") {
     return value;
   }
@@ -1305,7 +1528,9 @@ function parseCursorOutputFormat(value: string | undefined): "text" | "json" | "
   return undefined;
 }
 
-function parseCursorSandbox(value: string | undefined): "enabled" | "disabled" | undefined {
+function parseCursorSandbox(
+  value: string | undefined,
+): "enabled" | "disabled" | undefined {
   if (value === "enabled" || value === "disabled") {
     return value;
   }
@@ -1321,7 +1546,10 @@ function readBoolean(value: string | undefined, fallback: boolean): boolean {
   return ["1", "true", "yes", "on"].includes(value.toLowerCase());
 }
 
-function readPositiveNumber(value: string | undefined, fallback: number): number {
+function readPositiveNumber(
+  value: string | undefined,
+  fallback: number,
+): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }

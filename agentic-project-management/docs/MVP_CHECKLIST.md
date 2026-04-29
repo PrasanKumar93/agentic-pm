@@ -56,6 +56,7 @@
 - [x] Run a real Codex runtime adapter from the worker.
 - [x] Verify Cursor Agent CLI noninteractive mode locally.
 - [x] Persist parsed runtime events through the worker event stream.
+- [x] Route work items by desired runtime for Codex/Cursor worker selection.
 - [x] Add worker-side cancellation checks.
 - [x] Add stall detection.
 - [x] Add artifact capture for logs and patches.
