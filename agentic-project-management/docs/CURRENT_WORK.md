@@ -38,12 +38,13 @@ Date: 2026-04-29
 - Dashboard health badge for tracker and Linear webhook configuration.
 - Operator action tracker sync for Linear cancel and complete states.
 - PR artifact dashboard affordance for selecting a run and opening a local draft or remote PR URL.
+- Verified Linear issue webhook normalization into MongoDB with active-state work item creation.
 
 ## In Progress
 
-- Normalize verified Linear webhook payloads directly into MongoDB.
+- Persist webhook delivery IDs for idempotency and replay safety.
 
 ## Next Queue
 
 - Dashboard filter tabs for status lanes.
-- Persist webhook delivery IDs for idempotency and replay safety.
+- Webhook replay audit view in the dashboard.

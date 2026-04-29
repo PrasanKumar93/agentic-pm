@@ -1,6 +1,6 @@
 # Linear Integration Spec
 
-Status: Draft v0.3
+Status: Draft v0.4
 Date: 2026-04-29
 
 ## 1. Purpose
@@ -52,7 +52,19 @@ The API verifies:
 - HMAC-SHA256 signature over the raw request body using `LINEAR_WEBHOOK_SECRET`.
 - `webhookTimestamp` freshness within `LINEAR_WEBHOOK_TOLERANCE_MS`.
 
-Verified webhooks append `tracker.linear.webhook.received` into `run_events` and return `200 OK`.
+Verified webhooks append `tracker.linear.webhook.received` into `run_events`.
+
+For `Issue` webhooks with `action: "create"` or `action: "update"`, the API also normalizes `data` into the internal issue model and upserts MongoDB by `{ tracker, externalId }`. If the resulting Linear state is in `LINEAR_ACTIVE_STATES`, the API creates or refreshes the project work item immediately. This mirrors polling reconciliation without waiting for the next worker loop.
+
+Normalization emits:
+
+- `tracker.issue.webhook_reconciled` when an issue payload is upserted.
+- `tracker.linear.webhook.ignored` when an Issue webhook has an unsupported action such as `remove`.
+- `tracker.linear.webhook.normalization_failed` when an Issue webhook is missing required issue fields.
+
+Non-Issue webhooks are acknowledged after `tracker.linear.webhook.received` and ignored.
+
+The response body includes a machine-readable normalization result, while still returning `200 OK` for verified but ignored payloads so Linear does not retry permanent non-work items.
 
 Invalid signatures and stale timestamps return `401 Unauthorized`.
 
@@ -68,6 +80,15 @@ The worker polls Linear through `listActiveIssues` with:
 Each active issue is normalized into the internal issue model, upserted into MongoDB by `{ tracker, externalId }`, and assigned a local work item if one does not already exist.
 
 Each reconciliation emits `tracker.issue.reconciled`.
+
+Polling and webhook normalization share the same Linear issue mapping:
+
+- `id` -> `externalId`
+- `identifier`
+- `title`
+- `description`
+- workflow state name -> `state`
+- labels, assignee, relations, URL, priority, timestamps, and raw payload
 
 ## 5. State Sync
 
@@ -138,7 +159,7 @@ For localhost testing, expose the API with a tunnel such as ngrok or Cloudflare 
 Valid signature:
 
 ```sh
-payload='{"type":"Issue","action":"update","webhookTimestamp":'$(date +%s000)',"data":{"id":"issue_123"}}'
+payload='{"type":"Issue","action":"update","webhookTimestamp":'$(date +%s000)',"data":{"id":"issue_123","identifier":"ENG-123","title":"Webhook smoke","state":{"name":"Ready for Agent"},"labels":{"nodes":[{"name":"agent"}]},"createdAt":"2026-04-29T12:00:00.000Z","updatedAt":"2026-04-29T12:00:00.000Z"}}'
 signature=$(printf '%s' "$payload" | openssl dgst -sha256 -hmac "$LINEAR_WEBHOOK_SECRET" -hex | awk '{print $2}')
 curl -i \
   -H "Content-Type: application/json" \
@@ -171,6 +192,8 @@ Then confirm run events include:
 - `tracker.issue.comment_created`
 - `artifact.created`
 
+Webhook smoke should return `data.status: "reconciled"` for active issue payloads and create a local work item for the configured project.
+
 ## 10. References
 
 - Linear webhook docs: https://linear.app/developers/webhooks
@@ -178,7 +201,5 @@ Then confirm run events include:
 
 ## 11. Future Work
 
-- Normalize verified webhook issue payloads directly into MongoDB.
 - Deduplicate webhook deliveries by `Linear-Delivery`.
 - Add IP allowlisting as an optional defense-in-depth check.
-- Add optional done/cancelled Linear states for operator cancel and manual complete actions.

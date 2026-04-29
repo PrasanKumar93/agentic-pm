@@ -21,7 +21,7 @@ import {
   readMongoConfig,
   WorkItemNotFoundError
 } from "@agentic-pm/db";
-import { LinearTrackerAdapter } from "@agentic-pm/trackers";
+import { LinearTrackerAdapter, normalizeLinearIssue, type LinearIssueNode } from "@agentic-pm/trackers";
 
 const host = process.env.API_HOST ?? "0.0.0.0";
 const port = Number(process.env.API_PORT ?? 4000);
@@ -61,12 +61,40 @@ type RawBodyRequest = FastifyRequest & {
 
 type LinearWebhookPayload = {
   action?: string;
+  actor?: unknown;
   createdAt?: string;
   data?: unknown;
+  organizationId?: string;
   type?: string;
+  updatedFrom?: unknown;
   url?: string;
+  webhookId?: string;
   webhookTimestamp?: number;
 };
+
+type LinearWebhookContext = {
+  deliveryId?: string;
+  event?: string;
+};
+
+type LinearWebhookNormalizationResult =
+  | {
+      status: "ignored";
+      reason: "not_issue_event" | "unsupported_action";
+    }
+  | {
+      status: "failed";
+      reason: "invalid_issue_payload";
+    }
+  | {
+      status: "reconciled";
+      active: boolean;
+      issueId: string;
+      issueIdentifier: string;
+      issueExternalId: string;
+      state: string;
+      workItemId?: string;
+    };
 
 type VerificationResult =
   | {
@@ -290,21 +318,32 @@ app.post("/webhooks/linear", async (request, reply) => {
     });
   }
 
+  const context: LinearWebhookContext = {
+    deliveryId: firstHeader(request.headers["linear-delivery"]),
+    event: firstHeader(request.headers["linear-event"])
+  };
+
   await repository.appendEvent({
+    projectId,
     type: "tracker.linear.webhook.received",
     level: "info",
     message: "Received Linear webhook",
     payload: {
       action: body.action,
       body: request.body,
-      deliveryId: firstHeader(request.headers["linear-delivery"]),
-      event: firstHeader(request.headers["linear-event"]),
+      deliveryId: context.deliveryId,
+      event: context.event,
       type: body.type,
       url: body.url
     }
   });
 
-  return { ok: true };
+  const normalization = await normalizeLinearWebhookPayload(body, context);
+
+  return {
+    ok: true,
+    data: normalization
+  };
 });
 
 const shutdown = async () => {
@@ -616,6 +655,118 @@ function readCommaSeparated(value: string | undefined, fallback: string[]): stri
     .map((item) => item.trim())
     .filter(Boolean);
   return parsed?.length ? parsed : fallback;
+}
+
+async function normalizeLinearWebhookPayload(
+  payload: LinearWebhookPayload,
+  context: LinearWebhookContext
+): Promise<LinearWebhookNormalizationResult> {
+  if (payload.type !== "Issue" && context.event !== "Issue") {
+    return {
+      status: "ignored",
+      reason: "not_issue_event"
+    };
+  }
+
+  if (payload.action !== "create" && payload.action !== "update") {
+    await repository.appendEvent({
+      projectId,
+      type: "tracker.linear.webhook.ignored",
+      level: "info",
+      message: "Ignored Linear issue webhook",
+      payload: {
+        action: payload.action,
+        deliveryId: context.deliveryId,
+        event: context.event,
+        reason: "unsupported_action",
+        type: payload.type
+      }
+    });
+    return {
+      status: "ignored",
+      reason: "unsupported_action"
+    };
+  }
+
+  if (!isLinearIssueWebhookData(payload.data)) {
+    await repository.appendEvent({
+      projectId,
+      type: "tracker.linear.webhook.normalization_failed",
+      level: "warn",
+      message: "Could not normalize Linear issue webhook",
+      payload: {
+        action: payload.action,
+        deliveryId: context.deliveryId,
+        event: context.event,
+        reason: "invalid_issue_payload",
+        type: payload.type
+      }
+    });
+    return {
+      status: "failed",
+      reason: "invalid_issue_payload"
+    };
+  }
+
+  const issue = normalizeLinearIssue(payload.data, {
+    fallbackUrl: payload.url
+  });
+  const storedIssue = await repository.upsertIssue(issue);
+  const activeStates = readCommaSeparated(process.env.LINEAR_ACTIVE_STATES, ["Ready for Agent", "Changes Requested"]);
+  const active = activeStates.includes(storedIssue.state);
+  const workItem = active ? await repository.ensureWorkItemForIssue(projectId, storedIssue) : undefined;
+
+  await repository.appendEvent({
+    projectId,
+    workItemId: workItem?.id,
+    type: "tracker.issue.webhook_reconciled",
+    level: "info",
+    message: `Reconciled ${storedIssue.identifier} from Linear webhook`,
+    payload: {
+      action: payload.action,
+      active,
+      activeStates,
+      deliveryId: context.deliveryId,
+      event: context.event,
+      issueExternalId: storedIssue.externalId,
+      issueId: storedIssue.id,
+      issueIdentifier: storedIssue.identifier,
+      state: storedIssue.state,
+      type: payload.type,
+      updatedFrom: payload.updatedFrom,
+      webhookId: payload.webhookId,
+      workItemId: workItem?.id
+    }
+  });
+
+  return {
+    status: "reconciled",
+    active,
+    issueId: storedIssue.id,
+    issueIdentifier: storedIssue.identifier,
+    issueExternalId: storedIssue.externalId,
+    state: storedIssue.state,
+    workItemId: workItem?.id
+  };
+}
+
+function isLinearIssueWebhookData(value: unknown): value is LinearIssueNode {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.id === "string" &&
+    value.id.trim().length > 0 &&
+    typeof value.identifier === "string" &&
+    value.identifier.trim().length > 0 &&
+    typeof value.title === "string" &&
+    value.title.trim().length > 0
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isReadableLocalTextArtifact(artifact: Artifact): boolean {

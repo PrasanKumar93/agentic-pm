@@ -6,7 +6,7 @@ interface LinearClientConfig {
   endpoint?: string;
 }
 
-interface LinearIssueNode {
+export interface LinearIssueNode {
   id: string;
   identifier: string;
   title: string;
@@ -14,12 +14,15 @@ interface LinearIssueNode {
   url?: string | null;
   priority?: number | null;
   state?: {
-    id: string;
-    name: string;
+    id?: string;
+    name?: string | null;
   } | null;
-  labels?: {
-    nodes: Array<{ name: string }>;
-  };
+  labels?:
+    | {
+        nodes?: Array<{ name?: string | null }>;
+      }
+    | Array<{ name?: string | null } | string>
+    | null;
   assignee?: {
     name?: string | null;
     email?: string | null;
@@ -27,12 +30,16 @@ interface LinearIssueNode {
   relations?: {
     nodes: Array<{
       relatedIssue?: {
-        id: string;
+        id?: string | null;
       } | null;
     }>;
-  };
-  createdAt: string;
-  updatedAt: string;
+  } | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+interface LinearNormalizeOptions {
+  fallbackUrl?: string;
 }
 
 export class LinearTrackerAdapter implements TrackerAdapter {
@@ -83,7 +90,7 @@ export class LinearTrackerAdapter implements TrackerAdapter {
       states: input.activeStates
     });
 
-    return data.issues.nodes.map((issue) => this.normalizeIssue(issue));
+    return data.issues.nodes.map((issue) => normalizeLinearIssue(issue));
   }
 
   async commentOnIssue(input: TrackerCommentInput): Promise<void> {
@@ -115,27 +122,6 @@ export class LinearTrackerAdapter implements TrackerAdapter {
       issueId: input.issueExternalId,
       stateId
     });
-  }
-
-  private normalizeIssue(issue: LinearIssueNode): Issue {
-    return {
-      id: createId("issue"),
-      tracker: "linear",
-      externalId: issue.id,
-      identifier: issue.identifier,
-      title: issue.title,
-      description: issue.description ?? undefined,
-      state: issue.state?.name ?? "Unknown",
-      priority: issue.priority ?? undefined,
-      labels: issue.labels?.nodes.map((label) => label.name) ?? [],
-      assignee: issue.assignee?.email ?? issue.assignee?.name ?? undefined,
-      blockedBy: issue.relations?.nodes.flatMap((relation) => relation.relatedIssue?.id ?? []) ?? [],
-      url: issue.url ?? undefined,
-      repoRefs: [],
-      raw: issue,
-      createdAt: new Date(issue.createdAt),
-      updatedAt: new Date(issue.updatedAt)
-    };
   }
 
   private async findStateId(name: string): Promise<string> {
@@ -188,4 +174,57 @@ export class LinearTrackerAdapter implements TrackerAdapter {
 
     return payload.data;
   }
+}
+
+export function normalizeLinearIssue(issue: LinearIssueNode, options: LinearNormalizeOptions = {}): Issue {
+  const now = new Date();
+
+  return {
+    id: createId("issue"),
+    tracker: "linear",
+    externalId: issue.id,
+    identifier: issue.identifier,
+    title: issue.title,
+    description: issue.description ?? undefined,
+    state: normalizeLinearState(issue.state),
+    priority: issue.priority ?? undefined,
+    labels: normalizeLinearLabels(issue.labels),
+    assignee: issue.assignee?.email ?? issue.assignee?.name ?? undefined,
+    blockedBy: issue.relations?.nodes.flatMap((relation) => relation.relatedIssue?.id ?? []) ?? [],
+    url: issue.url ?? options.fallbackUrl,
+    repoRefs: [],
+    raw: issue,
+    createdAt: readLinearDate(issue.createdAt, now),
+    updatedAt: readLinearDate(issue.updatedAt, now)
+  };
+}
+
+function normalizeLinearState(state: LinearIssueNode["state"]): string {
+  return state?.name?.trim() || "Unknown";
+}
+
+function normalizeLinearLabels(labels: LinearIssueNode["labels"]): string[] {
+  if (!labels) {
+    return [];
+  }
+
+  if (Array.isArray(labels)) {
+    return labels
+      .map((label) => (typeof label === "string" ? label : label.name))
+      .map((label) => label?.trim())
+      .filter((label): label is string => Boolean(label));
+  }
+
+  return (labels.nodes ?? [])
+    .map((label) => label.name?.trim())
+    .filter((label): label is string => Boolean(label));
+}
+
+function readLinearDate(value: string | null | undefined, fallback: Date): Date {
+  if (!value) {
+    return fallback;
+  }
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? fallback : date;
 }
