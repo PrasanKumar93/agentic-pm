@@ -85,7 +85,9 @@ Integration health response:
       "activeStates": ["Ready for Agent", "Changes Requested"],
       "runningState": "Agent Running",
       "reviewState": "Human Review",
-      "failureState": "Changes Requested"
+      "failureState": "Changes Requested",
+      "doneState": "Done",
+      "cancelledState": "Cancelled"
     }
   }
 }

@@ -2,7 +2,7 @@ import "dotenv/config";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import cors from "@fastify/cors";
 import Fastify, { type FastifyRequest } from "fastify";
-import type { DispatchActionName, OperatorActionName } from "@agentic-pm/core";
+import type { DispatchActionName, Issue, OperatorActionName, OperatorActionResult, RunEvent } from "@agentic-pm/core";
 import {
   AgenticRepository,
   connectMongo,
@@ -12,6 +12,7 @@ import {
   readMongoConfig,
   WorkItemNotFoundError
 } from "@agentic-pm/db";
+import { LinearTrackerAdapter } from "@agentic-pm/trackers";
 
 const host = process.env.API_HOST ?? "0.0.0.0";
 const port = Number(process.env.API_PORT ?? 4000);
@@ -30,6 +31,19 @@ const app = Fastify({
 const allowedOperatorActions = new Set<OperatorActionName>(["start", "retry", "pause", "resume", "cancel", "complete"]);
 const allowedDispatchActions = new Set<DispatchActionName>(["pause", "resume", "start_eligible"]);
 type IntegrationHealthStatus = "ok" | "warn" | "error";
+type OperatorTrackerSyncReason = "operator_cancel" | "operator_complete";
+
+type OperatorTrackerSyncResult =
+  | {
+      attempted: false;
+      status: "not_applicable" | "disabled" | "missing_issue" | "missing_api_key";
+    }
+  | {
+      attempted: true;
+      status: "synced" | "failed";
+      stateName: string;
+      tracker: "linear";
+    };
 
 type RawBodyRequest = FastifyRequest & {
   rawBody?: Buffer;
@@ -168,11 +182,17 @@ app.post("/work-items/:workItemId/actions/:action", async (request, reply) => {
   };
 
   try {
-    await repository.performWorkItemAction({
+    const result = await repository.performWorkItemAction({
       workItemId,
       action: action as OperatorActionName,
       actorId: body.actorId,
       reason: body.reason
+    });
+    const trackerSync = await syncOperatorActionTrackerState({
+      action: action as OperatorActionName,
+      actorId: body.actorId,
+      reason: body.reason,
+      result
     });
 
     const data = await repository.getWorkItemSummary(workItemId);
@@ -186,6 +206,7 @@ app.post("/work-items/:workItemId/actions/:action", async (request, reply) => {
       data,
       meta: {
         action,
+        trackerSync,
         generatedAt: new Date().toISOString()
       }
     };
@@ -328,6 +349,176 @@ function readPositiveNumber(value: string | undefined, fallback: number): number
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+async function syncOperatorActionTrackerState(input: {
+  action: OperatorActionName;
+  actorId?: string;
+  reason?: string;
+  result: OperatorActionResult;
+}): Promise<OperatorTrackerSyncResult> {
+  const stateName = readOperatorActionTrackerState(input.action);
+  if (!stateName) {
+    return {
+      attempted: false,
+      status: "not_applicable"
+    };
+  }
+
+  if ((process.env.AGENTIC_PM_TRACKER ?? "fake") !== "linear") {
+    return {
+      attempted: false,
+      status: "disabled"
+    };
+  }
+
+  const apiKey = process.env.LINEAR_API_KEY?.trim();
+  if (!apiKey) {
+    await appendTrackerSyncEvent({
+      issue: undefined,
+      result: input.result,
+      type: "tracker.issue.state_sync_failed",
+      level: "warn",
+      message: "Could not sync operator action to Linear",
+      payload: {
+        action: input.action,
+        detail: "LINEAR_API_KEY is not configured",
+        stateName,
+        tracker: "linear"
+      }
+    });
+    return {
+      attempted: false,
+      status: "missing_api_key"
+    };
+  }
+
+  const issue = await repository.getIssue(input.result.workItem.issueId);
+  if (!issue) {
+    await appendTrackerSyncEvent({
+      issue: undefined,
+      result: input.result,
+      type: "tracker.issue.state_sync_failed",
+      level: "warn",
+      message: "Could not sync operator action to Linear",
+      payload: {
+        action: input.action,
+        detail: `Issue ${input.result.workItem.issueId} was not found`,
+        stateName,
+        tracker: "linear"
+      }
+    });
+    return {
+      attempted: false,
+      status: "missing_issue"
+    };
+  }
+
+  const tracker = new LinearTrackerAdapter({ apiKey });
+  const reason = readOperatorActionTrackerReason(input.action);
+
+  try {
+    await tracker.moveIssue({
+      issueExternalId: issue.externalId,
+      stateName
+    });
+
+    await repository.upsertIssue({
+      ...issue,
+      state: stateName,
+      updatedAt: new Date()
+    });
+
+    await appendTrackerSyncEvent({
+      issue,
+      result: input.result,
+      type: "tracker.issue.state_synced",
+      level: "info",
+      message: `Synced ${issue.identifier} to ${stateName}`,
+      payload: {
+        action: input.action,
+        actorId: input.actorId,
+        issueExternalId: issue.externalId,
+        issueIdentifier: issue.identifier,
+        operatorReason: input.reason,
+        reason,
+        stateName,
+        tracker: "linear"
+      }
+    });
+
+    return {
+      attempted: true,
+      status: "synced",
+      stateName,
+      tracker: "linear"
+    };
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    await appendTrackerSyncEvent({
+      issue,
+      result: input.result,
+      type: "tracker.issue.state_sync_failed",
+      level: "warn",
+      message: `Could not sync ${issue.identifier} to ${stateName}`,
+      payload: {
+        action: input.action,
+        actorId: input.actorId,
+        detail,
+        issueExternalId: issue.externalId,
+        issueIdentifier: issue.identifier,
+        operatorReason: input.reason,
+        reason,
+        stateName,
+        tracker: "linear"
+      }
+    });
+
+    return {
+      attempted: true,
+      status: "failed",
+      stateName,
+      tracker: "linear"
+    };
+  }
+}
+
+function readOperatorActionTrackerState(action: OperatorActionName): string | undefined {
+  if (action === "cancel") {
+    return process.env.LINEAR_CANCELLED_STATE?.trim() || "Cancelled";
+  }
+
+  if (action === "complete") {
+    return process.env.LINEAR_DONE_STATE?.trim() || "Done";
+  }
+
+  return undefined;
+}
+
+function readOperatorActionTrackerReason(action: OperatorActionName): OperatorTrackerSyncReason {
+  return action === "cancel" ? "operator_cancel" : "operator_complete";
+}
+
+async function appendTrackerSyncEvent(input: {
+  issue: Issue | undefined;
+  result: OperatorActionResult;
+  type: "tracker.issue.state_synced" | "tracker.issue.state_sync_failed";
+  level: RunEvent["level"];
+  message: string;
+  payload: Record<string, unknown>;
+}): Promise<void> {
+  await repository.appendEvent({
+    projectId: input.result.workItem.projectId,
+    workItemId: input.result.workItem.id,
+    runId: input.result.workItem.lastRunId,
+    type: input.type,
+    level: input.level,
+    message: input.message,
+    payload: {
+      issueId: input.issue?.id ?? input.result.workItem.issueId,
+      ...input.payload
+    }
+  });
+}
+
 function buildIntegrationHealth() {
   const trackerKind = process.env.AGENTIC_PM_TRACKER ?? "fake";
   const linearApiKeyConfigured = Boolean(process.env.LINEAR_API_KEY?.trim());
@@ -337,6 +528,8 @@ function buildIntegrationHealth() {
   const linearRunningState = process.env.LINEAR_RUNNING_STATE?.trim() || "Agent Running";
   const linearReviewState = process.env.LINEAR_REVIEW_STATE?.trim() || "Human Review";
   const linearFailureState = process.env.LINEAR_FAILURE_STATE?.trim() || "Changes Requested";
+  const linearDoneState = process.env.LINEAR_DONE_STATE?.trim() || "Done";
+  const linearCancelledState = process.env.LINEAR_CANCELLED_STATE?.trim() || "Cancelled";
   const linearEnabled = trackerKind === "linear";
   const missingRequired = linearEnabled && (!linearApiKeyConfigured || !linearTeamKeyConfigured);
   const status: IntegrationHealthStatus = !linearEnabled
@@ -370,7 +563,9 @@ function buildIntegrationHealth() {
       activeStates: linearActiveStates,
       runningState: linearRunningState,
       reviewState: linearReviewState,
-      failureState: linearFailureState
+      failureState: linearFailureState,
+      doneState: linearDoneState,
+      cancelledState: linearCancelledState
     }
   };
 }

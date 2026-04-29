@@ -126,6 +126,8 @@ type IntegrationHealth = {
     runningState: string;
     reviewState: string;
     failureState: string;
+    doneState: string;
+    cancelledState: string;
   };
 };
 
@@ -591,7 +593,9 @@ function createUnavailableIntegrationHealth(): IntegrationHealth {
       activeStates: [],
       runningState: "Unknown",
       reviewState: "Unknown",
-      failureState: "Unknown"
+      failureState: "Unknown",
+      doneState: "Unknown",
+      cancelledState: "Unknown"
     }
   };
 }
@@ -689,7 +693,9 @@ function TrackerHealthBadge({ health }: { health: IntegrationHealth }) {
         `API key: ${health.linear.apiKeyConfigured ? "configured" : "missing"}`,
         `Team key: ${health.linear.teamKeyConfigured ? "configured" : "missing"}`,
         `Webhook secret: ${health.linear.webhookSecretConfigured ? "configured" : "missing"}`,
-        `Review state: ${health.linear.reviewState}`
+        `Review state: ${health.linear.reviewState}`,
+        `Done state: ${health.linear.doneState}`,
+        `Cancelled state: ${health.linear.cancelledState}`
       ].join("\n")
     : health.tracker.message;
 

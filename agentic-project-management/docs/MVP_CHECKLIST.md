@@ -37,6 +37,7 @@
 - [x] Comment run start/failure/review packet back to Linear.
 - [x] Move completed agent output to `Human Review`.
 - [x] Show tracker and Linear config health in the dashboard.
+- [x] Sync operator cancel/complete actions to Linear terminal states.
 
 ## Milestone 4: Agent Runtime Loop
 

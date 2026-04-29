@@ -35,6 +35,9 @@ importers:
       '@agentic-pm/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@agentic-pm/trackers':
+        specifier: workspace:*
+        version: link:../../packages/trackers
       '@fastify/cors':
         specifier: ^10.0.2
         version: 10.1.0

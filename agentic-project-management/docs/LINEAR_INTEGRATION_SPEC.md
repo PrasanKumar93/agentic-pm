@@ -1,6 +1,6 @@
 # Linear Integration Spec
 
-Status: Draft v0.2
+Status: Draft v0.3
 Date: 2026-04-29
 
 ## 1. Purpose
@@ -34,6 +34,8 @@ LINEAR_ACTIVE_STATES=Ready for Agent,Changes Requested
 LINEAR_RUNNING_STATE=Agent Running
 LINEAR_REVIEW_STATE=Human Review
 LINEAR_FAILURE_STATE=Changes Requested
+LINEAR_DONE_STATE=Done
+LINEAR_CANCELLED_STATE=Cancelled
 ```
 
 Environment values override workflow front matter so local operators can switch Linear teams/states without editing `WORKFLOW.md`.
@@ -76,6 +78,8 @@ The worker syncs external tracker state at durable lifecycle points:
 | Run starts | `LINEAR_RUNNING_STATE` |
 | Run waits for review | `LINEAR_REVIEW_STATE` |
 | Run fails during setup/execution | `LINEAR_FAILURE_STATE` when configured |
+| Operator marks complete | `LINEAR_DONE_STATE` |
+| Operator cancels work | `LINEAR_CANCELLED_STATE` |
 
 Successful sync:
 
@@ -89,6 +93,8 @@ Failed sync:
 - Leaves the local run/work item lifecycle intact so the dashboard remains the source of truth during tracker outages.
 
 If `LINEAR_FAILURE_STATE` is not set, the worker defaults it to `Changes Requested` when that state is present in `LINEAR_ACTIVE_STATES`.
+
+Operator action sync is performed by the API after the local MongoDB transition succeeds. It is best-effort: a Linear failure emits `tracker.issue.state_sync_failed` and does not roll back local Symphony state.
 
 ## 6. Run Comments
 
@@ -116,7 +122,7 @@ Signature validation must use the raw request body bytes. The API replaces Fasti
 1. Copy `.env.example` to `.env`.
 2. Set `LINEAR_API_KEY`.
 3. Set `LINEAR_TEAM_KEY`.
-4. Create or confirm workflow states named by `LINEAR_ACTIVE_STATES`, `LINEAR_RUNNING_STATE`, and `LINEAR_REVIEW_STATE`.
+4. Create or confirm workflow states named by `LINEAR_ACTIVE_STATES`, `LINEAR_RUNNING_STATE`, `LINEAR_REVIEW_STATE`, `LINEAR_FAILURE_STATE`, `LINEAR_DONE_STATE`, and `LINEAR_CANCELLED_STATE`.
 5. Create a Linear webhook pointing to:
 
 ```txt

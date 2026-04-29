@@ -14,6 +14,7 @@
   "dependencies": {
     "@agentic-pm/core": "workspace:*",
     "@agentic-pm/db": "workspace:*",
+    "@agentic-pm/trackers": "workspace:*",
     "@fastify/cors": "^10.0.2",
     "dotenv": "^16.4.7",
     "fastify": "^5.2.1"

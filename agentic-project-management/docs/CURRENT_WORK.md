@@ -36,12 +36,13 @@ Date: 2026-04-29
 - Runtime stderr severity normalization for known CLI warnings.
 - Remote GitHub draft PR creation through `gh pr create` after explicit project configuration.
 - Dashboard health badge for tracker and Linear webhook configuration.
+- Operator action tracker sync for Linear cancel and complete states.
 
 ## In Progress
 
-- Operator action tracker sync for cancel and complete states.
+- PR artifact dashboard affordance for opening local draft or remote PR URL.
 
 ## Next Queue
 
-- PR artifact dashboard affordance for opening local draft or remote PR URL.
 - Normalize verified Linear webhook payloads directly into MongoDB.
+- Dashboard filter tabs for status lanes.

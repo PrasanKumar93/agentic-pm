@@ -1,6 +1,6 @@
 # Operator Actions Spec
 
-Status: Draft v0.1
+Status: Draft v0.2
 Date: 2026-04-29
 
 ## 1. Purpose
@@ -77,6 +77,10 @@ Both fields are optional. The API defaults `actorId` to `local-operator`.
   },
   "meta": {
     "action": "retry",
+    "trackerSync": {
+      "attempted": false,
+      "status": "not_applicable"
+    },
     "generatedAt": "2026-04-29T12:05:00.000Z"
   }
 }
@@ -115,6 +119,8 @@ Notes:
 - `start` does not increment `retryCount`; it only makes the item dispatchable.
 - `cancel` updates the latest active run to `cancelled` when that run is still running/preparing/stalled/retrying.
 - `complete` updates the latest review-state run to `completed`; it does not merge code.
+- When `AGENTIC_PM_TRACKER=linear`, `cancel` best-effort syncs the Linear issue to `LINEAR_CANCELLED_STATE`.
+- When `AGENTIC_PM_TRACKER=linear`, `complete` best-effort syncs the Linear issue to `LINEAR_DONE_STATE`.
 - Worker-side process termination is covered in `WORKER_CANCELLATION_SPEC.md`.
 
 ## 4. Auditing
@@ -130,6 +136,13 @@ Event payload includes:
 - `reason`
 - `fromStatus`
 - `toStatus`
+
+Linear operator sync emits:
+
+- `tracker.issue.state_synced` when the external issue state is updated.
+- `tracker.issue.state_sync_failed` when Linear config, issue lookup, or the Linear API fails.
+
+External tracker sync never rolls back the local operator action.
 
 ## 5. Dashboard Behavior
 
@@ -155,6 +168,7 @@ Required checks:
 - `pnpm typecheck`
 - `pnpm build`
 - API action smoke test against local MongoDB
+- API action smoke test that confirms fake tracker actions report `trackerSync.status: "disabled"`
 - Browser smoke test at `http://localhost:3000`
 
 ## 7. Future Work
