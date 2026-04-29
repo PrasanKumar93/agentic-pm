@@ -34,12 +34,13 @@ Date: 2026-04-29
 - Local PR draft artifact generation and manual `complete` gate for review-state work items.
 - Linear polling/upsert, tracker state sync events, local issue-state updates, failure-state fallback, and run start/failure/review comments.
 - Runtime stderr severity normalization for known CLI warnings.
+- Remote GitHub draft PR creation through `gh pr create` after explicit project configuration.
 
 ## In Progress
 
-- Remote GitHub PR creation with `gh pr create` after explicit project configuration.
+- Dashboard health badge for Linear webhook/tracker configuration.
 
 ## Next Queue
 
-- Dashboard health badge for Linear webhook/tracker configuration.
 - Operator action tracker sync for cancel and complete states.
+- PR artifact dashboard affordance for opening local draft or remote PR URL.

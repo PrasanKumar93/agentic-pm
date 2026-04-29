@@ -24,7 +24,7 @@ import {
   readMongoConfig,
   type RunStopRequest
 } from "@agentic-pm/db";
-import { buildPullRequestDraft } from "@agentic-pm/git";
+import { buildPullRequestDraft, createGitHubPullRequest, type GitHubPullRequestResult } from "@agentic-pm/git";
 import { ConsoleEventSink } from "@agentic-pm/observability";
 import { FakeTrackerAdapter, LinearTrackerAdapter, type TrackerAdapter } from "@agentic-pm/trackers";
 import { WorkspaceManager } from "@agentic-pm/workspaces";
@@ -74,6 +74,7 @@ interface TrackerSettings {
 
 type TrackerStateSyncReason = "run_started" | "run_failed" | "review_ready" | "setup_failed";
 type TrackerCommentKind = "run_started" | "run_failed" | "review_ready" | "setup_failed";
+type PullRequestMode = "disabled" | "local_draft" | "github_draft";
 
 interface AgentEventSeverity {
   level: EventLevel;
@@ -676,6 +677,27 @@ async function recordArtifactWarning(
   });
 }
 
+async function recordGitHubPullRequestWarning(
+  run: Run,
+  workItem: { id: string; projectId: string },
+  type: "github.pr.create_skipped" | "github.pr.create_failed",
+  message: string,
+  error: unknown
+): Promise<void> {
+  const detail = error instanceof Error ? error.message : String(error);
+  await repository.appendEvent({
+    projectId: workItem.projectId,
+    workItemId: workItem.id,
+    runId: run.id,
+    type,
+    level: "warn",
+    message,
+    payload: {
+      detail
+    }
+  });
+}
+
 async function capturePullRequestArtifact(
   input: {
     run: Run;
@@ -684,21 +706,77 @@ async function capturePullRequestArtifact(
   },
   artifacts: Artifact[]
 ): Promise<Artifact | undefined> {
-  if (process.env.AGENTIC_PM_PR_MODE === "disabled") {
+  const prMode = readPullRequestMode();
+  if (prMode === "disabled") {
     return undefined;
   }
 
   try {
+    const remoteName = readOptionalEnv("AGENTIC_PM_GITHUB_REMOTE");
     const draft = await buildPullRequestDraft({
       issueIdentifier: input.issue.identifier,
       issueTitle: input.issue.title,
       runId: input.run.id,
       workspacePath: input.run.workspacePath,
+      baseBranch: readOptionalEnv("AGENTIC_PM_GITHUB_BASE_BRANCH"),
+      remoteName,
       artifacts
     });
 
     if (!draft) {
       return undefined;
+    }
+
+    let remoteStatus: "not_requested" | "missing_config" | "created" | "failed" = "not_requested";
+    let remoteResult: GitHubPullRequestResult | undefined;
+
+    if (prMode === "github_draft") {
+      if (!remoteName) {
+        remoteStatus = "missing_config";
+        await recordGitHubPullRequestWarning(
+          input.run,
+          input.workItem,
+          "github.pr.create_skipped",
+          "GitHub PR creation skipped",
+          new Error("AGENTIC_PM_GITHUB_REMOTE is required when AGENTIC_PM_PR_MODE=github_draft")
+        );
+      } else {
+        try {
+          remoteResult = await createGitHubPullRequest({
+            workspacePath: input.run.workspacePath,
+            draft,
+            remoteName,
+            ghCommand: readOptionalEnv("AGENTIC_PM_GH_COMMAND"),
+            draftPr: readBoolean(process.env.AGENTIC_PM_GITHUB_PR_DRAFT, true)
+          });
+          remoteStatus = "created";
+          await repository.appendEvent({
+            projectId: input.workItem.projectId,
+            workItemId: input.workItem.id,
+            runId: input.run.id,
+            type: "github.pr.created",
+            level: "info",
+            message: `Created GitHub pull request for ${input.issue.identifier}`,
+            payload: {
+              baseBranch: remoteResult.baseBranch,
+              branchName: remoteResult.branchName,
+              commitSha: remoteResult.commitSha,
+              draft: remoteResult.draft,
+              remoteName: remoteResult.remoteName,
+              remotePrUrl: remoteResult.remotePrUrl
+            }
+          });
+        } catch (error) {
+          remoteStatus = "failed";
+          await recordGitHubPullRequestWarning(
+            input.run,
+            input.workItem,
+            "github.pr.create_failed",
+            "GitHub PR creation failed",
+            error
+          );
+        }
+      }
     }
 
     return registerTextArtifact({
@@ -707,16 +785,20 @@ async function capturePullRequestArtifact(
       type: "pr",
       fileName: "pull-request.md",
       summary: `Pull request draft for ${input.issue.identifier}`,
-      content: draft.markdown,
+      content: buildPullRequestArtifactContent(draft.markdown, remoteResult, remoteStatus),
       metadata: {
         baseBranch: draft.baseBranch,
         branchName: draft.branchName,
         changedFileCount: draft.changedFiles.length,
         changedFiles: draft.changedFiles,
+        commitSha: remoteResult?.commitSha,
         issueId: input.issue.id,
         issueIdentifier: input.issue.identifier,
         mergeGate: "manual",
-        mode: "local_draft",
+        mode: prMode,
+        remoteName,
+        remotePrUrl: remoteResult?.remotePrUrl,
+        remoteStatus,
         remoteUrl: draft.remoteUrl,
         title: draft.title
       }
@@ -725,6 +807,31 @@ async function capturePullRequestArtifact(
     await recordArtifactWarning(input.run, input.workItem, "Pull request draft artifact capture skipped", error);
     return undefined;
   }
+}
+
+function buildPullRequestArtifactContent(
+  draftMarkdown: string,
+  remoteResult: GitHubPullRequestResult | undefined,
+  remoteStatus: string
+): string {
+  if (!remoteResult) {
+    return draftMarkdown;
+  }
+
+  const remoteUrlLine = remoteResult.remotePrUrl
+    ? `Remote PR: ${remoteResult.remotePrUrl}`
+    : `Remote PR: created, but gh did not return a URL`;
+
+  return `${draftMarkdown}
+## Remote GitHub Pull Request
+
+Status: ${remoteStatus}
+${remoteUrlLine}
+Remote: ${remoteResult.remoteName}
+Branch: ${remoteResult.branchName}
+Commit: ${remoteResult.commitSha}
+Draft: ${remoteResult.draft ? "yes" : "no"}
+`;
 }
 
 async function syncFailureTrackerState(input: {
@@ -990,6 +1097,15 @@ function readCommaSeparatedEnv(key: string): string[] | undefined {
     .map((value) => value.trim())
     .filter(Boolean);
   return values?.length ? values : undefined;
+}
+
+function readPullRequestMode(): PullRequestMode {
+  const value = process.env.AGENTIC_PM_PR_MODE?.trim();
+  if (value === "disabled" || value === "local_draft" || value === "github_draft") {
+    return value;
+  }
+
+  return "local_draft";
 }
 
 function createTracker(): TrackerAdapter {

@@ -1,6 +1,6 @@
 # Artifact Capture Spec
 
-Status: Draft v0.1
+Status: Draft v0.2
 Date: 2026-04-29
 
 ## 1. Purpose
@@ -14,6 +14,7 @@ Covered:
 - Agent event log artifact.
 - Git patch artifact when the workspace is a git repository and has a diff.
 - Local PR draft artifact when the workspace is a git repository and has changed files.
+- Optional GitHub draft PR creation metadata when explicitly configured.
 - Review packet artifact for successful runs.
 - Artifact metadata registration in MongoDB.
 - Artifact list in the dashboard for the selected run.
@@ -70,6 +71,8 @@ The worker also captures:
 - `workspace.patch` when `git diff --patch --binary` returns content.
 - `pull-request.md` with suggested branch, commit, push, and draft PR creation commands.
 - `review-packet.md` with run metadata, review notes, risks, and captured artifacts.
+
+When `AGENTIC_PM_PR_MODE=github_draft`, the `pull-request.md` artifact also records the remote PR result. Metadata includes `mode`, `remoteStatus`, `remoteName`, `commitSha`, and `remotePrUrl` when available.
 
 ### Failure Handling
 
