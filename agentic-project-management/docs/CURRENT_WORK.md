@@ -1,7 +1,7 @@
 # Current Work
 
 Status: Living tracker
-Date: 2026-04-29
+Date: 2026-04-30
 
 ## How Work Is Tracked
 
@@ -51,11 +51,12 @@ Date: 2026-04-29
 - Live Linear configuration verification for team key and workflow states, surfaced in the Config view.
 - Live Linear workspace mapping verified against `PRA` / `Prasan-symphony` using existing workflow states: `Todo`, `In Progress`, `In Review`, `Done`, and `Canceled`.
 - Versioned TypeScript project config for non-secret Linear tracker/team/state mapping, shared by API and worker.
+- Live Linear worker smoke with fake runtime against `project_linear_live_smoke`: reconciled `PRA-1` through `PRA-4`, dispatched `PRA-3`, synced `Todo -> In Progress -> In Review`, posted Linear run comments, and captured log/review artifacts.
 
 ## In Progress
 
-- Live Linear worker smoke against the verified workspace mapping. This requires explicit operator confirmation before mutating Linear issues with state changes or comments.
+- Repository edit/archive controls with explicit confirmation.
 
 ## Next Queue
 
-- Repository edit/archive controls with explicit confirmation.
+- Configure `LINEAR_WEBHOOK_SECRET` and run a real inbound webhook smoke through a public tunnel.

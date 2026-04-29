@@ -247,6 +247,27 @@ Then confirm run events include:
 - `tracker.issue.comment_created`
 - `artifact.created`
 
+Live Linear worker smoke with fake runtime:
+
+```sh
+AGENTIC_PM_PROJECT_ID=project_linear_live_smoke \
+AGENTIC_PM_PROJECT_SLUG=linear-live-smoke \
+AGENTIC_PM_RUN_ONCE=true \
+AGENT_RUNTIME=fake \
+AGENTIC_PM_PR_MODE=local_draft \
+node apps/worker/dist/index.js
+```
+
+Verified on 2026-04-30 against `PRA` / `Prasan-symphony`:
+
+- Reconciled `PRA-1`, `PRA-2`, `PRA-3`, and `PRA-4`.
+- Dispatched `PRA-3`.
+- Synced `PRA-3` to `In Progress` for `run_started`.
+- Posted the run-started Linear comment.
+- Captured log and review packet artifacts.
+- Synced `PRA-3` to `In Review` for `review_ready`.
+- Posted the review-ready Linear comment.
+
 Webhook smoke should return `data.status: "reconciled"` for active issue payloads and create a local work item for the configured project. Replaying the exact same payload and `Linear-Delivery` should return `data.status: "duplicate"` and should not append another `tracker.issue.webhook_reconciled` event.
 
 ## 11. References
