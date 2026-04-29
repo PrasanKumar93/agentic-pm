@@ -913,6 +913,19 @@ h2 {
   font-weight: 800;
 }
 
+.row a.rowSelectLink {
+  color: var(--text);
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row a.rowSelectLink:hover {
+  color: var(--teal);
+}
+
 .actionGroup {
   display: flex;
   gap: 6px;

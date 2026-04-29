@@ -88,12 +88,20 @@ The run detail panel fetches:
 GET /runs/:runId/artifacts
 ```
 
-It renders artifact type, summary, local path suffix, and relative capture time.
+It renders artifact type, summary, local path suffix, relative capture time, and an action for readable local text artifacts.
 
-For `pr` artifacts, the dashboard also renders an action:
+For readable local text artifacts, the dashboard renders:
+
+- `Open log` for local `log` artifacts.
+- `Open patch` for local `patch` artifacts.
+- `Open draft` for local `pr` artifacts without a remote URL.
+- `Open report` for local `test_report` artifacts.
+- `Open packet` for local `review_packet` artifacts.
+- `Open plan` for local `plan` artifacts.
+
+For remote PR artifacts, the dashboard renders:
 
 - `Open PR` when artifact metadata contains `remotePrUrl`.
-- `Open draft` when no remote URL exists; this opens the stored local `pull-request.md` through the API.
 
 The API text-read endpoint is:
 

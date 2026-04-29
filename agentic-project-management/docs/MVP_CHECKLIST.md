@@ -76,3 +76,4 @@
 - [x] Create PR and review packet from agent output.
 - [x] Optionally create remote GitHub draft PRs after explicit config.
 - [x] Open PR drafts and remote PR artifacts from the dashboard.
+- [x] Open local log, patch, test report, review packet, and plan artifacts from the dashboard.

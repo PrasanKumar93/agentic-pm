@@ -244,10 +244,11 @@ It shows:
 - Latest run event timeline
 - Latest run artifacts
 
-For `pr` artifacts, the artifact row shows:
+For artifact rows, the dashboard exposes readable proof files:
 
 - `Open PR` when artifact metadata contains a remote GitHub PR URL.
 - `Open draft` when the artifact is a local draft; the link opens `GET /artifacts/:artifactId/content`.
+- `Open log`, `Open patch`, `Open report`, `Open packet`, or `Open plan` for other readable local text artifacts.
 
 If no work item is selected, show a quiet empty state.
 

@@ -708,7 +708,17 @@ export default async function DashboardPage({
                         ) : (
                           <strong>{row.issue.identifier}</strong>
                         )}
-                        <span>{row.issue.title}</span>
+                        <a
+                          className="rowSelectLink"
+                          href={buildDashboardHref({
+                            projectId: dashboard.selectedProjectId,
+                            status: statusFilter,
+                            workItemId: row.id,
+                          })}
+                          title={`Show run detail for ${row.issue.identifier}`}
+                        >
+                          {row.issue.title}
+                        </a>
                         <span className="repoCell">
                           {row.repository?.name ?? "unassigned"}
                         </span>
@@ -2048,10 +2058,6 @@ function formatWebhookResult(delivery: WebhookDeliverySummary): string {
 function getArtifactAction(
   artifact: ArtifactSummary,
 ): ArtifactAction | undefined {
-  if (artifact.type !== "pr") {
-    return undefined;
-  }
-
   const remotePrUrl = readMetadataString(artifact.metadata, "remotePrUrl");
   if (remotePrUrl) {
     return {
@@ -2061,11 +2067,32 @@ function getArtifactAction(
     };
   }
 
+  if (!isReadableLocalTextArtifact(artifact)) {
+    return undefined;
+  }
+
+  const labels: Partial<Record<ArtifactSummary["type"], string>> = {
+    log: "Open log",
+    patch: "Open patch",
+    pr: "Open draft",
+    test_report: "Open report",
+    review_packet: "Open packet",
+    plan: "Open plan",
+  };
+
   return {
     href: `${apiUrl}/artifacts/${artifact.id}/content`,
-    label: "Open draft",
-    title: "Open local pull request draft",
+    label: labels[artifact.type] ?? "Open file",
+    title: `Open ${formatArtifactType(artifact.type).toLowerCase()} artifact`,
   };
+}
+
+function isReadableLocalTextArtifact(artifact: ArtifactSummary): boolean {
+  return (
+    artifact.metadata?.local === true &&
+    artifact.type !== "screenshot" &&
+    artifact.type !== "video"
+  );
 }
 
 function readMetadataString(
