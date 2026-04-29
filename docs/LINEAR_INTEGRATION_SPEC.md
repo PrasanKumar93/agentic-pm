@@ -302,6 +302,16 @@ Mixed-runtime routing smoke verified on 2026-04-30:
 - Main git status stayed clean after both runs because agent output was isolated to generated workspaces and artifact files.
 - The Cursor half exposed an older no-repository work item. Worker dispatch now falls back to the project default repository and persists that assignment before workspace materialization.
 
+External repository routing smoke verified on 2026-04-30:
+
+- Registered `git@github.com:PrasanKumar93/test-linear-app.git` as the first/default repository for `project_linear_live_smoke`.
+- Created live Linear issues `PRA-5` for Codex and `PRA-6` for Cursor.
+- `PRA-5` was routed to Codex with `desiredRuntime=codex`; the worker ran `codex-cli` in an isolated `test-linear-app` git worktree, synced Linear to `In Progress` and then `In Review`, posted Linear comments, persisted 94 events, captured log, patch, PR draft, and review packet artifacts, and produced a passing dependency-free Node test suite.
+- `PRA-6` was routed to Cursor with `desiredRuntime=cursor`; the worker ran `cursor-cli` in a separate `test-linear-app` git worktree, synced Linear to `In Progress` and then `In Review`, posted Linear comments, persisted 73 events, captured log, patch, PR draft, and review packet artifacts, and produced a passing dependency-free Node test suite.
+- The smoke outputs were preserved on GitHub branches:
+  - `agentic/pra-5-codex-standup-summary`
+  - `agentic/pra-6-cursor-release-checklist`
+
 Webhook smoke should return `data.status: "reconciled"` for active issue payloads and create a local work item for the configured project. Replaying the exact same payload and `Linear-Delivery` should return `data.status: "duplicate"` and should not append another `tracker.issue.webhook_reconciled` event.
 
 ## 11. References

@@ -62,6 +62,8 @@ Date: 2026-04-30
 - Mixed live Linear runtime routing proof: `PRA-1` was queued with `desiredRuntime=codex` and claimed by `codex-cli`; `PRA-3` was queued with `desiredRuntime=cursor` and claimed by `cursor-cli`. Both synced Linear to `In Progress` and then `In Review`, posted run comments, persisted run events, and captured review artifacts. Main git status remained clean after both generated workspace runs.
 - Worker dispatch now falls back to the project default repository when an older queued work item lacks `repositoryId`, and persists that assignment before materializing the workspace.
 - Project root migration: removed generated smoke worktrees/artifacts, moved tracked project files from the nested `agentic-project-management/` folder to the Git root, preserved local `.env`, and documented the final root layout in `PROJECT_ROOT_MIGRATION_SPEC.md`.
+- Live `test-linear-app` routing smoke: registered `git@github.com:PrasanKumar93/test-linear-app.git` as the default repository for `project_linear_live_smoke`, created `PRA-5` for Codex and `PRA-6` for Cursor, ran both against isolated git worktrees, captured patch/PR/review artifacts, verified generated tests, and pushed the outputs to separate GitHub branches.
+- Codex runtime now injects `--cd <workspacePath>` automatically so Codex CLI treats generated git worktrees as the writable workspace root.
 
 ## In Progress
 
@@ -72,6 +74,7 @@ Date: 2026-04-30
 - Configure `LINEAR_WEBHOOK_SECRET` and run a real inbound webhook smoke through a public tunnel.
 - Repository edit/archive controls with explicit confirmation.
 - Optional outer folder rename after the active tool sandbox/workspace path is refreshed.
+- Replace manual pushed-branch smoke preservation with first-class GitHub PR creation for arbitrary registered repositories.
 
 ## Immediate Execution Order
 
@@ -82,4 +85,5 @@ Date: 2026-04-30
 5. Live Linear + Cursor runtime smoke: done on `PRA-4` with repository-backed workspace and review artifacts.
 6. Mixed-runtime routing proof with live Linear work items: done on `PRA-1` for Codex and `PRA-3` for Cursor.
 7. Project root migration: done; typecheck and build passed from the flattened Git root.
-8. Real Linear inbound webhook smoke once `LINEAR_WEBHOOK_SECRET` and a public tunnel are configured.
+8. External repository live smoke: done on `test-linear-app`; Codex produced `agentic/pra-5-codex-standup-summary`, Cursor produced `agentic/pra-6-cursor-release-checklist`, and both branches are pushed to GitHub.
+9. Real Linear inbound webhook smoke once `LINEAR_WEBHOOK_SECRET` and a public tunnel are configured.

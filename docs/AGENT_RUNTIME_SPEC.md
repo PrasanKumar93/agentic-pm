@@ -107,6 +107,7 @@ Codex inherits the hardened process behavior:
 - `CODEX_API_KEY` is passed to `codex exec` for automation. If only `OPENAI_API_KEY` is set, Symphony maps it to `CODEX_API_KEY` for the child process without changing the user's global Codex login.
 - Optional `CODEX_MODEL` inserts `-m <model>` into the `exec` command unless `CODEX_ARGS` already includes `-m` or `--model`.
 - Optional `CODEX_REASONING_EFFORT` inserts `-c model_reasoning_effort="<effort>"` before `exec` unless `CODEX_ARGS` already sets `model_reasoning_effort`.
+- `--cd <workspacePath>` is injected for each run unless `CODEX_ARGS` already includes `--cd` or `-C`. This makes generated git worktrees the explicit Codex workspace root and avoids read-only fallback behavior.
 - Prompt delivered through `stdin`.
 - `stdout` JSONL parsed into sanitized Symphony events.
 - Non-JSON `stdout` and `stderr` streamed as events.

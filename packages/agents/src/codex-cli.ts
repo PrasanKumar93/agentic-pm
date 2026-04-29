@@ -16,10 +16,13 @@ export interface CodexCliRuntimeConfig {
 
 export class CodexCliRuntime extends ProcessCliRuntime {
   constructor(config: CodexCliRuntimeConfig) {
+    const args = buildCodexArgs(config);
     super({
       name: "codex-cli",
       command: config.command,
-      args: buildCodexArgs(config),
+      args,
+      argsForInput: (input) =>
+        ensureCodexWorkspaceArg(args, input.workspacePath),
       preflightChecks: buildCodexPreflightChecks(config),
       env: config.apiKeyEnv,
       turnTimeoutMs: config.turnTimeoutMs,
@@ -44,6 +47,14 @@ export class CodexCliRuntime extends ProcessCliRuntime {
       yield event;
     }
   }
+}
+
+function ensureCodexWorkspaceArg(args: string[], workspacePath: string): string[] {
+  if (hasCdArg(args)) {
+    return args;
+  }
+
+  return insertBeforeExec(args, ["--cd", workspacePath]);
 }
 
 function buildCodexArgs(config: CodexCliRuntimeConfig): string[] {
@@ -108,6 +119,10 @@ function normalizeCodexArgs(args: string[]): string[] {
 
 function hasModelArg(args: string[]): boolean {
   return args.some((arg) => arg === "-m" || arg === "--model");
+}
+
+function hasCdArg(args: string[]): boolean {
+  return args.some((arg) => arg === "-C" || arg === "--cd");
 }
 
 function hasConfigOverrideArg(args: string[], key: string): boolean {

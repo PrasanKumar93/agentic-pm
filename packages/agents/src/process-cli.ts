@@ -36,6 +36,7 @@ export interface ProcessCliRuntimeConfig {
   name: string;
   command: string;
   args: string[];
+  argsForInput?: (input: AgentStartInput) => string[];
   promptMode?: "stdin" | "argument";
   preflightChecks?: ProcessCliPreflightCheck[];
   turnTimeoutMs: number;
@@ -91,7 +92,7 @@ export class ProcessCliRuntime implements AgentRuntime {
 
   async start(input: AgentStartInput): Promise<AgentSession> {
     const id = createId("agent");
-    const args = this.buildArgs(input.prompt);
+    const args = this.buildArgs(input);
     const child = spawn(this.config.command, args, {
       cwd: input.workspacePath,
       detached: process.platform !== "win32",
@@ -272,12 +273,14 @@ export class ProcessCliRuntime implements AgentRuntime {
     }, cancelGraceMs);
   }
 
-  private buildArgs(prompt: string): string[] {
+  private buildArgs(input: AgentStartInput): string[] {
+    const args = this.config.argsForInput?.(input) ?? this.config.args;
+
     if (this.config.promptMode === "argument") {
-      return [...this.config.args, prompt];
+      return [...args, input.prompt];
     }
 
-    return this.config.args;
+    return args;
   }
 
   private redactPromptArg(args: string[]): string[] {
