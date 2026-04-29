@@ -10,6 +10,7 @@
 - [x] Add fake and Linear tracker adapters.
 - [x] Add workspace and agent runtime interfaces.
 - [x] Add Docker Compose for MongoDB and Redis.
+- [x] Flatten project files so the Git root is the Agentic PM project root.
 
 ## Milestone 2: First Local Loop
 
