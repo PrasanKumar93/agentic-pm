@@ -52,11 +52,27 @@ Date: 2026-04-30
 - Live Linear workspace mapping verified against `PRA` / `Prasan-symphony` using existing workflow states: `Todo`, `In Progress`, `In Review`, `Done`, and `Canceled`.
 - Versioned TypeScript project config for non-secret Linear tracker/team/state mapping, shared by API and worker.
 - Live Linear worker smoke with fake runtime against `project_linear_live_smoke`: reconciled `PRA-1` through `PRA-4`, dispatched `PRA-3`, synced `Todo -> In Progress -> In Review`, posted Linear run comments, and captured log/review artifacts.
+- Live Linear worker smoke with Codex runtime against `project_linear_live_smoke`: dispatched `PRA-2`, synced `Todo -> In Progress -> In Review`, posted Linear comments, persisted 59 run events, and captured log/review artifacts. This verified the real Codex path but also exposed that tracker-ingested Linear issues need repository assignment before useful code execution.
+- Tracker-ingested work items now inherit the project default repository when the issue has no explicit repository reference.
+- Workspace materialization now resolves absolute workspace paths before creating git worktrees or spawning agent runtimes, so git and child process cwd resolution cannot drift.
+- Live Linear worker smoke with Cursor runtime against `project_linear_live_smoke`: after the absolute path fix, dispatched `PRA-4`, materialized a repository-backed git worktree, synced `Todo -> In Progress -> In Review`, posted Linear comments, persisted 97 Cursor stream events, and captured log, patch, PR draft, and review packet artifacts. A prior `PRA-1` Cursor attempt failed on the relative workspace path and correctly returned Linear to `Todo`.
 
 ## In Progress
 
-- Repository edit/archive controls with explicit confirmation.
+- Mixed live Linear runtime routing proof with dashboard-selected `desiredRuntime` values for Codex and Cursor.
 
 ## Next Queue
 
+- Verify mixed live Linear runtime routing by assigning queued work items to Codex and Cursor from the dashboard and confirming the matching worker claims each item.
 - Configure `LINEAR_WEBHOOK_SECRET` and run a real inbound webhook smoke through a public tunnel.
+- Repository edit/archive controls with explicit confirmation.
+
+## Immediate Execution Order
+
+1. Live Linear + fake runtime smoke: done on `project_linear_live_smoke`.
+2. Live Linear + Codex runtime smoke: done on `PRA-2`; runtime integration passed, but the issue had no repository binding.
+3. Project default repository fallback for tracker-ingested issues: done; `PRA-1` and `PRA-4` were backfilled with the default repo.
+4. Absolute workspace path fix for git worktree + runtime cwd: done.
+5. Live Linear + Cursor runtime smoke: done on `PRA-4` with repository-backed workspace and review artifacts.
+6. Mixed-runtime routing proof with live Linear work items: active next.
+7. Real Linear inbound webhook smoke once `LINEAR_WEBHOOK_SECRET` and a public tunnel are configured.

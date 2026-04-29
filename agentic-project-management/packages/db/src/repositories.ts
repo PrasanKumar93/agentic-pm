@@ -215,18 +215,23 @@ export class AgenticRepository {
     issue: Issue,
   ): Promise<WorkItem> {
     const now = new Date();
-    const repositoryId = issue.repoRefs[0];
+    const repositoryId = await this.resolveIssueRepositoryId(projectId, issue);
+    const repositoryPatch = repositoryId ? { repositoryId } : {};
     const workItem: WorkItem = {
       id: createId("work"),
       issueId: issue.id,
       projectId,
-      ...(repositoryId ? { repositoryId } : {}),
+      ...repositoryPatch,
       status: "queued",
       retryCount: 0,
       createdAt: now,
       updatedAt: now,
     };
-    const { updatedAt: _updatedAt, ...insertWorkItem } = workItem;
+    const {
+      repositoryId: _repositoryId,
+      updatedAt: _updatedAt,
+      ...insertWorkItem
+    } = workItem;
 
     await this.collections.workItems.updateOne(
       { projectId, issueId: issue.id },
@@ -234,6 +239,7 @@ export class AgenticRepository {
         $setOnInsert: insertWorkItem,
         $set: {
           updatedAt: now,
+          ...repositoryPatch,
         },
       },
       { upsert: true },
@@ -250,6 +256,19 @@ export class AgenticRepository {
     }
 
     return stored;
+  }
+
+  private async resolveIssueRepositoryId(
+    projectId: string,
+    issue: Issue,
+  ): Promise<string | undefined> {
+    const explicitRepositoryId = issue.repoRefs[0];
+    if (explicitRepositoryId) {
+      return explicitRepositoryId;
+    }
+
+    const project = await this.collections.projects.findOne({ id: projectId });
+    return project?.repositoryIds[0];
   }
 
   async getIssue(issueId: string): Promise<Issue | null> {

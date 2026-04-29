@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 import type { Issue } from "@agentic-pm/core";
@@ -51,6 +51,7 @@ describe("WorkspaceManager", () => {
       },
     });
 
+    expect(isAbsolute(workspacePath)).toBe(true);
     await expect(readFile(join(workspacePath, "README.md"), "utf8")).resolves.toBe(
       "hello workspace\n",
     );

@@ -63,6 +63,11 @@
 - [x] Verify Cursor Agent CLI noninteractive mode locally.
 - [x] Persist parsed runtime events through the worker event stream.
 - [x] Route work items by desired runtime for Codex/Cursor worker selection.
+- [x] Run a live Linear issue through the real Codex runtime.
+- [x] Assign project default repositories to tracker-ingested Linear work items.
+- [x] Resolve workspace paths absolutely before runtime execution.
+- [x] Run a live Linear issue through the real Cursor runtime.
+- [ ] Verify mixed Codex/Cursor routing against live Linear work items.
 - [x] Add worker-side cancellation checks.
 - [x] Add stall detection.
 - [x] Materialize selected repositories into agent workspaces.

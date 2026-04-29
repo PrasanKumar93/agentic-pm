@@ -1,6 +1,6 @@
 import { access, mkdir, readdir } from "node:fs/promises";
 import { exec, execFile } from "node:child_process";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { slugify, type Issue, type RepositorySummary } from "@agentic-pm/core";
 import type { EventSink } from "@agentic-pm/observability";
@@ -50,8 +50,8 @@ export class WorkspaceManager {
     const projectPath = slugify(projectSlug);
     const repositoryPath = repositoryName ? slugify(repositoryName) : undefined;
     return repositoryPath
-      ? join(this.options.root, projectPath, repositoryPath, workspaceName)
-      : join(this.options.root, projectPath, workspaceName);
+      ? resolve(this.options.root, projectPath, repositoryPath, workspaceName)
+      : resolve(this.options.root, projectPath, workspaceName);
   }
 
   async prepareIssueWorkspace(input: {

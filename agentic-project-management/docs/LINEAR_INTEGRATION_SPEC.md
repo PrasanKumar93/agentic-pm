@@ -268,6 +268,33 @@ Verified on 2026-04-30 against `PRA` / `Prasan-symphony`:
 - Synced `PRA-3` to `In Review` for `review_ready`.
 - Posted the review-ready Linear comment.
 
+Live Linear worker smokes with real runtimes are tracked in `CURRENT_WORK.md` in this order:
+
+1. Codex runtime against one queued Linear work item in `project_linear_live_smoke`.
+2. Cursor runtime against another queued Linear work item in `project_linear_live_smoke`.
+3. Mixed-runtime routing where dashboard-selected `desiredRuntime` values are respected by matching workers.
+
+Each real-runtime smoke should preserve the same Linear evidence as the fake smoke: local work item status, run events, artifacts, Linear state transitions, and Linear comments. Runtime-specific evidence should include parsed Codex or Cursor event entries in the run timeline.
+
+Codex runtime smoke verified on 2026-04-30:
+
+- Dispatched `PRA-2` with `codex-cli` in `project_linear_live_smoke`.
+- Synced `PRA-2` to `In Progress` for run start and `In Review` for review ready.
+- Posted Linear run-started and review-ready comments.
+- Persisted 59 run events, including parsed Codex JSON events and token usage.
+- Captured log and review packet artifacts.
+- Exposed a repository-assignment gap: Linear issues normalized from polling/webhooks do not carry repository references by default, so Codex received an empty workspace. Tracker-ingested work items should now fall back to the project default repository when the issue has no explicit `repoRefs`.
+
+Cursor runtime smoke verified on 2026-04-30:
+
+- Dispatched `PRA-4` with `cursor-cli` in `project_linear_live_smoke`.
+- Materialized a repository-backed git worktree at an absolute workspace path.
+- Synced `PRA-4` to `In Progress` for run start and `In Review` for review ready.
+- Posted Linear run-started and review-ready comments.
+- Persisted 97 run events, including Cursor `stream-json` thinking, tool, assistant, and result events.
+- Captured log, patch, local PR draft, and review packet artifacts.
+- A prior `PRA-1` Cursor attempt failed on a relative workspace path; the failure path synced the issue back to `Todo` and posted a failure comment.
+
 Webhook smoke should return `data.status: "reconciled"` for active issue payloads and create a local work item for the configured project. Replaying the exact same payload and `Linear-Delivery` should return `data.status: "duplicate"` and should not append another `tracker.issue.webhook_reconciled` event.
 
 ## 11. References

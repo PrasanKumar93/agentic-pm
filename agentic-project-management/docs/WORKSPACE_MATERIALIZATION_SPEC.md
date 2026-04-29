@@ -34,6 +34,8 @@ Repository-backed workspaces include the repository slug:
 $AGENTIC_PM_WORKSPACE_ROOT/<project-slug>/<repository-slug>/<issue-slug>
 ```
 
+The resolved workspace path must be absolute before git materialization or runtime execution. This keeps `git worktree add` and the spawned agent process aligned even when the source repository's git root is above the configured repository local path.
+
 Example:
 
 ```text
