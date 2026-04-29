@@ -17,12 +17,17 @@ This spec covers the first live data slice:
 - Run artifacts include PR draft or remote PR affordances when available.
 - Work board status filters are URL-backed and preserve operator context after actions.
 - The Audit nav exposes recent webhook delivery attempts and replay outcomes.
+- Project selection scopes work items, dispatch controls, and webhook audit rows.
 
 ## 2. Contract
 
 ### Endpoint
 
 `GET /work-items?limit=50`
+
+`GET /work-items?projectId=project_local&limit=50`
+
+`GET /projects`
 
 `GET /integrations/health`
 
@@ -68,6 +73,27 @@ This spec covers the first live data slice:
   "meta": {
     "limit": 50,
     "count": 1,
+    "projectId": "project_local",
+    "defaultProjectId": "project_local",
+    "generatedAt": "2026-04-29T12:01:05.000Z"
+  }
+}
+```
+
+Projects response:
+
+```json
+{
+  "data": [
+    {
+      "id": "project_local",
+      "name": "Local project",
+      "workItemCount": 0,
+      "isDefault": true
+    }
+  ],
+  "meta": {
+    "defaultProjectId": "project_local",
     "generatedAt": "2026-04-29T12:01:05.000Z"
   }
 }
@@ -158,9 +184,21 @@ The topbar shows a compact tracker health badge:
 
 The badge never renders API keys or secrets; it only shows configured/missing booleans and state names.
 
+### Project Selector
+
+The toolbar project switcher lists the configured default project plus observed project IDs from local orchestration data.
+
+Selecting a project writes `?projectId=<id>` to the URL and scopes:
+
+- Work item rows and metrics
+- Dispatch control state and actions
+- Webhook audit rows
+
+Switching projects preserves the active view and status filter, but clears the selected work item.
+
 ### Work Board
 
-The work board exposes status filter tabs backed by `?status=<work_item_status>`. Supported filters are:
+The work board exposes status filter tabs backed by `?projectId=<project_id>&status=<work_item_status>`. Supported filters are:
 
 - `all`
 - `queued`
@@ -172,7 +210,7 @@ The work board exposes status filter tabs backed by `?status=<work_item_status>`
 - `completed`
 - `cancelled`
 
-Each tab shows the count from the full `/work-items` response. Filtering is applied in the dashboard render, so metrics remain full-project totals while the table narrows to the selected lane.
+Each tab shows the count from the selected project's `/work-items` response. Filtering is applied in the dashboard render, so metrics remain selected-project totals while the table narrows to the selected lane.
 
 Each row shows:
 
@@ -211,11 +249,11 @@ If no work item is selected, show a quiet empty state.
 
 ### Audit View
 
-The sidebar Audit nav opens `?view=audit`.
+The sidebar Audit nav opens `?projectId=<project_id>&view=audit`.
 
 The audit view shows:
 
-- Recent `webhook_deliveries` rows across the local dashboard by default.
+- Recent `webhook_deliveries` rows for the selected project.
 - Counts for deliveries, replayed deliveries, failures, and processing deliveries.
 - Delivery id, provider, event, action, delivery status, attempt count, normalization result, and relative receive/process times.
 

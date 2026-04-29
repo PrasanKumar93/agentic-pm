@@ -27,6 +27,7 @@
 - [x] Show action result banners after dashboard actions.
 - [x] Filter dashboard work board by status lane.
 - [x] Add dry-run local smoke/test cleanup tooling.
+- [x] Scope the dashboard by selected project.
 
 ## Milestone 3: Linear Loop
 

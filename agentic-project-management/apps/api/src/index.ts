@@ -10,7 +10,7 @@ import type {
   Issue,
   OperatorActionName,
   OperatorActionResult,
-  RunEvent
+  RunEvent,
 } from "@agentic-pm/core";
 import {
   AgenticRepository,
@@ -20,15 +20,22 @@ import {
   InvalidWorkItemActionError,
   readMongoConfig,
   type WebhookDeliveryStatus,
-  WorkItemNotFoundError
+  WorkItemNotFoundError,
 } from "@agentic-pm/db";
-import { LinearTrackerAdapter, normalizeLinearIssue, type LinearIssueNode } from "@agentic-pm/trackers";
+import {
+  LinearTrackerAdapter,
+  normalizeLinearIssue,
+  type LinearIssueNode,
+} from "@agentic-pm/trackers";
 
 const host = process.env.API_HOST ?? "0.0.0.0";
 const port = Number(process.env.API_PORT ?? 4000);
 const projectId = process.env.AGENTIC_PM_PROJECT_ID ?? "project_local";
 const linearWebhookSecret = process.env.LINEAR_WEBHOOK_SECRET;
-const linearWebhookToleranceMs = readPositiveNumber(process.env.LINEAR_WEBHOOK_TOLERANCE_MS, 60_000);
+const linearWebhookToleranceMs = readPositiveNumber(
+  process.env.LINEAR_WEBHOOK_TOLERANCE_MS,
+  60_000,
+);
 
 const mongo = await connectMongo(readMongoConfig());
 const collections = getCollections(mongo.db);
@@ -36,18 +43,40 @@ await ensureIndexes(collections);
 
 const repository = new AgenticRepository(mongo.db);
 const app = Fastify({
-  logger: true
+  logger: true,
 });
-const allowedOperatorActions = new Set<OperatorActionName>(["start", "retry", "pause", "resume", "cancel", "complete"]);
-const allowedDispatchActions = new Set<DispatchActionName>(["pause", "resume", "start_eligible"]);
-const readableTextArtifactTypes = new Set<ArtifactType>(["log", "patch", "pr", "test_report", "review_packet", "plan"]);
+const allowedOperatorActions = new Set<OperatorActionName>([
+  "start",
+  "retry",
+  "pause",
+  "resume",
+  "cancel",
+  "complete",
+]);
+const allowedDispatchActions = new Set<DispatchActionName>([
+  "pause",
+  "resume",
+  "start_eligible",
+]);
+const readableTextArtifactTypes = new Set<ArtifactType>([
+  "log",
+  "patch",
+  "pr",
+  "test_report",
+  "review_packet",
+  "plan",
+]);
 type IntegrationHealthStatus = "ok" | "warn" | "error";
 type OperatorTrackerSyncReason = "operator_cancel" | "operator_complete";
 
 type OperatorTrackerSyncResult =
   | {
       attempted: false;
-      status: "not_applicable" | "disabled" | "missing_issue" | "missing_api_key";
+      status:
+        | "not_applicable"
+        | "disabled"
+        | "missing_issue"
+        | "missing_api_key";
     }
   | {
       attempted: true;
@@ -117,24 +146,28 @@ type VerificationResult =
     };
 
 app.removeContentTypeParser("application/json");
-app.addContentTypeParser("application/json", { parseAs: "buffer" }, (request, body, done) => {
-  const rawBody = body as Buffer;
-  (request as RawBodyRequest).rawBody = rawBody;
+app.addContentTypeParser(
+  "application/json",
+  { parseAs: "buffer" },
+  (request, body, done) => {
+    const rawBody = body as Buffer;
+    (request as RawBodyRequest).rawBody = rawBody;
 
-  if (rawBody.length === 0) {
-    done(null, {});
-    return;
-  }
+    if (rawBody.length === 0) {
+      done(null, {});
+      return;
+    }
 
-  try {
-    done(null, JSON.parse(rawBody.toString("utf8")));
-  } catch (error) {
-    done(error as Error, undefined);
-  }
-});
+    try {
+      done(null, JSON.parse(rawBody.toString("utf8")));
+    } catch (error) {
+      done(error as Error, undefined);
+    }
+  },
+);
 
 await app.register(cors, {
-  origin: true
+  origin: true,
 });
 
 app.get("/health", async () => {
@@ -142,7 +175,7 @@ app.get("/health", async () => {
   return {
     ok: true,
     service: "agentic-pm-api",
-    time: new Date().toISOString()
+    time: new Date().toISOString(),
   };
 });
 
@@ -150,33 +183,56 @@ app.get("/integrations/health", async () => {
   return {
     data: buildIntegrationHealth(),
     meta: {
-      generatedAt: new Date().toISOString()
-    }
+      generatedAt: new Date().toISOString(),
+    },
+  };
+});
+
+app.get("/projects", async () => {
+  return {
+    data: await repository.listProjectOptions(projectId),
+    meta: {
+      defaultProjectId: projectId,
+      generatedAt: new Date().toISOString(),
+    },
   };
 });
 
 app.get("/work-items", async (request) => {
-  const requestedLimit = Number((request.query as { limit?: string }).limit ?? 50);
-  const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 100) : 50;
-  const data = await repository.listWorkItemSummaries(limit);
+  const query = request.query as { limit?: string; projectId?: string };
+  const requestedLimit = Number(query.limit ?? 50);
+  const limit = Number.isFinite(requestedLimit)
+    ? Math.min(Math.max(requestedLimit, 1), 100)
+    : 50;
+  const requestedProjectId = readProjectId(query.projectId);
+  const data = await repository.listWorkItemSummaries(
+    limit,
+    requestedProjectId,
+  );
 
   return {
     data,
     meta: {
       limit,
       count: data.length,
-      generatedAt: new Date().toISOString()
-    }
+      projectId: requestedProjectId ?? "all",
+      defaultProjectId: projectId,
+      generatedAt: new Date().toISOString(),
+    },
   };
 });
 
-app.get("/dispatch-control", async () => {
+app.get("/dispatch-control", async (request) => {
+  const requestedProjectId =
+    readProjectId((request.query as { projectId?: string }).projectId) ??
+    projectId;
+
   return {
-    data: await repository.getDispatchControl(projectId),
+    data: await repository.getDispatchControl(requestedProjectId),
     meta: {
-      projectId,
-      generatedAt: new Date().toISOString()
-    }
+      projectId: requestedProjectId,
+      generatedAt: new Date().toISOString(),
+    },
   };
 });
 
@@ -187,28 +243,31 @@ app.post("/dispatch-control/actions/:action", async (request, reply) => {
 
   if (!allowedDispatchActions.has(action as DispatchActionName)) {
     return reply.code(400).send({
-      error: `Unknown dispatch action: ${action}`
+      error: `Unknown dispatch action: ${action}`,
     });
   }
 
   const body = (request.body ?? {}) as {
     actorId?: string;
+    projectId?: string;
     reason?: string;
   };
+  const actionProjectId = readProjectId(body.projectId) ?? projectId;
 
   const result = await repository.performDispatchAction({
-    projectId,
+    projectId: actionProjectId,
     action: action as DispatchActionName,
     actorId: body.actorId,
-    reason: body.reason
+    reason: body.reason,
   });
 
   return {
     data: result,
     meta: {
       action,
-      generatedAt: new Date().toISOString()
-    }
+      projectId: actionProjectId,
+      generatedAt: new Date().toISOString(),
+    },
   };
 });
 
@@ -220,7 +279,7 @@ app.post("/work-items/:workItemId/actions/:action", async (request, reply) => {
 
   if (!allowedOperatorActions.has(action as OperatorActionName)) {
     return reply.code(400).send({
-      error: `Unknown work item action: ${action}`
+      error: `Unknown work item action: ${action}`,
     });
   }
 
@@ -234,19 +293,19 @@ app.post("/work-items/:workItemId/actions/:action", async (request, reply) => {
       workItemId,
       action: action as OperatorActionName,
       actorId: body.actorId,
-      reason: body.reason
+      reason: body.reason,
     });
     const trackerSync = await syncOperatorActionTrackerState({
       action: action as OperatorActionName,
       actorId: body.actorId,
       reason: body.reason,
-      result
+      result,
     });
 
     const data = await repository.getWorkItemSummary(workItemId);
     if (!data) {
       return reply.code(404).send({
-        error: `Work item not found: ${workItemId}`
+        error: `Work item not found: ${workItemId}`,
       });
     }
 
@@ -255,19 +314,19 @@ app.post("/work-items/:workItemId/actions/:action", async (request, reply) => {
       meta: {
         action,
         trackerSync,
-        generatedAt: new Date().toISOString()
-      }
+        generatedAt: new Date().toISOString(),
+      },
     };
   } catch (error) {
     if (error instanceof WorkItemNotFoundError) {
       return reply.code(404).send({
-        error: error.message
+        error: error.message,
       });
     }
 
     if (error instanceof InvalidWorkItemActionError) {
       return reply.code(409).send({
-        error: error.message
+        error: error.message,
       });
     }
 
@@ -278,21 +337,23 @@ app.post("/work-items/:workItemId/actions/:action", async (request, reply) => {
 app.get("/runs/:runId/events", async (request) => {
   const { runId } = request.params as { runId: string };
   return {
-    data: await repository.listRunEvents(runId)
+    data: await repository.listRunEvents(runId),
   };
 });
 
 app.get("/runs/:runId/artifacts", async (request) => {
   const { runId } = request.params as { runId: string };
   return {
-    data: await repository.listArtifacts(runId)
+    data: await repository.listArtifacts(runId),
   };
 });
 
 app.get("/webhook-deliveries", async (request) => {
   const query = request.query as { limit?: string; projectId?: string };
   const requestedLimit = Number(query.limit ?? 50);
-  const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 100) : 50;
+  const limit = Number.isFinite(requestedLimit)
+    ? Math.min(Math.max(requestedLimit, 1), 100)
+    : 50;
   const requestedProjectId = query.projectId?.trim() || undefined;
 
   return {
@@ -300,8 +361,8 @@ app.get("/webhook-deliveries", async (request) => {
     meta: {
       limit,
       projectId: requestedProjectId ?? "all",
-      generatedAt: new Date().toISOString()
-    }
+      generatedAt: new Date().toISOString(),
+    },
   };
 });
 
@@ -311,13 +372,13 @@ app.get("/artifacts/:artifactId/content", async (request, reply) => {
 
   if (!artifact) {
     return reply.code(404).send({
-      error: `Artifact not found: ${artifactId}`
+      error: `Artifact not found: ${artifactId}`,
     });
   }
 
   if (!isReadableLocalTextArtifact(artifact)) {
     return reply.code(415).send({
-      error: `Artifact content is not readable through this endpoint: ${artifactId}`
+      error: `Artifact content is not readable through this endpoint: ${artifactId}`,
     });
   }
 
@@ -325,12 +386,15 @@ app.get("/artifacts/:artifactId/content", async (request, reply) => {
     const content = await readFile(artifact.uri, "utf8");
     return reply
       .type(contentTypeForArtifact(artifact.type))
-      .header("content-disposition", `inline; filename="${artifactFileName(artifact)}"`)
+      .header(
+        "content-disposition",
+        `inline; filename="${artifactFileName(artifact)}"`,
+      )
       .send(content);
   } catch (error) {
     app.log.warn({ artifactId, error }, "Could not read artifact content");
     return reply.code(404).send({
-      error: `Artifact content not found: ${artifactId}`
+      error: `Artifact content not found: ${artifactId}`,
     });
   }
 });
@@ -340,13 +404,13 @@ app.post("/webhooks/linear", async (request, reply) => {
   const verification = verifyLinearWebhook(request as RawBodyRequest, body);
   if (!verification.ok) {
     return reply.code(verification.statusCode).send({
-      error: verification.error
+      error: verification.error,
     });
   }
 
   const context: LinearWebhookContext = {
     deliveryId: firstHeader(request.headers["linear-delivery"]),
-    event: firstHeader(request.headers["linear-event"])
+    event: firstHeader(request.headers["linear-event"]),
   };
   const deliveryId = context.deliveryId;
 
@@ -357,7 +421,7 @@ app.post("/webhooks/linear", async (request, reply) => {
         deliveryId,
         event: context.event,
         action: body.action,
-        type: body.type
+        type: body.type,
       })
     : undefined;
 
@@ -366,7 +430,7 @@ app.post("/webhooks/linear", async (request, reply) => {
       status: "duplicate",
       deliveryId: deliveryClaim.delivery.deliveryId,
       originalStatus: deliveryClaim.delivery.status,
-      result: deliveryClaim.delivery.result
+      result: deliveryClaim.delivery.result,
     };
 
     await repository.appendEvent({
@@ -379,13 +443,13 @@ app.post("/webhooks/linear", async (request, reply) => {
         deliveryId: deliveryClaim.delivery.deliveryId,
         event: context.event,
         originalStatus: deliveryClaim.delivery.status,
-        type: body.type
-      }
+        type: body.type,
+      },
     });
 
     return {
       ok: true,
-      data: duplicateResult
+      data: duplicateResult,
     };
   }
 
@@ -401,8 +465,8 @@ app.post("/webhooks/linear", async (request, reply) => {
       deliveryStatus: context.deliveryId ? "claimed" : "missing_delivery_id",
       event: context.event,
       type: body.type,
-      url: body.url
-    }
+      url: body.url,
+    },
   });
 
   const normalization = await normalizeLinearWebhookPayload(body, context);
@@ -411,13 +475,13 @@ app.post("/webhooks/linear", async (request, reply) => {
       provider: "linear",
       deliveryId,
       status: webhookDeliveryStatusForNormalization(normalization),
-      result: webhookDeliveryResult(normalization)
+      result: webhookDeliveryResult(normalization),
     });
   }
 
   return {
     ok: true,
-    data: normalization
+    data: normalization,
   };
 });
 
@@ -432,12 +496,15 @@ process.on("SIGTERM", () => void shutdown());
 
 await app.listen({ host, port });
 
-function verifyLinearWebhook(request: RawBodyRequest, payload: LinearWebhookPayload): VerificationResult {
+function verifyLinearWebhook(
+  request: RawBodyRequest,
+  payload: LinearWebhookPayload,
+): VerificationResult {
   if (!linearWebhookSecret) {
     return {
       ok: false,
       error: "Linear webhook secret is not configured",
-      statusCode: 503
+      statusCode: 503,
     };
   }
 
@@ -446,16 +513,19 @@ function verifyLinearWebhook(request: RawBodyRequest, payload: LinearWebhookPayl
     return {
       ok: false,
       error: "Raw request body is unavailable",
-      statusCode: 400
+      statusCode: 400,
     };
   }
 
   const signature = firstHeader(request.headers["linear-signature"]);
-  if (!signature || !verifyHmacSignature(rawBody, signature, linearWebhookSecret)) {
+  if (
+    !signature ||
+    !verifyHmacSignature(rawBody, signature, linearWebhookSecret)
+  ) {
     return {
       ok: false,
       error: "Invalid Linear webhook signature",
-      statusCode: 401
+      statusCode: 401,
     };
   }
 
@@ -463,7 +533,7 @@ function verifyLinearWebhook(request: RawBodyRequest, payload: LinearWebhookPayl
     return {
       ok: false,
       error: "Linear webhook timestamp is missing",
-      statusCode: 401
+      statusCode: 401,
     };
   }
 
@@ -472,20 +542,26 @@ function verifyLinearWebhook(request: RawBodyRequest, payload: LinearWebhookPayl
     return {
       ok: false,
       error: "Linear webhook timestamp is outside the allowed tolerance",
-      statusCode: 401
+      statusCode: 401,
     };
   }
 
   return { ok: true };
 }
 
-function verifyHmacSignature(rawBody: Buffer, signature: string, secret: string): boolean {
+function verifyHmacSignature(
+  rawBody: Buffer,
+  signature: string,
+  secret: string,
+): boolean {
   if (!/^[0-9a-f]+$/i.test(signature) || signature.length !== 64) {
     return false;
   }
 
   const headerSignature = Buffer.from(signature, "hex");
-  const computedSignature = createHmac("sha256", secret).update(rawBody).digest();
+  const computedSignature = createHmac("sha256", secret)
+    .update(rawBody)
+    .digest();
 
   if (headerSignature.length !== computedSignature.length) {
     return false;
@@ -498,9 +574,19 @@ function firstHeader(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
 
-function readPositiveNumber(value: string | undefined, fallback: number): number {
+function readPositiveNumber(
+  value: string | undefined,
+  fallback: number,
+): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function readProjectId(value: string | undefined): string | undefined {
+  const projectId = value?.trim();
+  return projectId && /^[A-Za-z0-9_.:-]{1,128}$/.test(projectId)
+    ? projectId
+    : undefined;
 }
 
 async function syncOperatorActionTrackerState(input: {
@@ -513,14 +599,14 @@ async function syncOperatorActionTrackerState(input: {
   if (!stateName) {
     return {
       attempted: false,
-      status: "not_applicable"
+      status: "not_applicable",
     };
   }
 
   if ((process.env.AGENTIC_PM_TRACKER ?? "fake") !== "linear") {
     return {
       attempted: false,
-      status: "disabled"
+      status: "disabled",
     };
   }
 
@@ -536,12 +622,12 @@ async function syncOperatorActionTrackerState(input: {
         action: input.action,
         detail: "LINEAR_API_KEY is not configured",
         stateName,
-        tracker: "linear"
-      }
+        tracker: "linear",
+      },
     });
     return {
       attempted: false,
-      status: "missing_api_key"
+      status: "missing_api_key",
     };
   }
 
@@ -557,12 +643,12 @@ async function syncOperatorActionTrackerState(input: {
         action: input.action,
         detail: `Issue ${input.result.workItem.issueId} was not found`,
         stateName,
-        tracker: "linear"
-      }
+        tracker: "linear",
+      },
     });
     return {
       attempted: false,
-      status: "missing_issue"
+      status: "missing_issue",
     };
   }
 
@@ -572,13 +658,13 @@ async function syncOperatorActionTrackerState(input: {
   try {
     await tracker.moveIssue({
       issueExternalId: issue.externalId,
-      stateName
+      stateName,
     });
 
     await repository.upsertIssue({
       ...issue,
       state: stateName,
-      updatedAt: new Date()
+      updatedAt: new Date(),
     });
 
     await appendTrackerSyncEvent({
@@ -595,15 +681,15 @@ async function syncOperatorActionTrackerState(input: {
         operatorReason: input.reason,
         reason,
         stateName,
-        tracker: "linear"
-      }
+        tracker: "linear",
+      },
     });
 
     return {
       attempted: true,
       status: "synced",
       stateName,
-      tracker: "linear"
+      tracker: "linear",
     };
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
@@ -622,20 +708,22 @@ async function syncOperatorActionTrackerState(input: {
         operatorReason: input.reason,
         reason,
         stateName,
-        tracker: "linear"
-      }
+        tracker: "linear",
+      },
     });
 
     return {
       attempted: true,
       status: "failed",
       stateName,
-      tracker: "linear"
+      tracker: "linear",
     };
   }
 }
 
-function readOperatorActionTrackerState(action: OperatorActionName): string | undefined {
+function readOperatorActionTrackerState(
+  action: OperatorActionName,
+): string | undefined {
   if (action === "cancel") {
     return process.env.LINEAR_CANCELLED_STATE?.trim() || "Cancelled";
   }
@@ -647,7 +735,9 @@ function readOperatorActionTrackerState(action: OperatorActionName): string | un
   return undefined;
 }
 
-function readOperatorActionTrackerReason(action: OperatorActionName): OperatorTrackerSyncReason {
+function readOperatorActionTrackerReason(
+  action: OperatorActionName,
+): OperatorTrackerSyncReason {
   return action === "cancel" ? "operator_cancel" : "operator_complete";
 }
 
@@ -668,8 +758,8 @@ async function appendTrackerSyncEvent(input: {
     message: input.message,
     payload: {
       issueId: input.issue?.id ?? input.result.workItem.issueId,
-      ...input.payload
-    }
+      ...input.payload,
+    },
   });
 }
 
@@ -678,14 +768,22 @@ function buildIntegrationHealth() {
   const linearApiKeyConfigured = Boolean(process.env.LINEAR_API_KEY?.trim());
   const linearTeamKeyConfigured = Boolean(process.env.LINEAR_TEAM_KEY?.trim());
   const linearWebhookSecretConfigured = Boolean(linearWebhookSecret?.trim());
-  const linearActiveStates = readCommaSeparated(process.env.LINEAR_ACTIVE_STATES, ["Ready for Agent", "Changes Requested"]);
-  const linearRunningState = process.env.LINEAR_RUNNING_STATE?.trim() || "Agent Running";
-  const linearReviewState = process.env.LINEAR_REVIEW_STATE?.trim() || "Human Review";
-  const linearFailureState = process.env.LINEAR_FAILURE_STATE?.trim() || "Changes Requested";
+  const linearActiveStates = readCommaSeparated(
+    process.env.LINEAR_ACTIVE_STATES,
+    ["Ready for Agent", "Changes Requested"],
+  );
+  const linearRunningState =
+    process.env.LINEAR_RUNNING_STATE?.trim() || "Agent Running";
+  const linearReviewState =
+    process.env.LINEAR_REVIEW_STATE?.trim() || "Human Review";
+  const linearFailureState =
+    process.env.LINEAR_FAILURE_STATE?.trim() || "Changes Requested";
   const linearDoneState = process.env.LINEAR_DONE_STATE?.trim() || "Done";
-  const linearCancelledState = process.env.LINEAR_CANCELLED_STATE?.trim() || "Cancelled";
+  const linearCancelledState =
+    process.env.LINEAR_CANCELLED_STATE?.trim() || "Cancelled";
   const linearEnabled = trackerKind === "linear";
-  const missingRequired = linearEnabled && (!linearApiKeyConfigured || !linearTeamKeyConfigured);
+  const missingRequired =
+    linearEnabled && (!linearApiKeyConfigured || !linearTeamKeyConfigured);
   const status: IntegrationHealthStatus = !linearEnabled
     ? "ok"
     : missingRequired
@@ -705,7 +803,7 @@ function buildIntegrationHealth() {
     tracker: {
       kind: trackerKind,
       status,
-      message
+      message,
     },
     linear: {
       enabled: linearEnabled,
@@ -719,12 +817,15 @@ function buildIntegrationHealth() {
       reviewState: linearReviewState,
       failureState: linearFailureState,
       doneState: linearDoneState,
-      cancelledState: linearCancelledState
-    }
+      cancelledState: linearCancelledState,
+    },
   };
 }
 
-function readCommaSeparated(value: string | undefined, fallback: string[]): string[] {
+function readCommaSeparated(
+  value: string | undefined,
+  fallback: string[],
+): string[] {
   const parsed = value
     ?.split(",")
     .map((item) => item.trim())
@@ -734,12 +835,12 @@ function readCommaSeparated(value: string | undefined, fallback: string[]): stri
 
 async function normalizeLinearWebhookPayload(
   payload: LinearWebhookPayload,
-  context: LinearWebhookContext
+  context: LinearWebhookContext,
 ): Promise<LinearWebhookNormalizationResult> {
   if (payload.type !== "Issue" && context.event !== "Issue") {
     return {
       status: "ignored",
-      reason: "not_issue_event"
+      reason: "not_issue_event",
     };
   }
 
@@ -754,12 +855,12 @@ async function normalizeLinearWebhookPayload(
         deliveryId: context.deliveryId,
         event: context.event,
         reason: "unsupported_action",
-        type: payload.type
-      }
+        type: payload.type,
+      },
     });
     return {
       status: "ignored",
-      reason: "unsupported_action"
+      reason: "unsupported_action",
     };
   }
 
@@ -774,22 +875,27 @@ async function normalizeLinearWebhookPayload(
         deliveryId: context.deliveryId,
         event: context.event,
         reason: "invalid_issue_payload",
-        type: payload.type
-      }
+        type: payload.type,
+      },
     });
     return {
       status: "failed",
-      reason: "invalid_issue_payload"
+      reason: "invalid_issue_payload",
     };
   }
 
   const issue = normalizeLinearIssue(payload.data, {
-    fallbackUrl: payload.url
+    fallbackUrl: payload.url,
   });
   const storedIssue = await repository.upsertIssue(issue);
-  const activeStates = readCommaSeparated(process.env.LINEAR_ACTIVE_STATES, ["Ready for Agent", "Changes Requested"]);
+  const activeStates = readCommaSeparated(process.env.LINEAR_ACTIVE_STATES, [
+    "Ready for Agent",
+    "Changes Requested",
+  ]);
   const active = activeStates.includes(storedIssue.state);
-  const workItem = active ? await repository.ensureWorkItemForIssue(projectId, storedIssue) : undefined;
+  const workItem = active
+    ? await repository.ensureWorkItemForIssue(projectId, storedIssue)
+    : undefined;
 
   await repository.appendEvent({
     projectId,
@@ -810,8 +916,8 @@ async function normalizeLinearWebhookPayload(
       type: payload.type,
       updatedFrom: payload.updatedFrom,
       webhookId: payload.webhookId,
-      workItemId: workItem?.id
-    }
+      workItemId: workItem?.id,
+    },
   });
 
   return {
@@ -821,7 +927,7 @@ async function normalizeLinearWebhookPayload(
     issueIdentifier: storedIssue.identifier,
     issueExternalId: storedIssue.externalId,
     state: storedIssue.state,
-    workItemId: workItem?.id
+    workItemId: workItem?.id,
   };
 }
 
@@ -844,7 +950,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function webhookDeliveryStatusForNormalization(result: LinearWebhookNormalizationResult): WebhookDeliveryStatus {
+function webhookDeliveryStatusForNormalization(
+  result: LinearWebhookNormalizationResult,
+): WebhookDeliveryStatus {
   switch (result.status) {
     case "reconciled":
       return "processed";
@@ -855,7 +963,9 @@ function webhookDeliveryStatusForNormalization(result: LinearWebhookNormalizatio
   }
 }
 
-function webhookDeliveryResult(result: LinearWebhookNormalizationResult): Record<string, unknown> {
+function webhookDeliveryResult(
+  result: LinearWebhookNormalizationResult,
+): Record<string, unknown> {
   switch (result.status) {
     case "reconciled":
       return {
@@ -865,23 +975,26 @@ function webhookDeliveryResult(result: LinearWebhookNormalizationResult): Record
         issueId: result.issueId,
         issueIdentifier: result.issueIdentifier,
         state: result.state,
-        ...(result.workItemId ? { workItemId: result.workItemId } : {})
+        ...(result.workItemId ? { workItemId: result.workItemId } : {}),
       };
     case "ignored":
       return {
         status: result.status,
-        reason: result.reason
+        reason: result.reason,
       };
     case "failed":
       return {
         status: result.status,
-        reason: result.reason
+        reason: result.reason,
       };
   }
 }
 
 function isReadableLocalTextArtifact(artifact: Artifact): boolean {
-  return artifact.metadata?.local === true && readableTextArtifactTypes.has(artifact.type);
+  return (
+    artifact.metadata?.local === true &&
+    readableTextArtifactTypes.has(artifact.type)
+  );
 }
 
 function contentTypeForArtifact(type: ArtifactType): string {
@@ -910,8 +1023,11 @@ function artifactFileName(artifact: Artifact): string {
     video: "video",
     test_report: "test-report.txt",
     review_packet: "review-packet.md",
-    plan: "plan.md"
+    plan: "plan.md",
   };
 
-  return `${artifact.id}-${fileNameByType[artifact.type]}`.replace(/[^a-zA-Z0-9._-]/g, "_");
+  return `${artifact.id}-${fileNameByType[artifact.type]}`.replace(
+    /[^a-zA-Z0-9._-]/g,
+    "_",
+  );
 }

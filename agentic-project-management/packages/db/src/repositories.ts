@@ -13,17 +13,27 @@ import {
   type RunEvent,
   type WorkItem,
   type WorkItemStatus,
-  type WorkItemSummary
+  type WorkItemSummary,
 } from "@agentic-pm/core";
 import {
   getCollections,
   type AgenticCollections,
   type WebhookDelivery,
-  type WebhookDeliveryStatus
+  type WebhookDeliveryStatus,
 } from "./collections.js";
 
-const activeRunStatuses: Run["status"][] = ["preparing", "running", "stalled", "retrying"];
-const startEligibleStatuses: WorkItemStatus[] = ["paused", "blocked", "failed", "cancelled"];
+const activeRunStatuses: Run["status"][] = [
+  "preparing",
+  "running",
+  "stalled",
+  "retrying",
+];
+const startEligibleStatuses: WorkItemStatus[] = [
+  "paused",
+  "blocked",
+  "failed",
+  "cancelled",
+];
 
 export class WorkItemNotFoundError extends Error {
   constructor(workItemId: string) {
@@ -51,6 +61,14 @@ export interface WebhookDeliveryClaimResult {
   delivery: WebhookDelivery;
 }
 
+export interface ProjectOption {
+  id: string;
+  name: string;
+  slug?: string;
+  workItemCount: number;
+  isDefault: boolean;
+}
+
 export class AgenticRepository {
   readonly collections: AgenticCollections;
 
@@ -63,19 +81,19 @@ export class AgenticRepository {
     const nextIssue = {
       ...issue,
       updatedAt: now,
-      createdAt: issue.createdAt ?? now
+      createdAt: issue.createdAt ?? now,
     };
     const { id, createdAt, ...mutableIssue } = nextIssue;
 
     await this.collections.issues.updateOne(
       { tracker: issue.tracker, externalId: issue.externalId },
       { $set: mutableIssue, $setOnInsert: { id, createdAt } },
-      { upsert: true }
+      { upsert: true },
     );
 
     const stored = await this.collections.issues.findOne({
       tracker: issue.tracker,
-      externalId: issue.externalId
+      externalId: issue.externalId,
     });
 
     if (!stored) {
@@ -85,7 +103,10 @@ export class AgenticRepository {
     return stored;
   }
 
-  async ensureWorkItemForIssue(projectId: string, issue: Issue): Promise<WorkItem> {
+  async ensureWorkItemForIssue(
+    projectId: string,
+    issue: Issue,
+  ): Promise<WorkItem> {
     const now = new Date();
     const workItem: WorkItem = {
       id: createId("work"),
@@ -94,7 +115,7 @@ export class AgenticRepository {
       status: "queued",
       retryCount: 0,
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
     };
     const { updatedAt: _updatedAt, ...insertWorkItem } = workItem;
 
@@ -103,15 +124,20 @@ export class AgenticRepository {
       {
         $setOnInsert: insertWorkItem,
         $set: {
-          updatedAt: now
-        }
+          updatedAt: now,
+        },
       },
-      { upsert: true }
+      { upsert: true },
     );
 
-    const stored = await this.collections.workItems.findOne({ projectId, issueId: issue.id });
+    const stored = await this.collections.workItems.findOne({
+      projectId,
+      issueId: issue.id,
+    });
     if (!stored) {
-      throw new Error(`Work item for issue ${issue.identifier} was not found after upsert`);
+      throw new Error(
+        `Work item for issue ${issue.identifier} was not found after upsert`,
+      );
     }
 
     return stored;
@@ -121,26 +147,81 @@ export class AgenticRepository {
     return this.collections.issues.findOne({ id: issueId });
   }
 
-  async listWorkItems(limit = 50): Promise<WorkItem[]> {
+  async listWorkItems(limit = 50, projectId?: string): Promise<WorkItem[]> {
     return this.collections.workItems
-      .find({})
+      .find(projectId ? { projectId } : {})
       .sort({ updatedAt: -1 })
       .limit(limit)
       .toArray();
   }
 
-  async listWorkItemSummaries(limit = 50): Promise<WorkItemSummary[]> {
-    const workItems = await this.listWorkItems(limit);
-    return Promise.all(workItems.map((workItem) => this.toWorkItemSummary(workItem)));
+  async listWorkItemSummaries(
+    limit = 50,
+    projectId?: string,
+  ): Promise<WorkItemSummary[]> {
+    const workItems = await this.listWorkItems(limit, projectId);
+    return Promise.all(
+      workItems.map((workItem) => this.toWorkItemSummary(workItem)),
+    );
   }
 
-  async getWorkItemSummary(workItemId: string): Promise<WorkItemSummary | null> {
-    const workItem = await this.collections.workItems.findOne({ id: workItemId });
+  async listProjectOptions(defaultProjectId: string): Promise<ProjectOption[]> {
+    const [storedProjects, observedProjectIds] = await Promise.all([
+      this.collections.projects.find({}, { projection: { _id: 0 } }).toArray(),
+      this.listObservedProjectIds(defaultProjectId),
+    ]);
+    const storedById = new Map(
+      storedProjects.map((project) => [project.id, project]),
+    );
+    const projectIds = [
+      ...new Set([
+        defaultProjectId,
+        ...observedProjectIds,
+        ...storedById.keys(),
+      ]),
+    ];
+
+    const options = await Promise.all(
+      projectIds.map(async (id) => {
+        const project = storedById.get(id);
+        return {
+          id,
+          name: project?.name ?? formatProjectName(id),
+          slug: project?.slug,
+          workItemCount: await this.collections.workItems.countDocuments({
+            projectId: id,
+          }),
+          isDefault: id === defaultProjectId,
+        };
+      }),
+    );
+
+    return options.sort((left, right) => {
+      if (left.isDefault !== right.isDefault) {
+        return left.isDefault ? -1 : 1;
+      }
+
+      if (left.workItemCount !== right.workItemCount) {
+        return right.workItemCount - left.workItemCount;
+      }
+
+      return left.name.localeCompare(right.name);
+    });
+  }
+
+  async getWorkItemSummary(
+    workItemId: string,
+  ): Promise<WorkItemSummary | null> {
+    const workItem = await this.collections.workItems.findOne({
+      id: workItemId,
+    });
     return workItem ? this.toWorkItemSummary(workItem) : null;
   }
 
   async getDispatchControl(projectId: string): Promise<DispatchControl> {
-    const existing = await this.collections.dispatchControls.findOne({ projectId });
+    const existing = await this.collections.dispatchControls.findOne({
+      projectId,
+    });
     if (existing) {
       return this.toDispatchControl(existing);
     }
@@ -150,26 +231,31 @@ export class AgenticRepository {
       projectId,
       paused: false,
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
     };
   }
 
   async isDispatchPaused(projectId: string): Promise<boolean> {
-    const control = await this.collections.dispatchControls.findOne({ projectId });
+    const control = await this.collections.dispatchControls.findOne({
+      projectId,
+    });
     return control?.paused ?? false;
   }
 
-  async getRunStopRequest(input: { runId: string; workItemId: string }): Promise<RunStopRequest> {
+  async getRunStopRequest(input: {
+    runId: string;
+    workItemId: string;
+  }): Promise<RunStopRequest> {
     const [run, workItem] = await Promise.all([
       this.collections.runs.findOne({ id: input.runId }),
-      this.collections.workItems.findOne({ id: input.workItemId })
+      this.collections.workItems.findOne({ id: input.workItemId }),
     ]);
 
     if (!workItem) {
       return {
         shouldStop: true,
         reason: `work item ${input.workItemId} is no longer available`,
-        runStatus: run?.status
+        runStatus: run?.status,
       };
     }
 
@@ -178,7 +264,7 @@ export class AgenticRepository {
         shouldStop: true,
         reason: run.exitReason ?? "run was cancelled",
         runStatus: run.status,
-        workItemStatus: workItem.status
+        workItemStatus: workItem.status,
       };
     }
 
@@ -187,7 +273,7 @@ export class AgenticRepository {
         shouldStop: true,
         reason: "work item was cancelled",
         runStatus: run?.status,
-        workItemStatus: workItem.status
+        workItemStatus: workItem.status,
       };
     }
 
@@ -196,35 +282,42 @@ export class AgenticRepository {
         shouldStop: true,
         reason: "work item was paused",
         runStatus: run?.status,
-        workItemStatus: workItem.status
+        workItemStatus: workItem.status,
       };
     }
 
     return {
       shouldStop: false,
       runStatus: run?.status,
-      workItemStatus: workItem.status
+      workItemStatus: workItem.status,
     };
   }
 
-  async claimNextQueuedWorkItem(projectId: string, workerId: string, now = new Date()): Promise<WorkItem | null> {
+  async claimNextQueuedWorkItem(
+    projectId: string,
+    workerId: string,
+    now = new Date(),
+  ): Promise<WorkItem | null> {
     const claimed = await this.collections.workItems.findOneAndUpdate(
       {
         projectId,
         status: "queued",
-        $or: [{ nextAttemptAt: { $exists: false } }, { nextAttemptAt: { $lte: now } }]
+        $or: [
+          { nextAttemptAt: { $exists: false } },
+          { nextAttemptAt: { $lte: now } },
+        ],
       },
       {
         $set: {
           status: "running",
           claimedBy: workerId,
-          updatedAt: now
-        }
+          updatedAt: now,
+        },
       },
       {
         sort: { retryCount: 1, updatedAt: 1 },
-        returnDocument: "after"
-      }
+        returnDocument: "after",
+      },
     );
 
     return claimed;
@@ -245,7 +338,7 @@ export class AgenticRepository {
       status: "preparing",
       startedAt: now,
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
     };
 
     await this.collections.runs.insertOne(run);
@@ -254,15 +347,19 @@ export class AgenticRepository {
       {
         $set: {
           lastRunId: run.id,
-          updatedAt: now
-        }
-      }
+          updatedAt: now,
+        },
+      },
     );
 
     return run;
   }
 
-  async setRunStatus(runId: string, status: Run["status"], exitReason?: string): Promise<void> {
+  async setRunStatus(
+    runId: string,
+    status: Run["status"],
+    exitReason?: string,
+  ): Promise<void> {
     const now = new Date();
     await this.collections.runs.updateOne(
       { id: runId },
@@ -271,11 +368,14 @@ export class AgenticRepository {
           status,
           exitReason,
           updatedAt: now,
-          ...(status === "completed" || status === "failed" || status === "cancelled" || status === "waiting_for_review"
+          ...(status === "completed" ||
+          status === "failed" ||
+          status === "cancelled" ||
+          status === "waiting_for_review"
             ? { endedAt: now }
-            : {})
-        }
-      }
+            : {}),
+        },
+      },
     );
   }
 
@@ -286,13 +386,17 @@ export class AgenticRepository {
       {
         $set: {
           lastHeartbeatAt: now,
-          updatedAt: now
-        }
-      }
+          updatedAt: now,
+        },
+      },
     );
   }
 
-  async scheduleRetry(workItemId: string, retryCount: number, maxBackoffMs: number): Promise<void> {
+  async scheduleRetry(
+    workItemId: string,
+    retryCount: number,
+    maxBackoffMs: number,
+  ): Promise<void> {
     const now = new Date();
     await this.collections.workItems.updateOne(
       { id: workItemId },
@@ -301,27 +405,30 @@ export class AgenticRepository {
           status: "queued",
           retryCount,
           nextAttemptAt: nextRetryAt(retryCount, maxBackoffMs, now),
-          updatedAt: now
+          updatedAt: now,
         },
         $unset: {
-          claimedBy: ""
-        }
-      }
+          claimedBy: "",
+        },
+      },
     );
   }
 
-  async markWorkItemStatus(workItemId: string, status: WorkItem["status"]): Promise<void> {
+  async markWorkItemStatus(
+    workItemId: string,
+    status: WorkItem["status"],
+  ): Promise<void> {
     await this.collections.workItems.updateOne(
       { id: workItemId },
       {
         $set: {
           status,
-          updatedAt: new Date()
+          updatedAt: new Date(),
         },
         $unset: {
-          claimedBy: ""
-        }
-      }
+          claimedBy: "",
+        },
+      },
     );
   }
 
@@ -331,7 +438,9 @@ export class AgenticRepository {
     actorId?: string;
     reason?: string;
   }): Promise<OperatorActionResult> {
-    const workItem = await this.collections.workItems.findOne({ id: input.workItemId });
+    const workItem = await this.collections.workItems.findOne({
+      id: input.workItemId,
+    });
     if (!workItem) {
       throw new WorkItemNotFoundError(input.workItemId);
     }
@@ -345,7 +454,7 @@ export class AgenticRepository {
       workItem,
       action: input.action,
       toStatus: transition.toStatus,
-      now
+      now,
     });
 
     await this.collections.workItems.updateOne({ id: workItem.id }, update);
@@ -354,16 +463,16 @@ export class AgenticRepository {
       await this.collections.runs.updateOne(
         {
           id: workItem.lastRunId,
-          status: { $in: activeRunStatuses }
+          status: { $in: activeRunStatuses },
         },
         {
           $set: {
             status: "cancelled",
             exitReason: `cancelled by ${actorId}`,
             endedAt: now,
-            updatedAt: now
-          }
-        }
+            updatedAt: now,
+          },
+        },
       );
     }
 
@@ -371,16 +480,16 @@ export class AgenticRepository {
       await this.collections.runs.updateOne(
         {
           id: workItem.lastRunId,
-          status: "waiting_for_review"
+          status: "waiting_for_review",
         },
         {
           $set: {
             status: "completed",
             exitReason: `completed by ${actorId} after manual review`,
             endedAt: now,
-            updatedAt: now
-          }
-        }
+            updatedAt: now,
+          },
+        },
       );
     }
 
@@ -394,9 +503,9 @@ export class AgenticRepository {
       payload: {
         reason: input.reason,
         fromStatus,
-        toStatus: transition.toStatus
+        toStatus: transition.toStatus,
       },
-      createdAt: now
+      createdAt: now,
     });
 
     await this.appendEvent({
@@ -410,12 +519,14 @@ export class AgenticRepository {
         actorId,
         reason: input.reason,
         fromStatus,
-        toStatus: transition.toStatus
+        toStatus: transition.toStatus,
       },
-      createdAt: now
+      createdAt: now,
     });
 
-    const updated = await this.collections.workItems.findOne({ id: workItem.id });
+    const updated = await this.collections.workItems.findOne({
+      id: workItem.id,
+    });
     if (!updated) {
       throw new WorkItemNotFoundError(workItem.id);
     }
@@ -425,7 +536,7 @@ export class AgenticRepository {
       workItem: updated,
       fromStatus,
       toStatus: updated.status,
-      message: transition.message
+      message: transition.message,
     };
   }
 
@@ -442,18 +553,18 @@ export class AgenticRepository {
       const result = await this.collections.workItems.updateMany(
         {
           projectId: input.projectId,
-          status: { $in: startEligibleStatuses }
+          status: { $in: startEligibleStatuses },
         },
         {
           $set: {
             status: "queued",
-            updatedAt: now
+            updatedAt: now,
           },
           $unset: {
             claimedBy: "",
-            nextAttemptAt: ""
-          }
-        }
+            nextAttemptAt: "",
+          },
+        },
       );
 
       await this.recordDispatchAction({
@@ -462,14 +573,14 @@ export class AgenticRepository {
         action: input.action,
         reason: input.reason,
         affectedWorkItemCount: result.modifiedCount,
-        createdAt: now
+        createdAt: now,
       });
 
       return {
         action: input.action,
         dispatch: await this.getDispatchControl(input.projectId),
         affectedWorkItemCount: result.modifiedCount,
-        message: `Queued ${result.modifiedCount} eligible work items`
+        message: `Queued ${result.modifiedCount} eligible work items`,
       };
     }
 
@@ -482,30 +593,34 @@ export class AgenticRepository {
               pausedBy: actorId,
               pausedReason: input.reason,
               pausedAt: now,
-              updatedAt: now
+              updatedAt: now,
             },
             $setOnInsert: {
               projectId: input.projectId,
-              createdAt: now
-            }
+              createdAt: now,
+            },
           }
         : {
             $set: {
               paused,
-              updatedAt: now
+              updatedAt: now,
             },
             $setOnInsert: {
               projectId: input.projectId,
-              createdAt: now
+              createdAt: now,
             },
             $unset: {
               pausedBy: "" as const,
               pausedReason: "" as const,
-              pausedAt: "" as const
-            }
+              pausedAt: "" as const,
+            },
           };
 
-    await this.collections.dispatchControls.updateOne({ projectId: input.projectId }, update, { upsert: true });
+    await this.collections.dispatchControls.updateOne(
+      { projectId: input.projectId },
+      update,
+      { upsert: true },
+    );
 
     await this.recordDispatchAction({
       projectId: input.projectId,
@@ -513,22 +628,27 @@ export class AgenticRepository {
       action: input.action,
       reason: input.reason,
       affectedWorkItemCount: 0,
-      createdAt: now
+      createdAt: now,
     });
 
     return {
       action: input.action,
       dispatch: await this.getDispatchControl(input.projectId),
       affectedWorkItemCount: 0,
-      message: paused ? "Dispatch paused" : "Dispatch resumed"
+      message: paused ? "Dispatch paused" : "Dispatch resumed",
     };
   }
 
-  async appendEvent(event: Omit<RunEvent, "id" | "createdAt"> & { id?: string; createdAt?: Date }): Promise<RunEvent> {
+  async appendEvent(
+    event: Omit<RunEvent, "id" | "createdAt"> & {
+      id?: string;
+      createdAt?: Date;
+    },
+  ): Promise<RunEvent> {
     const stored: RunEvent = {
       ...event,
       id: event.id ?? createId("evt"),
-      createdAt: event.createdAt ?? new Date()
+      createdAt: event.createdAt ?? new Date(),
     };
 
     await this.collections.runEvents.insertOne(stored);
@@ -553,15 +673,40 @@ export class AgenticRepository {
   }
 
   async listArtifacts(runId: string): Promise<Artifact[]> {
-    return this.collections.artifacts.find({ runId }).sort({ createdAt: 1 }).toArray();
+    return this.collections.artifacts
+      .find({ runId })
+      .sort({ createdAt: 1 })
+      .toArray();
   }
 
-  async listWebhookDeliveries(limit = 50, projectId?: string): Promise<WebhookDelivery[]> {
+  async listWebhookDeliveries(
+    limit = 50,
+    projectId?: string,
+  ): Promise<WebhookDelivery[]> {
     return this.collections.webhookDeliveries
       .find(projectId ? { projectId } : {}, { projection: { _id: 0 } })
       .sort({ lastReceivedAt: -1 })
       .limit(limit)
       .toArray();
+  }
+
+  private async listObservedProjectIds(
+    defaultProjectId: string,
+  ): Promise<string[]> {
+    const sources = await Promise.all([
+      this.collections.workItems.distinct("projectId"),
+      this.collections.runEvents.distinct("projectId"),
+      this.collections.operatorActions.distinct("projectId"),
+      this.collections.dispatchControls.distinct("projectId"),
+      this.collections.webhookDeliveries.distinct("projectId"),
+    ]);
+
+    return [
+      ...new Set([
+        defaultProjectId,
+        ...sources.flat().filter(isNonEmptyString),
+      ]),
+    ].sort((left, right) => left.localeCompare(right));
   }
 
   async claimWebhookDelivery(input: {
@@ -576,12 +721,12 @@ export class AgenticRepository {
     const result = await this.collections.webhookDeliveries.updateOne(
       {
         provider: input.provider,
-        deliveryId: input.deliveryId
+        deliveryId: input.deliveryId,
       },
       {
         $set: {
           lastReceivedAt: now,
-          updatedAt: now
+          updatedAt: now,
         },
         $setOnInsert: {
           id: createId("whd"),
@@ -593,27 +738,29 @@ export class AgenticRepository {
           type: input.type,
           status: "processing",
           firstReceivedAt: now,
-          createdAt: now
+          createdAt: now,
         },
         $inc: {
-          attemptCount: 1
-        }
+          attemptCount: 1,
+        },
       },
-      { upsert: true }
+      { upsert: true },
     );
 
     const delivery = await this.collections.webhookDeliveries.findOne({
       provider: input.provider,
-      deliveryId: input.deliveryId
+      deliveryId: input.deliveryId,
     });
 
     if (!delivery) {
-      throw new Error(`Webhook delivery ${input.provider}:${input.deliveryId} was not found after claim`);
+      throw new Error(
+        `Webhook delivery ${input.provider}:${input.deliveryId} was not found after claim`,
+      );
     }
 
     return {
       claimed: result.upsertedCount === 1,
-      delivery
+      delivery,
     };
   }
 
@@ -627,16 +774,16 @@ export class AgenticRepository {
     await this.collections.webhookDeliveries.updateOne(
       {
         provider: input.provider,
-        deliveryId: input.deliveryId
+        deliveryId: input.deliveryId,
       },
       {
         $set: {
           status: input.status,
           result: input.result,
           processedAt: now,
-          updatedAt: now
-        }
-      }
+          updatedAt: now,
+        },
+      },
     );
   }
 
@@ -655,9 +802,9 @@ export class AgenticRepository {
       action: `dispatch.${input.action}`,
       payload: {
         reason: input.reason,
-        affectedWorkItemCount: input.affectedWorkItemCount
+        affectedWorkItemCount: input.affectedWorkItemCount,
       },
-      createdAt: input.createdAt
+      createdAt: input.createdAt,
     });
 
     await this.appendEvent({
@@ -668,31 +815,37 @@ export class AgenticRepository {
       payload: {
         actorId: input.actorId,
         reason: input.reason,
-        affectedWorkItemCount: input.affectedWorkItemCount
+        affectedWorkItemCount: input.affectedWorkItemCount,
       },
-      createdAt: input.createdAt
+      createdAt: input.createdAt,
     });
   }
 
-  private toDispatchControl(dispatch: DispatchControl | WithId<DispatchControl>): DispatchControl {
+  private toDispatchControl(
+    dispatch: DispatchControl | WithId<DispatchControl>,
+  ): DispatchControl {
     const { _id: _ignored, ...control } = dispatch as WithId<DispatchControl>;
     return control;
   }
 
   private resolveActionTransition(
     workItem: WorkItem,
-    action: OperatorActionName
+    action: OperatorActionName,
   ): { toStatus: WorkItemStatus; message: string } {
     const status = workItem.status;
 
     if (status === "completed") {
-      throw new InvalidWorkItemActionError("Completed work items cannot be changed by operator actions");
+      throw new InvalidWorkItemActionError(
+        "Completed work items cannot be changed by operator actions",
+      );
     }
 
     switch (action) {
       case "start":
         if (status === "running") {
-          throw new InvalidWorkItemActionError("Cannot start a running work item");
+          throw new InvalidWorkItemActionError(
+            "Cannot start a running work item",
+          );
         }
         if (status === "queued") {
           return { toStatus: "queued", message: "Work item is already queued" };
@@ -701,7 +854,9 @@ export class AgenticRepository {
 
       case "retry":
         if (status === "running") {
-          throw new InvalidWorkItemActionError("Cannot retry a running work item");
+          throw new InvalidWorkItemActionError(
+            "Cannot retry a running work item",
+          );
         }
         if (status === "queued") {
           return { toStatus: "queued", message: "Work item is already queued" };
@@ -710,7 +865,9 @@ export class AgenticRepository {
 
       case "pause":
         if (status === "cancelled") {
-          throw new InvalidWorkItemActionError("Cannot pause a cancelled work item");
+          throw new InvalidWorkItemActionError(
+            "Cannot pause a cancelled work item",
+          );
         }
         if (status === "paused") {
           return { toStatus: "paused", message: "Work item is already paused" };
@@ -718,8 +875,14 @@ export class AgenticRepository {
         return { toStatus: "paused", message: "Work item paused" };
 
       case "resume":
-        if (status !== "paused" && status !== "blocked" && status !== "queued") {
-          throw new InvalidWorkItemActionError(`Cannot resume a ${status} work item`);
+        if (
+          status !== "paused" &&
+          status !== "blocked" &&
+          status !== "queued"
+        ) {
+          throw new InvalidWorkItemActionError(
+            `Cannot resume a ${status} work item`,
+          );
         }
         if (status === "queued") {
           return { toStatus: "queued", message: "Work item is already queued" };
@@ -728,15 +891,23 @@ export class AgenticRepository {
 
       case "cancel":
         if (status === "cancelled") {
-          return { toStatus: "cancelled", message: "Work item is already cancelled" };
+          return {
+            toStatus: "cancelled",
+            message: "Work item is already cancelled",
+          };
         }
         return { toStatus: "cancelled", message: "Work item cancelled" };
 
       case "complete":
         if (status !== "waiting_for_review") {
-          throw new InvalidWorkItemActionError(`Cannot complete a ${status} work item`);
+          throw new InvalidWorkItemActionError(
+            `Cannot complete a ${status} work item`,
+          );
         }
-        return { toStatus: "completed", message: "Work item marked complete after manual review" };
+        return {
+          toStatus: "completed",
+          message: "Work item marked complete after manual review",
+        };
     }
   }
 
@@ -746,33 +917,44 @@ export class AgenticRepository {
     toStatus: WorkItemStatus;
     now: Date;
   }) {
-    const retryIncrement = input.action === "retry" && input.workItem.status !== "queued" ? 1 : 0;
+    const retryIncrement =
+      input.action === "retry" && input.workItem.status !== "queued" ? 1 : 0;
 
     return {
       $set: {
         status: input.toStatus,
         retryCount: input.workItem.retryCount + retryIncrement,
-        updatedAt: input.now
+        updatedAt: input.now,
       },
       $unset: {
         claimedBy: "" as const,
-        nextAttemptAt: "" as const
-      }
+        nextAttemptAt: "" as const,
+      },
     };
   }
 
-  private async toWorkItemSummary(workItem: WorkItem): Promise<WorkItemSummary> {
-    const issue = await this.collections.issues.findOne({ id: workItem.issueId });
+  private async toWorkItemSummary(
+    workItem: WorkItem,
+  ): Promise<WorkItemSummary> {
+    const issue = await this.collections.issues.findOne({
+      id: workItem.issueId,
+    });
     const latestRun = workItem.lastRunId
       ? await this.collections.runs.findOne({ id: workItem.lastRunId })
-      : await this.collections.runs.findOne({ workItemId: workItem.id }, { sort: { startedAt: -1 } });
+      : await this.collections.runs.findOne(
+          { workItemId: workItem.id },
+          { sort: { startedAt: -1 } },
+        );
 
     const [eventCount, lastEvent] = latestRun
       ? await Promise.all([
           this.collections.runEvents.countDocuments({ runId: latestRun.id }),
-          this.collections.runEvents.findOne({ runId: latestRun.id }, { sort: { createdAt: -1 } })
+          this.collections.runEvents.findOne(
+            { runId: latestRun.id },
+            { sort: { createdAt: -1 } },
+          ),
         ])
-      : [0, null] as const;
+      : ([0, null] as const);
 
     return {
       id: workItem.id,
@@ -782,7 +964,7 @@ export class AgenticRepository {
         identifier: issue?.identifier ?? "Unknown",
         title: issue?.title ?? "Issue unavailable",
         state: issue?.state ?? "Unknown",
-        url: issue?.url
+        url: issue?.url,
       },
       latestRun: latestRun
         ? {
@@ -791,7 +973,7 @@ export class AgenticRepository {
             agentRuntime: latestRun.agentRuntime,
             workspacePath: latestRun.workspacePath,
             startedAt: latestRun.startedAt,
-            endedAt: latestRun.endedAt
+            endedAt: latestRun.endedAt,
           }
         : undefined,
       eventCount,
@@ -800,12 +982,29 @@ export class AgenticRepository {
             type: lastEvent.type,
             level: lastEvent.level,
             message: lastEvent.message,
-            createdAt: lastEvent.createdAt
+            createdAt: lastEvent.createdAt,
           }
         : undefined,
       claimedBy: workItem.claimedBy,
       retryCount: workItem.retryCount,
-      updatedAt: workItem.updatedAt
+      updatedAt: workItem.updatedAt,
     };
   }
+}
+
+function formatProjectName(projectId: string): string {
+  if (projectId === "project_local") {
+    return "Local project";
+  }
+
+  return projectId
+    .replace(/^project_/, "")
+    .split(/[_-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
 }

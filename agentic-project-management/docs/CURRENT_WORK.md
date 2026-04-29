@@ -43,11 +43,12 @@ Date: 2026-04-29
 - Dashboard filter tabs for status lanes.
 - Webhook replay audit view in the dashboard.
 - Dry-run-first local cleanup command for smoke/test MongoDB data.
+- Project-scoped dashboard filtering for work, dispatch, and webhook audit views.
 
 ## In Progress
 
-- Project-scoped dashboard filtering.
+- Runtime selector for Codex/Cursor task intake.
 
 ## Next Queue
 
-- Runtime selector for Codex/Cursor task intake.
+- Repository selection while creating work items.
