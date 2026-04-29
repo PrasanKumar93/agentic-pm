@@ -46,7 +46,7 @@
 - [x] Parse Cursor `stream-json` output into sanitized runtime events.
 - [x] Parse Codex `exec --json` output into sanitized runtime events.
 - [x] Run a real Codex runtime adapter from the worker.
-- [ ] Verify Cursor Agent CLI noninteractive mode locally.
+- [x] Verify Cursor Agent CLI noninteractive mode locally.
 - [x] Persist parsed runtime events through the worker event stream.
 - [x] Add worker-side cancellation checks.
 - [x] Add stall detection.

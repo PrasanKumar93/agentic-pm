@@ -617,6 +617,8 @@ function createRuntime(): AgentRuntime {
       outputFormat: parseCursorOutputFormat(process.env.CURSOR_OUTPUT_FORMAT),
       model: process.env.CURSOR_MODEL,
       force: readBoolean(process.env.CURSOR_FORCE, false),
+      sandbox: parseCursorSandbox(process.env.CURSOR_SANDBOX),
+      trustWorkspace: readBoolean(process.env.CURSOR_TRUST_WORKSPACE, false),
       apiKeyConfigured: Boolean(process.env.CURSOR_API_KEY?.trim()),
       turnTimeoutMs,
       stallTimeoutMs,
@@ -742,6 +744,14 @@ function parseOptionalCommandArgs(value: string | undefined): string[] | undefin
 
 function parseCursorOutputFormat(value: string | undefined): "text" | "json" | "stream-json" | undefined {
   if (value === "text" || value === "json" || value === "stream-json") {
+    return value;
+  }
+
+  return undefined;
+}
+
+function parseCursorSandbox(value: string | undefined): "enabled" | "disabled" | undefined {
+  if (value === "enabled" || value === "disabled") {
     return value;
   }
 

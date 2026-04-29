@@ -102,15 +102,21 @@ CURSOR_API_KEY=
 CURSOR_COMMAND=cursor-agent
 CURSOR_OUTPUT_FORMAT=stream-json
 CURSOR_FORCE=false
+CURSOR_SANDBOX=enabled
+CURSOR_TRUST_WORKSPACE=true
 ```
 
 Cursor uses the CLI's noninteractive print mode. The runtime appends the rendered Symphony prompt as the final positional argument:
 
 ```txt
-cursor-agent --print --output-format stream-json "<rendered prompt>"
+cursor-agent --print --output-format stream-json --sandbox enabled --trust "<rendered prompt>"
 ```
 
 Set `CURSOR_FORCE=true` only inside disposable workspaces where the orchestrator is allowed to let Cursor make direct file changes without confirmation.
+
+Set `CURSOR_SANDBOX=enabled` for headless worker runs unless a higher-level container or CI sandbox is already enforcing the boundary.
+
+Set `CURSOR_TRUST_WORKSPACE=true` for orchestrator-created workspaces so headless Cursor runs do not block on an interactive trust prompt.
 
 Cursor auth can come from `CURSOR_API_KEY` in `.env` or from an existing `cursor-agent login` session. Preflight checks the configured auth path before dispatching work to this runtime.
 
@@ -128,11 +134,15 @@ When Cursor emits `stream-json`, the adapter converts each NDJSON line into sani
 
 The parser intentionally stores user prompt length instead of raw prompt text.
 
+The current local smoke path is validated with `CURSOR_OUTPUT_FORMAT=stream-json`, `CURSOR_SANDBOX=enabled`, `CURSOR_TRUST_WORKSPACE=true`, and `CURSOR_FORCE=false`.
+
 Optional controls:
 
 ```env
 CURSOR_MODEL=
 CURSOR_ARGS=
+CURSOR_SANDBOX=enabled
+CURSOR_TRUST_WORKSPACE=true
 ```
 
 When `CURSOR_ARGS` is set, it replaces the default Cursor arguments and the prompt is still appended as the final argument.

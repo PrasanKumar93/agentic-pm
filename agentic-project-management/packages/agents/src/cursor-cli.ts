@@ -7,6 +7,8 @@ export interface CursorCliRuntimeConfig {
   outputFormat?: "text" | "json" | "stream-json";
   model?: string;
   force?: boolean;
+  sandbox?: "enabled" | "disabled";
+  trustWorkspace?: boolean;
   apiKeyConfigured?: boolean;
   turnTimeoutMs: number;
   stallTimeoutMs?: number;
@@ -50,6 +52,14 @@ function buildCursorArgs(config: CursorCliRuntimeConfig): string[] {
 
   if (config.force) {
     args.push("--force");
+  }
+
+  if (config.sandbox) {
+    args.push("--sandbox", config.sandbox);
+  }
+
+  if (config.trustWorkspace) {
+    args.push("--trust");
   }
 
   if (config.model) {

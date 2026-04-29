@@ -30,13 +30,13 @@ Date: 2026-04-29
 - Codex `exec --json` defaults and sanitized JSONL parsing.
 - Project-scoped work item uniqueness for multi-project smoke runs.
 - Real Codex worker smoke test with `CODEX_API_KEY` env bridging, explicit model, explicit reasoning effort, persisted run events, and review packet capture.
+- Real Cursor Agent CLI worker smoke test with stream-json parsing, sandboxed/trusted generated workspace, persisted run events, and review packet capture.
 
 ## In Progress
 
-- Cursor Agent CLI noninteractive smoke test.
+- Pull request creation and manual merge gate.
 
 ## Next Queue
 
-- Pull request creation and manual merge gate.
 - Linear state sync and run comments.
 - Runtime stderr severity normalization for known CLI warnings.
