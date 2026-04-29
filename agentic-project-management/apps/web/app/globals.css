@@ -867,7 +867,25 @@ h2 {
 .table {
   border: 1px solid var(--border);
   border-radius: 8px;
-  overflow: hidden;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-color: #b8c1bb #eef2ef;
+  scrollbar-width: thin;
+}
+
+.table::-webkit-scrollbar {
+  height: 10px;
+}
+
+.table::-webkit-scrollbar-track {
+  background: #eef2ef;
+}
+
+.table::-webkit-scrollbar-thumb {
+  background: #b8c1bb;
+  border-radius: 999px;
 }
 
 .row {
@@ -875,8 +893,9 @@ h2 {
   border-top: 1px solid var(--border);
   display: grid;
   font-size: 13px;
-  gap: 12px;
-  grid-template-columns: 82px minmax(170px, 1fr) 120px 130px 176px 120px 80px 152px;
+  gap: 10px;
+  grid-template-columns: 76px minmax(170px, 1fr) minmax(104px, 120px) 132px 164px 104px 72px 148px;
+  min-width: 1080px;
   min-height: 46px;
   padding: 0 12px;
 }
@@ -1306,6 +1325,24 @@ h2 {
   min-height: 360px;
 }
 
+@media (max-width: 1500px) {
+  .contentGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1320px) {
+  .row {
+    grid-template-columns: 76px minmax(160px, 1fr) minmax(110px, 140px) 132px 164px 148px;
+    min-width: 0;
+  }
+
+  .ownerCell,
+  .updatedCell {
+    display: none;
+  }
+}
+
 @media (max-width: 980px) {
   .shell {
     grid-template-columns: 1fr;
@@ -1362,6 +1399,7 @@ h2 {
   .row {
     gap: 8px;
     grid-template-columns: 70px minmax(110px, 1fr) 120px 130px;
+    min-width: 0;
   }
 
   .ownerCell,
