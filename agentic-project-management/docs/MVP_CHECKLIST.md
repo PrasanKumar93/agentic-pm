@@ -36,6 +36,7 @@
 - [x] Move issues to `Agent Running` when claimed.
 - [x] Comment run start/failure/review packet back to Linear.
 - [x] Move completed agent output to `Human Review`.
+- [x] Show tracker and Linear config health in the dashboard.
 
 ## Milestone 4: Agent Runtime Loop
 

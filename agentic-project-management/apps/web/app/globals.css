@@ -157,11 +157,57 @@ a:hover {
 }
 
 .toolbar {
+  flex-wrap: wrap;
   gap: 8px;
 }
 
 .toolbar form {
   display: flex;
+}
+
+.healthBadge {
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: auto minmax(0, 1fr);
+  min-height: 36px;
+  min-width: 190px;
+  padding: 0 10px;
+}
+
+.healthBadge strong,
+.healthBadge span {
+  display: block;
+  line-height: 1.15;
+}
+
+.healthBadge strong {
+  font-size: 12px;
+  text-transform: capitalize;
+}
+
+.healthBadge span {
+  color: var(--muted);
+  font-size: 11px;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.healthBadge.ok {
+  color: var(--green);
+}
+
+.healthBadge.warn {
+  color: var(--amber);
+}
+
+.healthBadge.error {
+  color: var(--red);
 }
 
 .notice {

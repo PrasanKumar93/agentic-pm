@@ -107,6 +107,32 @@ type DispatchControlResponse = {
   data: DispatchControl;
 };
 
+type IntegrationHealthStatus = "ok" | "warn" | "error";
+
+type IntegrationHealth = {
+  tracker: {
+    kind: string;
+    status: IntegrationHealthStatus;
+    message: string;
+  };
+  linear: {
+    enabled: boolean;
+    status: IntegrationHealthStatus;
+    apiKeyConfigured: boolean;
+    teamKeyConfigured: boolean;
+    webhookSecretConfigured: boolean;
+    webhookToleranceMs: number;
+    activeStates: string[];
+    runningState: string;
+    reviewState: string;
+    failureState: string;
+  };
+};
+
+type IntegrationHealthResponse = {
+  data: IntegrationHealth;
+};
+
 type RunEventsResponse = {
   data: RunEventSummary[];
 };
@@ -118,6 +144,7 @@ type ArtifactsResponse = {
 type DashboardData = {
   items: WorkItemSummary[];
   dispatch: DispatchControl;
+  integrations: IntegrationHealth;
   generatedAt?: string;
   error?: string;
 };
@@ -184,6 +211,7 @@ export default async function DashboardPage({
           </div>
 
           <div className="toolbar">
+            <TrackerHealthBadge health={dashboard.integrations} />
             <a className="iconButton" href="/" title="Refresh">
               <RefreshCw size={16} />
             </a>
@@ -426,11 +454,12 @@ export default async function DashboardPage({
 
 async function fetchDashboardData(): Promise<DashboardData> {
   try {
-    const [response, dispatch] = await Promise.all([
+    const [response, dispatch, integrations] = await Promise.all([
       fetch(`${apiUrl}/work-items?limit=50`, {
         cache: "no-store"
       }),
-      fetchDispatchControl()
+      fetchDispatchControl(),
+      fetchIntegrationHealth()
     ]);
 
     if (!response.ok) {
@@ -441,6 +470,7 @@ async function fetchDashboardData(): Promise<DashboardData> {
     return {
       items: payload.data,
       dispatch,
+      integrations,
       generatedAt: payload.meta?.generatedAt
     };
   } catch (error) {
@@ -448,6 +478,7 @@ async function fetchDashboardData(): Promise<DashboardData> {
     return {
       items: [],
       dispatch: createDefaultDispatchControl(),
+      integrations: createUnavailableIntegrationHealth(),
       error: `API unavailable at ${apiUrl}: ${message}`
     };
   }
@@ -467,6 +498,23 @@ async function fetchDispatchControl(): Promise<DispatchControl> {
     return payload.data;
   } catch {
     return createDefaultDispatchControl();
+  }
+}
+
+async function fetchIntegrationHealth(): Promise<IntegrationHealth> {
+  try {
+    const response = await fetch(`${apiUrl}/integrations/health`, {
+      cache: "no-store"
+    });
+
+    if (!response.ok) {
+      throw new Error(`API returned ${response.status}`);
+    }
+
+    const payload = (await response.json()) as IntegrationHealthResponse;
+    return payload.data;
+  } catch {
+    return createUnavailableIntegrationHealth();
   }
 }
 
@@ -523,6 +571,28 @@ function createDefaultDispatchControl(): DispatchControl {
     paused: false,
     createdAt: now,
     updatedAt: now
+  };
+}
+
+function createUnavailableIntegrationHealth(): IntegrationHealth {
+  return {
+    tracker: {
+      kind: "unknown",
+      status: "error",
+      message: "Integration health unavailable"
+    },
+    linear: {
+      enabled: false,
+      status: "error",
+      apiKeyConfigured: false,
+      teamKeyConfigured: false,
+      webhookSecretConfigured: false,
+      webhookToleranceMs: 0,
+      activeStates: [],
+      runningState: "Unknown",
+      reviewState: "Unknown",
+      failureState: "Unknown"
+    }
   };
 }
 
@@ -610,6 +680,28 @@ function getAvailableActions(status: WorkItemStatus): Array<{
     case "completed":
       return [];
   }
+}
+
+function TrackerHealthBadge({ health }: { health: IntegrationHealth }) {
+  const title = health.linear.enabled
+    ? [
+        `Linear tracker: ${health.tracker.message}`,
+        `API key: ${health.linear.apiKeyConfigured ? "configured" : "missing"}`,
+        `Team key: ${health.linear.teamKeyConfigured ? "configured" : "missing"}`,
+        `Webhook secret: ${health.linear.webhookSecretConfigured ? "configured" : "missing"}`,
+        `Review state: ${health.linear.reviewState}`
+      ].join("\n")
+    : health.tracker.message;
+
+  return (
+    <div className={`healthBadge ${health.tracker.status}`} title={title}>
+      {health.tracker.status === "ok" ? <CheckCircle2 size={15} /> : <AlertTriangle size={15} />}
+      <div>
+        <strong>{health.linear.enabled ? "Linear" : health.tracker.kind}</strong>
+        <span>{health.tracker.message}</span>
+      </div>
+    </div>
+  );
 }
 
 function ActionIcon({

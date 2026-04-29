@@ -1,6 +1,6 @@
 # Live Dashboard Spec
 
-Status: Draft v0.1
+Status: Draft v0.2
 Date: 2026-04-29
 
 ## 1. Purpose
@@ -10,6 +10,7 @@ The dashboard is the operator surface for the agentic project management system.
 This spec covers the first live data slice:
 
 - API returns work items joined with issue and latest run metadata.
+- API returns integration health without exposing secrets.
 - Web dashboard fetches the API at request time.
 - UI renders empty, error, and live-data states.
 - Operator actions remain visually present but disabled until action endpoints are implemented.
@@ -19,6 +20,8 @@ This spec covers the first live data slice:
 ### Endpoint
 
 `GET /work-items?limit=50`
+
+`GET /integrations/health`
 
 ### Response
 
@@ -63,6 +66,31 @@ This spec covers the first live data slice:
 }
 ```
 
+Integration health response:
+
+```json
+{
+  "data": {
+    "tracker": {
+      "kind": "linear",
+      "status": "warn",
+      "message": "Linear polling configured; webhook secret missing"
+    },
+    "linear": {
+      "enabled": true,
+      "status": "warn",
+      "apiKeyConfigured": true,
+      "teamKeyConfigured": true,
+      "webhookSecretConfigured": false,
+      "activeStates": ["Ready for Agent", "Changes Requested"],
+      "runningState": "Agent Running",
+      "reviewState": "Human Review",
+      "failureState": "Changes Requested"
+    }
+  }
+}
+```
+
 ## 3. UI Behavior
 
 ### Metrics
@@ -74,6 +102,16 @@ The metrics cards are derived from returned work items:
 - `Paused`: `status === "paused"`
 - `Review`: `status === "waiting_for_review"`
 - `Blocked`: `status === "blocked"`
+
+### Integration Health
+
+The topbar shows a compact tracker health badge:
+
+- `ok`: fake tracker, or Linear polling and webhook config are present.
+- `warn`: Linear polling config is present but webhook secret is missing.
+- `error`: required Linear polling config is missing or the health endpoint is unavailable.
+
+The badge never renders API keys or secrets; it only shows configured/missing booleans and state names.
 
 ### Work Board
 

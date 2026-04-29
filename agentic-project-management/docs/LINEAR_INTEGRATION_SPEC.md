@@ -175,5 +175,4 @@ Then confirm run events include:
 - Normalize verified webhook issue payloads directly into MongoDB.
 - Deduplicate webhook deliveries by `Linear-Delivery`.
 - Add IP allowlisting as an optional defense-in-depth check.
-- Add a dashboard health badge for Linear webhook configuration.
 - Add optional done/cancelled Linear states for operator cancel and manual complete actions.

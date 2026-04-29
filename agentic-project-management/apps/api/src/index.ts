@@ -29,6 +29,7 @@ const app = Fastify({
 });
 const allowedOperatorActions = new Set<OperatorActionName>(["start", "retry", "pause", "resume", "cancel", "complete"]);
 const allowedDispatchActions = new Set<DispatchActionName>(["pause", "resume", "start_eligible"]);
+type IntegrationHealthStatus = "ok" | "warn" | "error";
 
 type RawBodyRequest = FastifyRequest & {
   rawBody?: Buffer;
@@ -80,6 +81,15 @@ app.get("/health", async () => {
     ok: true,
     service: "agentic-pm-api",
     time: new Date().toISOString()
+  };
+});
+
+app.get("/integrations/health", async () => {
+  return {
+    data: buildIntegrationHealth(),
+    meta: {
+      generatedAt: new Date().toISOString()
+    }
   };
 });
 
@@ -316,4 +326,59 @@ function firstHeader(value: string | string[] | undefined): string | undefined {
 function readPositiveNumber(value: string | undefined, fallback: number): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function buildIntegrationHealth() {
+  const trackerKind = process.env.AGENTIC_PM_TRACKER ?? "fake";
+  const linearApiKeyConfigured = Boolean(process.env.LINEAR_API_KEY?.trim());
+  const linearTeamKeyConfigured = Boolean(process.env.LINEAR_TEAM_KEY?.trim());
+  const linearWebhookSecretConfigured = Boolean(linearWebhookSecret?.trim());
+  const linearActiveStates = readCommaSeparated(process.env.LINEAR_ACTIVE_STATES, ["Ready for Agent", "Changes Requested"]);
+  const linearRunningState = process.env.LINEAR_RUNNING_STATE?.trim() || "Agent Running";
+  const linearReviewState = process.env.LINEAR_REVIEW_STATE?.trim() || "Human Review";
+  const linearFailureState = process.env.LINEAR_FAILURE_STATE?.trim() || "Changes Requested";
+  const linearEnabled = trackerKind === "linear";
+  const missingRequired = linearEnabled && (!linearApiKeyConfigured || !linearTeamKeyConfigured);
+  const status: IntegrationHealthStatus = !linearEnabled
+    ? "ok"
+    : missingRequired
+      ? "error"
+      : linearWebhookSecretConfigured
+        ? "ok"
+        : "warn";
+  const message = !linearEnabled
+    ? `Using ${trackerKind} tracker`
+    : missingRequired
+      ? "Linear is missing required polling config"
+      : linearWebhookSecretConfigured
+        ? "Linear polling and webhooks configured"
+        : "Linear polling configured; webhook secret missing";
+
+  return {
+    tracker: {
+      kind: trackerKind,
+      status,
+      message
+    },
+    linear: {
+      enabled: linearEnabled,
+      status,
+      apiKeyConfigured: linearApiKeyConfigured,
+      teamKeyConfigured: linearTeamKeyConfigured,
+      webhookSecretConfigured: linearWebhookSecretConfigured,
+      webhookToleranceMs: linearWebhookToleranceMs,
+      activeStates: linearActiveStates,
+      runningState: linearRunningState,
+      reviewState: linearReviewState,
+      failureState: linearFailureState
+    }
+  };
+}
+
+function readCommaSeparated(value: string | undefined, fallback: string[]): string[] {
+  const parsed = value
+    ?.split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return parsed?.length ? parsed : fallback;
 }
