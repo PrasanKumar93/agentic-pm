@@ -1,9 +1,12 @@
 #!/usr/bin/env node
-import "dotenv/config";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { Command } from "commander";
+import { config as loadDotenv } from "dotenv";
 import { loadWorkflowDocument, parseWorkflowDocument, renderWorkflowPrompt } from "@agentic-pm/config";
+
+loadDotenv({ path: fileURLToPath(new URL("../../../.env", import.meta.url)) });
 
 const program = new Command();
 

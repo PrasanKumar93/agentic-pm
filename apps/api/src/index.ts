@@ -1,9 +1,9 @@
-import "dotenv/config";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import cors from "@fastify/cors";
+import { config as loadDotenv } from "dotenv";
 import Fastify, { type FastifyRequest } from "fastify";
 import { readResolvedTrackerConfig } from "@agentic-pm/config";
 import type {
@@ -36,11 +36,13 @@ import {
   type LinearIssueNode,
 } from "@agentic-pm/trackers";
 
+const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
+loadDotenv({ path: fileURLToPath(new URL("../../../.env", import.meta.url)) });
+
 const host = process.env.API_HOST ?? "0.0.0.0";
 const port = Number(process.env.API_PORT ?? 4000);
 const projectId = process.env.AGENTIC_PM_PROJECT_ID ?? "project_local";
 const projectSlug = process.env.AGENTIC_PM_PROJECT_SLUG ?? "local";
-const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const trackerConfig = readResolvedTrackerConfig();
 const linearConfig = trackerConfig.linear;
 const linearWebhookSecret = process.env.LINEAR_WEBHOOK_SECRET;

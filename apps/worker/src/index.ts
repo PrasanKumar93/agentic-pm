@@ -1,9 +1,9 @@
-import "dotenv/config";
 import { execFile } from "node:child_process";
 import { mkdir, realpath, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { config as loadDotenv } from "dotenv";
 import {
   CodexCliRuntime,
   CursorCliRuntime,
@@ -52,10 +52,12 @@ import {
 } from "@agentic-pm/trackers";
 import { WorkspaceManager } from "@agentic-pm/workspaces";
 
+const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
+loadDotenv({ path: fileURLToPath(new URL("../../../.env", import.meta.url)) });
+
 const workerId = process.env.AGENTIC_PM_WORKER_ID ?? createId("worker");
 const projectId = process.env.AGENTIC_PM_PROJECT_ID ?? "project_local";
 const projectSlug = process.env.AGENTIC_PM_PROJECT_SLUG ?? "local";
-const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const workflowRoot = resolve(
   process.env.AGENTIC_PM_WORKFLOW_ROOT ?? `${repoRoot}/examples/workflow`,
 );
