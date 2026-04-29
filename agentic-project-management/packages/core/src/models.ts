@@ -33,7 +33,7 @@ export type ArtifactType =
 
 export type EventLevel = "debug" | "info" | "warn" | "error";
 
-export type OperatorActionName = "start" | "retry" | "pause" | "resume" | "cancel";
+export type OperatorActionName = "start" | "retry" | "pause" | "resume" | "cancel" | "complete";
 export type DispatchActionName = "pause" | "resume" | "start_eligible";
 
 export interface Project {

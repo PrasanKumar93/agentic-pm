@@ -16,6 +16,7 @@
     "@agentic-pm/config": "workspace:*",
     "@agentic-pm/core": "workspace:*",
     "@agentic-pm/db": "workspace:*",
+    "@agentic-pm/git": "workspace:*",
     "@agentic-pm/observability": "workspace:*",
     "@agentic-pm/trackers": "workspace:*",
     "@agentic-pm/workspaces": "workspace:*",

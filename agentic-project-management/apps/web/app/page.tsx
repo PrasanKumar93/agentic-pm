@@ -571,7 +571,7 @@ function selectRunDetailItem(items: WorkItemSummary[]): WorkItemSummary | undefi
 }
 
 function getAvailableActions(status: WorkItemStatus): Array<{
-  name: "start" | "retry" | "pause" | "resume" | "cancel";
+  name: "start" | "retry" | "pause" | "resume" | "cancel" | "complete";
   label: string;
 }> {
   switch (status) {
@@ -587,6 +587,7 @@ function getAvailableActions(status: WorkItemStatus): Array<{
       ];
     case "waiting_for_review":
       return [
+        { name: "complete", label: "Mark complete" },
         { name: "retry", label: "Retry" },
         { name: "cancel", label: "Cancel" }
       ];
@@ -614,7 +615,7 @@ function getAvailableActions(status: WorkItemStatus): Array<{
 function ActionIcon({
   action
 }: {
-  action: "start" | "retry" | "pause" | "resume" | "cancel";
+  action: "start" | "retry" | "pause" | "resume" | "cancel" | "complete";
 }) {
   switch (action) {
     case "start":
@@ -626,6 +627,8 @@ function ActionIcon({
       return <CirclePause size={14} />;
     case "cancel":
       return <XCircle size={14} />;
+    case "complete":
+      return <CheckCircle2 size={14} />;
   }
 }
 

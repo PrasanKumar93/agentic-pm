@@ -14,6 +14,7 @@ The MVP actions are:
 - `pause`: keep a work item out of dispatch.
 - `resume`: move a paused or blocked item back to the queue.
 - `cancel`: mark a work item as cancelled and cancel its active run record when present.
+- `complete`: mark a review-state work item complete after manual PR review/merge.
 
 ## 2. API Contract
 
@@ -30,6 +31,7 @@ Allowed `:action` values:
 - `pause`
 - `resume`
 - `cancel`
+- `complete`
 
 ### Request Body
 
@@ -96,22 +98,23 @@ Missing work items return `404 Not Found`.
 
 ## 3. State Transitions
 
-| Current status | start | retry | pause | resume | cancel |
-| --- | --- | --- | --- | --- | --- |
-| `queued` | no-op queued | no-op queued | paused | no-op queued | cancelled |
-| `running` | conflict | conflict | paused | conflict | cancelled |
-| `waiting_for_review` | queued | queued + retryCount | paused | conflict | cancelled |
-| `blocked` | queued | queued + retryCount | paused | queued | cancelled |
-| `paused` | queued | queued + retryCount | no-op paused | queued | cancelled |
-| `failed` | queued | queued + retryCount | paused | conflict | cancelled |
-| `cancelled` | queued | queued + retryCount | conflict | conflict | no-op cancelled |
-| `completed` | conflict | conflict | conflict | conflict | conflict |
+| Current status | start | retry | pause | resume | cancel | complete |
+| --- | --- | --- | --- | --- | --- | --- |
+| `queued` | no-op queued | no-op queued | paused | no-op queued | cancelled | conflict |
+| `running` | conflict | conflict | paused | conflict | cancelled | conflict |
+| `waiting_for_review` | queued | queued + retryCount | paused | conflict | cancelled | completed |
+| `blocked` | queued | queued + retryCount | paused | queued | cancelled | conflict |
+| `paused` | queued | queued + retryCount | no-op paused | queued | cancelled | conflict |
+| `failed` | queued | queued + retryCount | paused | conflict | cancelled | conflict |
+| `cancelled` | queued | queued + retryCount | conflict | conflict | no-op cancelled | conflict |
+| `completed` | conflict | conflict | conflict | conflict | conflict | conflict |
 
 Notes:
 
 - `retry` increments `retryCount` once.
 - `start` does not increment `retryCount`; it only makes the item dispatchable.
 - `cancel` updates the latest active run to `cancelled` when that run is still running/preparing/stalled/retrying.
+- `complete` updates the latest review-state run to `completed`; it does not merge code.
 - Worker-side process termination is covered in `WORKER_CANCELLATION_SPEC.md`.
 
 ## 4. Auditing
@@ -134,7 +137,7 @@ The dashboard shows compact row-level actions:
 
 - `queued`: pause, cancel
 - `running`: pause, cancel
-- `waiting_for_review`: retry, cancel
+- `waiting_for_review`: complete, retry, cancel
 - `paused`: resume, cancel
 - `blocked`: resume, cancel
 - `failed`: retry, cancel

@@ -334,7 +334,7 @@ h2 {
   display: grid;
   font-size: 13px;
   gap: 12px;
-  grid-template-columns: 82px minmax(180px, 1fr) 150px 120px 80px 92px;
+  grid-template-columns: 82px minmax(180px, 1fr) 150px 120px 80px 116px;
   min-height: 46px;
   padding: 0 12px;
 }

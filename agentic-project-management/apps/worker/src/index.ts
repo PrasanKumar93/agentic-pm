@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { execFile } from "node:child_process";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, realpath, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -23,6 +23,7 @@ import {
   readMongoConfig,
   type RunStopRequest
 } from "@agentic-pm/db";
+import { buildPullRequestDraft } from "@agentic-pm/git";
 import { ConsoleEventSink } from "@agentic-pm/observability";
 import { FakeTrackerAdapter, LinearTrackerAdapter, type TrackerAdapter } from "@agentic-pm/trackers";
 import { WorkspaceManager } from "@agentic-pm/workspaces";
@@ -333,6 +334,11 @@ async function captureReviewArtifacts(input: {
     artifacts.push(patchArtifact);
   }
 
+  const pullRequestArtifact = await capturePullRequestArtifact(input, artifacts);
+  if (pullRequestArtifact) {
+    artifacts.push(pullRequestArtifact);
+  }
+
   const reviewPacket = await registerTextArtifact({
     run: input.run,
     workItem: input.workItem,
@@ -384,7 +390,7 @@ async function capturePatchArtifact(input: {
     const { stdout } = await execFileAsync("git", ["rev-parse", "--show-toplevel"], {
       cwd: input.run.workspacePath
     });
-    if (resolve(stdout.trim()) !== resolve(input.run.workspacePath)) {
+    if ((await normalizePath(stdout.trim())) !== (await normalizePath(input.run.workspacePath))) {
       return undefined;
     }
   } catch {
@@ -396,8 +402,10 @@ async function capturePatchArtifact(input: {
       cwd: input.run.workspacePath,
       maxBuffer: 20 * 1024 * 1024
     });
+    const untrackedPatch = await captureUntrackedPatch(input.run.workspacePath);
+    const patch = [stdout, untrackedPatch].filter((item) => item.trim()).join("\n");
 
-    if (!stdout.trim()) {
+    if (!patch.trim()) {
       return undefined;
     }
 
@@ -407,7 +415,7 @@ async function capturePatchArtifact(input: {
       type: "patch",
       fileName: "workspace.patch",
       summary: `Workspace patch for ${input.issue.identifier}`,
-      content: stdout,
+      content: patch,
       metadata: {
         issueId: input.issue.id,
         issueIdentifier: input.issue.identifier
@@ -417,6 +425,50 @@ async function capturePatchArtifact(input: {
     await recordArtifactWarning(input.run, input.workItem, "Patch artifact capture skipped", error);
     return undefined;
   }
+}
+
+async function normalizePath(path: string): Promise<string> {
+  try {
+    return await realpath(path);
+  } catch {
+    return resolve(path);
+  }
+}
+
+async function captureUntrackedPatch(workspacePath: string): Promise<string> {
+  const { stdout } = await execFileAsync("git", ["ls-files", "--others", "--exclude-standard"], {
+    cwd: workspacePath
+  });
+  const files = stdout.split(/\r?\n/).filter(Boolean);
+  const patches: string[] = [];
+
+  for (const file of files) {
+    const patch = await readGitDiffAllowingDifference(["diff", "--patch", "--binary", "--no-index", "--", "/dev/null", file], workspacePath);
+    if (patch.trim()) {
+      patches.push(patch);
+    }
+  }
+
+  return patches.join("\n");
+}
+
+async function readGitDiffAllowingDifference(args: string[], cwd: string): Promise<string> {
+  try {
+    const { stdout } = await execFileAsync("git", args, {
+      cwd,
+      maxBuffer: 20 * 1024 * 1024
+    });
+    return stdout;
+  } catch (error) {
+    if (isExecErrorWithStdout(error)) {
+      return error.stdout;
+    }
+    throw error;
+  }
+}
+
+function isExecErrorWithStdout(error: unknown): error is { stdout: string } {
+  return typeof error === "object" && error !== null && typeof (error as { stdout?: unknown }).stdout === "string";
 }
 
 async function registerTextArtifact(input: {
@@ -489,6 +541,57 @@ async function recordArtifactWarning(
   });
 }
 
+async function capturePullRequestArtifact(
+  input: {
+    run: Run;
+    workItem: { id: string; projectId: string };
+    issue: Issue;
+  },
+  artifacts: Artifact[]
+): Promise<Artifact | undefined> {
+  if (process.env.AGENTIC_PM_PR_MODE === "disabled") {
+    return undefined;
+  }
+
+  try {
+    const draft = await buildPullRequestDraft({
+      issueIdentifier: input.issue.identifier,
+      issueTitle: input.issue.title,
+      runId: input.run.id,
+      workspacePath: input.run.workspacePath,
+      artifacts
+    });
+
+    if (!draft) {
+      return undefined;
+    }
+
+    return registerTextArtifact({
+      run: input.run,
+      workItem: input.workItem,
+      type: "pr",
+      fileName: "pull-request.md",
+      summary: `Pull request draft for ${input.issue.identifier}`,
+      content: draft.markdown,
+      metadata: {
+        baseBranch: draft.baseBranch,
+        branchName: draft.branchName,
+        changedFileCount: draft.changedFiles.length,
+        changedFiles: draft.changedFiles,
+        issueId: input.issue.id,
+        issueIdentifier: input.issue.identifier,
+        mergeGate: "manual",
+        mode: "local_draft",
+        remoteUrl: draft.remoteUrl,
+        title: draft.title
+      }
+    });
+  } catch (error) {
+    await recordArtifactWarning(input.run, input.workItem, "Pull request draft artifact capture skipped", error);
+    return undefined;
+  }
+}
+
 function buildRunLog(issue: Issue, run: Run, events: CapturedAgentEvent[]): string {
   const lines = [
     `Run: ${run.id}`,
@@ -536,6 +639,7 @@ The agent run completed and is ready for human review.
 ## Risks
 
 - Review the generated workspace changes before merge.
+- Merge gate is manual; do not mark the work item complete until the PR has been reviewed and merged externally.
 
 ## Artifacts
 

@@ -27,7 +27,7 @@ const repository = new AgenticRepository(mongo.db);
 const app = Fastify({
   logger: true
 });
-const allowedOperatorActions = new Set<OperatorActionName>(["start", "retry", "pause", "resume", "cancel"]);
+const allowedOperatorActions = new Set<OperatorActionName>(["start", "retry", "pause", "resume", "cancel", "complete"]);
 const allowedDispatchActions = new Set<DispatchActionName>(["pause", "resume", "start_eligible"]);
 
 type RawBodyRequest = FastifyRequest & {

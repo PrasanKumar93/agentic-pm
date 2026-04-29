@@ -13,13 +13,13 @@ Covered:
 
 - Agent event log artifact.
 - Git patch artifact when the workspace is a git repository and has a diff.
+- Local PR draft artifact when the workspace is a git repository and has changed files.
 - Review packet artifact for successful runs.
 - Artifact metadata registration in MongoDB.
 - Artifact list in the dashboard for the selected run.
 
 Not covered:
 
-- PR creation.
 - Object storage upload.
 - Screenshot or video capture.
 - Runtime-specific parsing of final summaries or test reports.
@@ -68,6 +68,7 @@ The worker captures `agent-events.log` from non-heartbeat runtime events.
 The worker also captures:
 
 - `workspace.patch` when `git diff --patch --binary` returns content.
+- `pull-request.md` with suggested branch, commit, push, and draft PR creation commands.
 - `review-packet.md` with run metadata, review notes, risks, and captured artifacts.
 
 ### Failure Handling

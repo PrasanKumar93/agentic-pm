@@ -4,10 +4,10 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
-const allowedActions = new Set<WorkItemAction>(["start", "retry", "pause", "resume", "cancel"]);
+const allowedActions = new Set<WorkItemAction>(["start", "retry", "pause", "resume", "cancel", "complete"]);
 const allowedDispatchActions = new Set<DispatchAction>(["pause", "resume", "start_eligible"]);
 
-type WorkItemAction = "start" | "retry" | "pause" | "resume" | "cancel";
+type WorkItemAction = "start" | "retry" | "pause" | "resume" | "cancel" | "complete";
 type DispatchAction = "pause" | "resume" | "start_eligible";
 
 type ActionResponse = {
@@ -127,6 +127,8 @@ function formatWorkItemSuccess(action: WorkItemAction, payload: ActionResponse):
       return `Resumed ${identifier}${status}.`;
     case "cancel":
       return `Cancelled ${identifier}${status}.`;
+    case "complete":
+      return `Completed ${identifier}${status}.`;
   }
 }
 

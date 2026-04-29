@@ -52,4 +52,4 @@
 - [x] Add stall detection.
 - [x] Add artifact capture for logs and patches.
 - [x] Generate local review packet artifacts.
-- [ ] Create PR and review packet from agent output.
+- [x] Create PR and review packet from agent output.

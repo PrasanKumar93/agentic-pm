@@ -357,6 +357,23 @@ export class AgenticRepository {
       );
     }
 
+    if (input.action === "complete" && workItem.lastRunId) {
+      await this.collections.runs.updateOne(
+        {
+          id: workItem.lastRunId,
+          status: "waiting_for_review"
+        },
+        {
+          $set: {
+            status: "completed",
+            exitReason: `completed by ${actorId} after manual review`,
+            endedAt: now,
+            updatedAt: now
+          }
+        }
+      );
+    }
+
     await this.collections.operatorActions.insertOne({
       id: createId("act"),
       projectId: workItem.projectId,
@@ -616,6 +633,12 @@ export class AgenticRepository {
           return { toStatus: "cancelled", message: "Work item is already cancelled" };
         }
         return { toStatus: "cancelled", message: "Work item cancelled" };
+
+      case "complete":
+        if (status !== "waiting_for_review") {
+          throw new InvalidWorkItemActionError(`Cannot complete a ${status} work item`);
+        }
+        return { toStatus: "completed", message: "Work item marked complete after manual review" };
     }
   }
 
