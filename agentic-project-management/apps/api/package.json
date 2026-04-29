@@ -12,6 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@agentic-pm/config": "workspace:*",
     "@agentic-pm/core": "workspace:*",
     "@agentic-pm/db": "workspace:*",
     "@agentic-pm/trackers": "workspace:*",

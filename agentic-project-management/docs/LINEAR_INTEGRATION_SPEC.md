@@ -1,7 +1,7 @@
 # Linear Integration Spec
 
-Status: Draft v0.6
-Date: 2026-04-29
+Status: Draft v0.7
+Date: 2026-04-30
 
 ## 1. Purpose
 
@@ -9,48 +9,44 @@ Linear integration brings tracker events into the same local orchestration loop 
 
 This slice adds webhook security, polling reconciliation, state sync events, run comments, and live configuration verification. The worker still keeps polling because webhooks can be delayed, retried, or missed.
 
-## 2. Environment
+## 2. TypeScript Project Config
 
-Required for polling and tracker writes:
+Non-secret tracker/team/workflow mapping lives in:
 
 ```txt
-AGENTIC_PM_TRACKER=linear
-LINEAR_API_KEY=lin_api_...
-LINEAR_TEAM_KEY=ENG
-LINEAR_PROJECT_SLUG=
+packages/config/src/agentic-pm.config.ts
 ```
 
-Required for verified webhooks:
+The current verified Linear mapping is:
+
+```ts
+export const agenticPmConfig = {
+  tracker: {
+    kind: "linear",
+    linear: {
+      teamKey: "PRA",
+      activeStates: ["Todo"],
+      states: {
+        running: "In Progress",
+        review: "In Review",
+        failure: "Todo",
+        done: "Done",
+        cancelled: "Canceled",
+      },
+    },
+  },
+};
+```
+
+Environment remains for secrets and local machine settings:
 
 ```txt
+LINEAR_API_KEY=lin_api_...
 LINEAR_WEBHOOK_SECRET=...
 LINEAR_WEBHOOK_TOLERANCE_MS=60000
 ```
 
-Workflow state names must exist in Linear:
-
-```txt
-LINEAR_ACTIVE_STATES=Ready for Agent,Changes Requested
-LINEAR_RUNNING_STATE=Agent Running
-LINEAR_REVIEW_STATE=Human Review
-LINEAR_FAILURE_STATE=Changes Requested
-LINEAR_DONE_STATE=Done
-LINEAR_CANCELLED_STATE=Cancelled
-```
-
-For a Linear team that already uses the default workflow states, Symphony can map into those states instead of creating new Linear states:
-
-```txt
-AGENTIC_PM_TRACKER=linear
-LINEAR_ACTIVE_STATES=Todo
-LINEAR_RUNNING_STATE=In Progress
-LINEAR_REVIEW_STATE=In Review
-LINEAR_FAILURE_STATE=Todo
-LINEAR_DONE_STATE=Done
-LINEAR_CANCELLED_STATE=Canceled
-```
-
-Environment values override workflow front matter so local operators can switch Linear teams/states without editing `WORKFLOW.md`.
+`AGENTIC_PM_TRACKER=fake` is still accepted as an explicit local smoke-test override. Linear team and state names are intentionally not read from env.
 
 ## 3. Configuration Verification
 
@@ -58,12 +54,12 @@ Environment values override workflow front matter so local operators can switch 
 GET /integrations/health
 ```
 
-When `AGENTIC_PM_TRACKER=linear` and both `LINEAR_API_KEY` and `LINEAR_TEAM_KEY` are configured, the API performs a read-only Linear GraphQL verification:
+When the TypeScript config selects `linear` and `LINEAR_API_KEY` is configured, the API performs a read-only Linear GraphQL verification:
 
 - Authenticates with the configured personal API key.
-- Looks up the team by `LINEAR_TEAM_KEY`.
+- Looks up the team by the configured TypeScript `teamKey`.
 - Lists workflow states for that team.
-- Compares the returned state names against `LINEAR_ACTIVE_STATES`, `LINEAR_RUNNING_STATE`, `LINEAR_REVIEW_STATE`, `LINEAR_FAILURE_STATE`, `LINEAR_DONE_STATE`, and `LINEAR_CANCELLED_STATE`.
+- Compares the returned state names against the configured TypeScript active/running/review/failure/done/cancelled state mapping.
 
 The response never returns secret values. It exposes booleans for API key, team key, and webhook secret presence, plus a verification object with:
 
@@ -92,7 +88,7 @@ Verified webhooks with a new `Linear-Delivery` header are claimed in the `webhoo
 
 Claimed webhooks append `tracker.linear.webhook.received` into `run_events`.
 
-For `Issue` webhooks with `action: "create"` or `action: "update"`, the API also normalizes `data` into the internal issue model and upserts MongoDB by `{ tracker, externalId }`. If the resulting Linear state is in `LINEAR_ACTIVE_STATES`, the API creates or refreshes the project work item immediately. This mirrors polling reconciliation without waiting for the next worker loop.
+For `Issue` webhooks with `action: "create"` or `action: "update"`, the API also normalizes `data` into the internal issue model and upserts MongoDB by `{ tracker, externalId }`. If the resulting Linear state is in the TypeScript configured active states, the API creates or refreshes the project work item immediately. This mirrors polling reconciliation without waiting for the next worker loop.
 
 Normalization emits:
 
@@ -124,8 +120,8 @@ If `LINEAR_WEBHOOK_SECRET` is not configured, the endpoint returns `503 Service 
 
 The worker polls Linear through `listActiveIssues` with:
 
-- `LINEAR_TEAM_KEY`
-- `LINEAR_ACTIVE_STATES`
+- TypeScript configured `tracker.linear.teamKey`
+- TypeScript configured `tracker.linear.activeStates`
 
 Each active issue is normalized into the internal issue model, upserted into MongoDB by `{ tracker, externalId }`, and assigned a local work item if one does not already exist.
 
@@ -146,11 +142,11 @@ The worker syncs external tracker state at durable lifecycle points:
 
 | Local lifecycle | Linear state |
 | --- | --- |
-| Run starts | `LINEAR_RUNNING_STATE` |
-| Run waits for review | `LINEAR_REVIEW_STATE` |
-| Run fails during setup/execution | `LINEAR_FAILURE_STATE` when configured |
-| Operator marks complete | `LINEAR_DONE_STATE` |
-| Operator cancels work | `LINEAR_CANCELLED_STATE` |
+| Run starts | `tracker.linear.states.running` |
+| Run waits for review | `tracker.linear.states.review` |
+| Run fails during setup/execution | `tracker.linear.states.failure` |
+| Operator marks complete | `tracker.linear.states.done` |
+| Operator cancels work | `tracker.linear.states.cancelled` |
 
 Successful sync:
 
@@ -162,8 +158,6 @@ Failed sync:
 
 - Emits `tracker.issue.state_sync_failed`.
 - Leaves the local run/work item lifecycle intact so the dashboard remains the source of truth during tracker outages.
-
-If `LINEAR_FAILURE_STATE` is not set, the worker defaults it to `Changes Requested` when that state is present in `LINEAR_ACTIVE_STATES`.
 
 Operator action sync is performed by the API after the local MongoDB transition succeeds. It is best-effort: a Linear failure emits `tracker.issue.state_sync_failed` and does not roll back local Symphony state.
 
@@ -192,15 +186,14 @@ Signature validation must use the raw request body bytes. The API replaces Fasti
 
 1. Copy `.env.example` to `.env`.
 2. Set `LINEAR_API_KEY`.
-3. Set `LINEAR_TEAM_KEY`.
-4. Create or confirm workflow states named by `LINEAR_ACTIVE_STATES`, `LINEAR_RUNNING_STATE`, `LINEAR_REVIEW_STATE`, `LINEAR_FAILURE_STATE`, `LINEAR_DONE_STATE`, and `LINEAR_CANCELLED_STATE`.
-5. Create a Linear webhook pointing to:
+3. Confirm `packages/config/src/agentic-pm.config.ts` matches the Linear team key and workflow state names.
+4. Create a Linear webhook pointing to:
 
 ```txt
 https://<public-host>/webhooks/linear
 ```
 
-6. Copy the webhook signing secret into `LINEAR_WEBHOOK_SECRET`.
+5. Copy the webhook signing secret into `LINEAR_WEBHOOK_SECRET`.
 
 For localhost testing, expose the API with a tunnel such as ngrok or Cloudflare Tunnel, then use that public HTTPS URL in Linear.
 

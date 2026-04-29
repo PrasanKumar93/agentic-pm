@@ -5,6 +5,7 @@ import { basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import cors from "@fastify/cors";
 import Fastify, { type FastifyRequest } from "fastify";
+import { readResolvedTrackerConfig } from "@agentic-pm/config";
 import type {
   Artifact,
   ArtifactType,
@@ -40,6 +41,8 @@ const port = Number(process.env.API_PORT ?? 4000);
 const projectId = process.env.AGENTIC_PM_PROJECT_ID ?? "project_local";
 const projectSlug = process.env.AGENTIC_PM_PROJECT_SLUG ?? "local";
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
+const trackerConfig = readResolvedTrackerConfig();
+const linearConfig = trackerConfig.linear;
 const linearWebhookSecret = process.env.LINEAR_WEBHOOK_SECRET;
 const linearWebhookToleranceMs = readPositiveNumber(
   process.env.LINEAR_WEBHOOK_TOLERANCE_MS,
@@ -935,13 +938,7 @@ async function ensureDefaultRepositoryForProject(
 }
 
 function readTrackerKind(): TrackerKind {
-  const tracker = process.env.AGENTIC_PM_TRACKER?.trim();
-  return tracker === "linear" ||
-    tracker === "github" ||
-    tracker === "jira" ||
-    tracker === "fake"
-    ? tracker
-    : "fake";
+  return trackerConfig.kind;
 }
 
 function formatProjectName(value: string): string {
@@ -971,7 +968,7 @@ async function syncOperatorActionTrackerState(input: {
     };
   }
 
-  if ((process.env.AGENTIC_PM_TRACKER ?? "fake") !== "linear") {
+  if (readTrackerKind() !== "linear") {
     return {
       attempted: false,
       status: "disabled",
@@ -1093,11 +1090,11 @@ function readOperatorActionTrackerState(
   action: OperatorActionName,
 ): string | undefined {
   if (action === "cancel") {
-    return process.env.LINEAR_CANCELLED_STATE?.trim() || "Cancelled";
+    return linearConfig.states.cancelled;
   }
 
   if (action === "complete") {
-    return process.env.LINEAR_DONE_STATE?.trim() || "Done";
+    return linearConfig.states.done;
   }
 
   return undefined;
@@ -1134,23 +1131,16 @@ async function appendTrackerSyncEvent(input: {
 async function buildIntegrationHealth() {
   const trackerKind = readTrackerKind();
   const linearApiKey = process.env.LINEAR_API_KEY?.trim();
-  const linearTeamKey = process.env.LINEAR_TEAM_KEY?.trim();
+  const linearTeamKey = linearConfig.teamKey;
   const linearApiKeyConfigured = Boolean(linearApiKey);
   const linearTeamKeyConfigured = Boolean(linearTeamKey);
   const linearWebhookSecretConfigured = Boolean(linearWebhookSecret?.trim());
-  const linearActiveStates = readCommaSeparated(
-    process.env.LINEAR_ACTIVE_STATES,
-    ["Ready for Agent", "Changes Requested"],
-  );
-  const linearRunningState =
-    process.env.LINEAR_RUNNING_STATE?.trim() || "Agent Running";
-  const linearReviewState =
-    process.env.LINEAR_REVIEW_STATE?.trim() || "Human Review";
-  const linearFailureState =
-    process.env.LINEAR_FAILURE_STATE?.trim() || "Changes Requested";
-  const linearDoneState = process.env.LINEAR_DONE_STATE?.trim() || "Done";
-  const linearCancelledState =
-    process.env.LINEAR_CANCELLED_STATE?.trim() || "Cancelled";
+  const linearActiveStates = linearConfig.activeStates;
+  const linearRunningState = linearConfig.states.running;
+  const linearReviewState = linearConfig.states.review;
+  const linearFailureState = linearConfig.states.failure;
+  const linearDoneState = linearConfig.states.done;
+  const linearCancelledState = linearConfig.states.cancelled;
   const linearEnabled = trackerKind === "linear";
   const expectedStateNames = uniqueTextValues([
     ...linearActiveStates,
@@ -1272,17 +1262,6 @@ async function buildIntegrationHealth() {
   };
 }
 
-function readCommaSeparated(
-  value: string | undefined,
-  fallback: string[],
-): string[] {
-  const parsed = value
-    ?.split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-  return parsed?.length ? parsed : fallback;
-}
-
 function uniqueTextValues(values: string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
@@ -1347,10 +1326,7 @@ async function normalizeLinearWebhookPayload(
     fallbackUrl: payload.url,
   });
   const storedIssue = await repository.upsertIssue(issue);
-  const activeStates = readCommaSeparated(process.env.LINEAR_ACTIVE_STATES, [
-    "Ready for Agent",
-    "Changes Requested",
-  ]);
+  const activeStates = linearConfig.activeStates;
   const active = activeStates.includes(storedIssue.state);
   const workItem = active
     ? await repository.ensureWorkItemForIssue(projectId, storedIssue)

@@ -119,8 +119,8 @@ Notes:
 - `start` does not increment `retryCount`; it only makes the item dispatchable.
 - `cancel` updates the latest active run to `cancelled` when that run is still running/preparing/stalled/retrying.
 - `complete` updates the latest review-state run to `completed`; it does not merge code.
-- When `AGENTIC_PM_TRACKER=linear`, `cancel` best-effort syncs the Linear issue to `LINEAR_CANCELLED_STATE`.
-- When `AGENTIC_PM_TRACKER=linear`, `complete` best-effort syncs the Linear issue to `LINEAR_DONE_STATE`.
+- When the TypeScript project config selects `linear`, `cancel` best-effort syncs the Linear issue to `tracker.linear.states.cancelled`.
+- When the TypeScript project config selects `linear`, `complete` best-effort syncs the Linear issue to `tracker.linear.states.done`.
 - Worker-side process termination is covered in `WORKER_CANCELLATION_SPEC.md`.
 
 ## 4. Auditing

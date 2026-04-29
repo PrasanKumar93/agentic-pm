@@ -50,6 +50,7 @@ Date: 2026-04-29
 - Repository Config view for registering managed repositories from the dashboard.
 - Live Linear configuration verification for team key and workflow states, surfaced in the Config view.
 - Live Linear workspace mapping verified against `PRA` / `Prasan-symphony` using existing workflow states: `Todo`, `In Progress`, `In Review`, `Done`, and `Canceled`.
+- Versioned TypeScript project config for non-secret Linear tracker/team/state mapping, shared by API and worker.
 
 ## In Progress
 

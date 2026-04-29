@@ -1656,7 +1656,7 @@ function ConfigView({
           <div className="linearStatusCard">
             <span>Team</span>
             <strong>{verification?.team?.key ?? "unverified"}</strong>
-            <small>{verification?.team?.name ?? "LINEAR_TEAM_KEY"}</small>
+            <small>{verification?.team?.name ?? "TypeScript config"}</small>
           </div>
           <div className="linearStatusCard">
             <span>Webhook</span>

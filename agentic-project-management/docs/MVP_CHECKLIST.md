@@ -35,6 +35,7 @@
 ## Milestone 3: Linear Loop
 
 - [x] Configure Linear API key and team key.
+- [x] Move non-secret Linear team/state mapping into versioned TypeScript config.
 - [x] Add webhook signature validation.
 - [x] Add Linear setup guide.
 - [x] Poll Linear active states.

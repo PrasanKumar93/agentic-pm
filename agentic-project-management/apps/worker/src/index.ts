@@ -17,6 +17,7 @@ import {
 import {
   expandEnvReference,
   loadWorkflowDocument,
+  readResolvedTrackerConfig,
   renderWorkflowPrompt,
 } from "@agentic-pm/config";
 import {
@@ -64,6 +65,8 @@ const artifactRoot = resolve(
 const eventSink = new ConsoleEventSink();
 const runOnce = process.env.AGENTIC_PM_RUN_ONCE === "true";
 const execFileAsync = promisify(execFile);
+const trackerConfig = readResolvedTrackerConfig();
+const linearConfig = trackerConfig.linear;
 
 process.env.AGENTIC_PM_WORKSPACE_ROOT ??= resolve(repoRoot, "workspaces");
 
@@ -1278,40 +1281,21 @@ function formatArtifactCommentLines(artifacts: Artifact[]): string {
 }
 
 function readTrackerSettings(): TrackerSettings {
-  const activeStates =
-    readCommaSeparatedEnv("LINEAR_ACTIVE_STATES") ??
-    workflow.config.tracker.active_states;
+  const activeStates = linearConfig.activeStates;
 
   return {
     activeStates,
-    teamKey:
-      readOptionalEnv("LINEAR_TEAM_KEY") ?? workflow.config.tracker.team_key,
-    projectSlug:
-      readOptionalEnv("LINEAR_PROJECT_SLUG") ??
-      workflow.config.tracker.project_slug,
-    runningState:
-      readOptionalEnv("LINEAR_RUNNING_STATE") ??
-      workflow.config.tracker.running_state,
-    reviewState:
-      readOptionalEnv("LINEAR_REVIEW_STATE") ??
-      workflow.config.tracker.review_state,
-    failureState:
-      readOptionalEnv("LINEAR_FAILURE_STATE") ??
-      activeStates.find((state) => state === "Changes Requested"),
+    teamKey: linearConfig.teamKey,
+    projectSlug: linearConfig.projectSlug,
+    runningState: linearConfig.states.running,
+    reviewState: linearConfig.states.review,
+    failureState: linearConfig.states.failure,
   };
 }
 
 function readOptionalEnv(key: string): string | undefined {
   const value = process.env[key]?.trim();
   return value ? value : undefined;
-}
-
-function readCommaSeparatedEnv(key: string): string[] | undefined {
-  const values = process.env[key]
-    ?.split(",")
-    .map((value) => value.trim())
-    .filter(Boolean);
-  return values?.length ? values : undefined;
 }
 
 function readPullRequestMode(): PullRequestMode {
@@ -1328,8 +1312,7 @@ function readPullRequestMode(): PullRequestMode {
 }
 
 function createTracker(): TrackerAdapter {
-  const requestedTracker =
-    process.env.AGENTIC_PM_TRACKER ?? workflow.config.tracker.kind;
+  const requestedTracker = trackerConfig.kind;
 
   if (requestedTracker === "linear") {
     const apiKey = process.env.LINEAR_API_KEY;
