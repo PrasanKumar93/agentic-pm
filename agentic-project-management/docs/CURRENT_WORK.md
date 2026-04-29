@@ -46,10 +46,11 @@ Date: 2026-04-29
 - Project-scoped dashboard filtering for work, dispatch, and webhook audit views.
 - Per-work-item runtime selector for Codex, Cursor, fake, and generic worker routing.
 - Repository-backed local work item intake with dashboard repository selection.
+- Repository-aware workspace materialization with local git worktree and clone fallback.
 
 ## In Progress
 
-- Repository-aware workspace materialization from selected repository.
+- Repository configuration UI for registering multiple managed repositories.
 
 ## Next Queue
 

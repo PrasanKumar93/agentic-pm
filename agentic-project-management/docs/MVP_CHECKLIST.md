@@ -61,6 +61,7 @@
 - [x] Route work items by desired runtime for Codex/Cursor worker selection.
 - [x] Add worker-side cancellation checks.
 - [x] Add stall detection.
+- [x] Materialize selected repositories into agent workspaces.
 - [x] Add artifact capture for logs and patches.
 - [x] Generate local review packet artifacts.
 - [x] Create PR and review packet from agent output.

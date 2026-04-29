@@ -209,7 +209,15 @@ async function dispatchOne(): Promise<void> {
     const workspacePath = await workspaces.prepareIssueWorkspace({
       projectSlug,
       issue,
-      repositoryName: workRepository?.name,
+      repository: workRepository
+        ? {
+            id: workRepository.id,
+            name: workRepository.name,
+            url: workRepository.url,
+            defaultBranch: workRepository.defaultBranch,
+            localPath: workRepository.localPath,
+          }
+        : undefined,
       hooks:
         process.env.AGENTIC_PM_ENABLE_HOOKS === "true"
           ? workflow.config.hooks

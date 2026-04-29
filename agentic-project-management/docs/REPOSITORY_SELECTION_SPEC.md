@@ -147,4 +147,4 @@ When a worker claims a work item:
 
 ## Follow-Up
 
-Repository selection currently controls routing metadata and prompt context. A later slice should materialize the selected repository into the workspace automatically, either by cloning `repository.url` or by creating a worktree from `repository.localPath`, before running Codex or Cursor.
+Repository selection now controls routing metadata, prompt context, and workspace materialization. See `WORKSPACE_MATERIALIZATION_SPEC.md` for the worktree/clone behavior used before running Codex or Cursor.
