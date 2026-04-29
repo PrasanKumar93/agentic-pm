@@ -353,6 +353,7 @@ h2 {
 }
 
 .contentGrid {
+  align-items: start;
   display: grid;
   gap: 18px;
   grid-template-columns: minmax(0, 1fr) 380px;
@@ -364,8 +365,11 @@ h2 {
 }
 
 .board {
+  align-content: start;
+  align-self: start;
   display: grid;
   gap: 14px;
+  grid-auto-rows: max-content;
 }
 
 .filterTabs {
