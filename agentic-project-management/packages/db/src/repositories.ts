@@ -15,7 +15,12 @@ import {
   type WorkItemStatus,
   type WorkItemSummary
 } from "@agentic-pm/core";
-import { getCollections, type AgenticCollections } from "./collections.js";
+import {
+  getCollections,
+  type AgenticCollections,
+  type WebhookDelivery,
+  type WebhookDeliveryStatus
+} from "./collections.js";
 
 const activeRunStatuses: Run["status"][] = ["preparing", "running", "stalled", "retrying"];
 const startEligibleStatuses: WorkItemStatus[] = ["paused", "blocked", "failed", "cancelled"];
@@ -39,6 +44,11 @@ export interface RunStopRequest {
   reason?: string;
   runStatus?: Run["status"];
   workItemStatus?: WorkItemStatus;
+}
+
+export interface WebhookDeliveryClaimResult {
+  claimed: boolean;
+  delivery: WebhookDelivery;
 }
 
 export class AgenticRepository {
@@ -544,6 +554,82 @@ export class AgenticRepository {
 
   async listArtifacts(runId: string): Promise<Artifact[]> {
     return this.collections.artifacts.find({ runId }).sort({ createdAt: 1 }).toArray();
+  }
+
+  async claimWebhookDelivery(input: {
+    projectId: string;
+    provider: string;
+    deliveryId: string;
+    event?: string;
+    action?: string;
+    type?: string;
+  }): Promise<WebhookDeliveryClaimResult> {
+    const now = new Date();
+    const result = await this.collections.webhookDeliveries.updateOne(
+      {
+        provider: input.provider,
+        deliveryId: input.deliveryId
+      },
+      {
+        $set: {
+          lastReceivedAt: now,
+          updatedAt: now
+        },
+        $setOnInsert: {
+          id: createId("whd"),
+          projectId: input.projectId,
+          provider: input.provider,
+          deliveryId: input.deliveryId,
+          event: input.event,
+          action: input.action,
+          type: input.type,
+          status: "processing",
+          firstReceivedAt: now,
+          createdAt: now
+        },
+        $inc: {
+          attemptCount: 1
+        }
+      },
+      { upsert: true }
+    );
+
+    const delivery = await this.collections.webhookDeliveries.findOne({
+      provider: input.provider,
+      deliveryId: input.deliveryId
+    });
+
+    if (!delivery) {
+      throw new Error(`Webhook delivery ${input.provider}:${input.deliveryId} was not found after claim`);
+    }
+
+    return {
+      claimed: result.upsertedCount === 1,
+      delivery
+    };
+  }
+
+  async completeWebhookDelivery(input: {
+    provider: string;
+    deliveryId: string;
+    status: WebhookDeliveryStatus;
+    result?: Record<string, unknown>;
+  }): Promise<void> {
+    const now = new Date();
+    await this.collections.webhookDeliveries.updateOne(
+      {
+        provider: input.provider,
+        deliveryId: input.deliveryId
+      },
+      {
+        $set: {
+          status: input.status,
+          result: input.result,
+          processedAt: now,
+          updatedAt: now
+        }
+      }
+    );
   }
 
   private async recordDispatchAction(input: {

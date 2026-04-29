@@ -40,6 +40,26 @@ export interface OperatorAction {
   createdAt: Date;
 }
 
+export type WebhookDeliveryStatus = "processing" | "processed" | "ignored" | "failed";
+
+export interface WebhookDelivery {
+  id: string;
+  projectId: string;
+  provider: string;
+  deliveryId: string;
+  event?: string;
+  action?: string;
+  type?: string;
+  status: WebhookDeliveryStatus;
+  result?: Record<string, unknown>;
+  attemptCount: number;
+  firstReceivedAt: Date;
+  lastReceivedAt: Date;
+  processedAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface AgenticCollections {
   projects: Collection<Project>;
   repositories: Collection<RepositoryRef>;
@@ -51,6 +71,7 @@ export interface AgenticCollections {
   artifacts: Collection<Artifact>;
   operatorActions: Collection<OperatorAction>;
   dispatchControls: Collection<DispatchControl>;
+  webhookDeliveries: Collection<WebhookDelivery>;
   workflowSnapshots: Collection<WorkflowSnapshot>;
   secretReferences: Collection<SecretReference>;
 }
@@ -67,6 +88,7 @@ export function getCollections(db: Db): AgenticCollections {
     artifacts: db.collection<Artifact>("artifacts"),
     operatorActions: db.collection<OperatorAction>("operator_actions"),
     dispatchControls: db.collection<DispatchControl>("dispatch_controls"),
+    webhookDeliveries: db.collection<WebhookDelivery>("webhook_deliveries"),
     workflowSnapshots: db.collection<WorkflowSnapshot>("workflow_snapshots"),
     secretReferences: db.collection<SecretReference>("secrets_references")
   };
@@ -88,6 +110,8 @@ export async function ensureIndexes(collections: AgenticCollections): Promise<vo
     collections.artifacts.createIndex({ runId: 1, createdAt: 1 }),
     collections.operatorActions.createIndex({ workItemId: 1, createdAt: -1 }),
     collections.dispatchControls.createIndex({ projectId: 1 }, { unique: true }),
+    collections.webhookDeliveries.createIndex({ provider: 1, deliveryId: 1 }, { unique: true }),
+    collections.webhookDeliveries.createIndex({ projectId: 1, lastReceivedAt: -1 }),
     collections.workflowSnapshots.createIndex({ projectId: 1, createdAt: -1 })
   ]);
 }

@@ -1,6 +1,6 @@
 # Linear Integration Spec
 
-Status: Draft v0.4
+Status: Draft v0.5
 Date: 2026-04-29
 
 ## 1. Purpose
@@ -52,7 +52,9 @@ The API verifies:
 - HMAC-SHA256 signature over the raw request body using `LINEAR_WEBHOOK_SECRET`.
 - `webhookTimestamp` freshness within `LINEAR_WEBHOOK_TOLERANCE_MS`.
 
-Verified webhooks append `tracker.linear.webhook.received` into `run_events`.
+Verified webhooks with a new `Linear-Delivery` header are claimed in the `webhook_deliveries` collection before handler work begins. The unique key is `{ provider, deliveryId }`, where `provider` is `linear`.
+
+Claimed webhooks append `tracker.linear.webhook.received` into `run_events`.
 
 For `Issue` webhooks with `action: "create"` or `action: "update"`, the API also normalizes `data` into the internal issue model and upserts MongoDB by `{ tracker, externalId }`. If the resulting Linear state is in `LINEAR_ACTIVE_STATES`, the API creates or refreshes the project work item immediately. This mirrors polling reconciliation without waiting for the next worker loop.
 
@@ -63,6 +65,16 @@ Normalization emits:
 - `tracker.linear.webhook.normalization_failed` when an Issue webhook is missing required issue fields.
 
 Non-Issue webhooks are acknowledged after `tracker.linear.webhook.received` and ignored.
+
+Duplicate `Linear-Delivery` values:
+
+- Increment `webhook_deliveries.attemptCount`.
+- Append `tracker.linear.webhook.duplicate`.
+- Return `data.status: "duplicate"`.
+- Do not append `tracker.linear.webhook.received`.
+- Do not normalize the payload or create/update a work item again.
+
+If Linear omits `Linear-Delivery`, the API still verifies and processes the webhook but records `deliveryStatus: "missing_delivery_id"` in the received event. Those requests cannot be deduplicated.
 
 The response body includes a machine-readable normalization result, while still returning `200 OK` for verified but ignored payloads so Linear does not retry permanent non-work items.
 
@@ -192,7 +204,7 @@ Then confirm run events include:
 - `tracker.issue.comment_created`
 - `artifact.created`
 
-Webhook smoke should return `data.status: "reconciled"` for active issue payloads and create a local work item for the configured project.
+Webhook smoke should return `data.status: "reconciled"` for active issue payloads and create a local work item for the configured project. Replaying the exact same payload and `Linear-Delivery` should return `data.status: "duplicate"` and should not append another `tracker.issue.webhook_reconciled` event.
 
 ## 10. References
 
@@ -201,5 +213,4 @@ Webhook smoke should return `data.status: "reconciled"` for active issue payload
 
 ## 11. Future Work
 
-- Deduplicate webhook deliveries by `Linear-Delivery`.
 - Add IP allowlisting as an optional defense-in-depth check.

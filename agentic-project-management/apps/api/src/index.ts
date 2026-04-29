@@ -19,6 +19,7 @@ import {
   getCollections,
   InvalidWorkItemActionError,
   readMongoConfig,
+  type WebhookDeliveryStatus,
   WorkItemNotFoundError
 } from "@agentic-pm/db";
 import { LinearTrackerAdapter, normalizeLinearIssue, type LinearIssueNode } from "@agentic-pm/trackers";
@@ -94,6 +95,15 @@ type LinearWebhookNormalizationResult =
       issueExternalId: string;
       state: string;
       workItemId?: string;
+    };
+
+type LinearWebhookResponseResult =
+  | LinearWebhookNormalizationResult
+  | {
+      status: "duplicate";
+      deliveryId: string;
+      originalStatus: WebhookDeliveryStatus;
+      result?: Record<string, unknown>;
     };
 
 type VerificationResult =
@@ -322,6 +332,46 @@ app.post("/webhooks/linear", async (request, reply) => {
     deliveryId: firstHeader(request.headers["linear-delivery"]),
     event: firstHeader(request.headers["linear-event"])
   };
+  const deliveryId = context.deliveryId;
+
+  const deliveryClaim = deliveryId
+    ? await repository.claimWebhookDelivery({
+        projectId,
+        provider: "linear",
+        deliveryId,
+        event: context.event,
+        action: body.action,
+        type: body.type
+      })
+    : undefined;
+
+  if (deliveryClaim && !deliveryClaim.claimed) {
+    const duplicateResult: LinearWebhookResponseResult = {
+      status: "duplicate",
+      deliveryId: deliveryClaim.delivery.deliveryId,
+      originalStatus: deliveryClaim.delivery.status,
+      result: deliveryClaim.delivery.result
+    };
+
+    await repository.appendEvent({
+      projectId,
+      type: "tracker.linear.webhook.duplicate",
+      level: "info",
+      message: "Ignored duplicate Linear webhook delivery",
+      payload: {
+        action: body.action,
+        deliveryId: deliveryClaim.delivery.deliveryId,
+        event: context.event,
+        originalStatus: deliveryClaim.delivery.status,
+        type: body.type
+      }
+    });
+
+    return {
+      ok: true,
+      data: duplicateResult
+    };
+  }
 
   await repository.appendEvent({
     projectId,
@@ -332,6 +382,7 @@ app.post("/webhooks/linear", async (request, reply) => {
       action: body.action,
       body: request.body,
       deliveryId: context.deliveryId,
+      deliveryStatus: context.deliveryId ? "claimed" : "missing_delivery_id",
       event: context.event,
       type: body.type,
       url: body.url
@@ -339,6 +390,14 @@ app.post("/webhooks/linear", async (request, reply) => {
   });
 
   const normalization = await normalizeLinearWebhookPayload(body, context);
+  if (deliveryId) {
+    await repository.completeWebhookDelivery({
+      provider: "linear",
+      deliveryId,
+      status: webhookDeliveryStatusForNormalization(normalization),
+      result: webhookDeliveryResult(normalization)
+    });
+  }
 
   return {
     ok: true,
@@ -767,6 +826,42 @@ function isLinearIssueWebhookData(value: unknown): value is LinearIssueNode {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function webhookDeliveryStatusForNormalization(result: LinearWebhookNormalizationResult): WebhookDeliveryStatus {
+  switch (result.status) {
+    case "reconciled":
+      return "processed";
+    case "ignored":
+      return "ignored";
+    case "failed":
+      return "failed";
+  }
+}
+
+function webhookDeliveryResult(result: LinearWebhookNormalizationResult): Record<string, unknown> {
+  switch (result.status) {
+    case "reconciled":
+      return {
+        status: result.status,
+        active: result.active,
+        issueExternalId: result.issueExternalId,
+        issueId: result.issueId,
+        issueIdentifier: result.issueIdentifier,
+        state: result.state,
+        ...(result.workItemId ? { workItemId: result.workItemId } : {})
+      };
+    case "ignored":
+      return {
+        status: result.status,
+        reason: result.reason
+      };
+    case "failed":
+      return {
+        status: result.status,
+        reason: result.reason
+      };
+  }
 }
 
 function isReadableLocalTextArtifact(artifact: Artifact): boolean {

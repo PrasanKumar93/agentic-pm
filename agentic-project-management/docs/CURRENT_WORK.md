@@ -39,12 +39,13 @@ Date: 2026-04-29
 - Operator action tracker sync for Linear cancel and complete states.
 - PR artifact dashboard affordance for selecting a run and opening a local draft or remote PR URL.
 - Verified Linear issue webhook normalization into MongoDB with active-state work item creation.
+- Linear webhook delivery-id idempotency with duplicate audit events.
 
 ## In Progress
 
-- Persist webhook delivery IDs for idempotency and replay safety.
+- Dashboard filter tabs for status lanes.
 
 ## Next Queue
 
-- Dashboard filter tabs for status lanes.
 - Webhook replay audit view in the dashboard.
+- Cleanup controls for local smoke/test data.
