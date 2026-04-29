@@ -31,11 +31,11 @@
 - [ ] Configure Linear API key and team key.
 - [x] Add webhook signature validation.
 - [x] Add Linear setup guide.
-- [ ] Poll Linear active states.
-- [ ] Upsert Linear issues into MongoDB.
-- [ ] Move issues to `Agent Running` when claimed.
-- [ ] Comment run start/failure/review packet back to Linear.
-- [ ] Move completed agent output to `Human Review`.
+- [x] Poll Linear active states.
+- [x] Upsert Linear issues into MongoDB.
+- [x] Move issues to `Agent Running` when claimed.
+- [x] Comment run start/failure/review packet back to Linear.
+- [x] Move completed agent output to `Human Review`.
 
 ## Milestone 4: Agent Runtime Loop
 

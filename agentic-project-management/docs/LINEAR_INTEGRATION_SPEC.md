@@ -1,13 +1,13 @@
 # Linear Integration Spec
 
-Status: Draft v0.1
+Status: Draft v0.2
 Date: 2026-04-29
 
 ## 1. Purpose
 
 Linear integration brings tracker events into the same local orchestration loop as polling.
 
-This slice adds webhook security and setup guidance. The worker still keeps polling because webhooks can be delayed, retried, or missed.
+This slice adds webhook security, polling reconciliation, state sync events, and run comments. The worker still keeps polling because webhooks can be delayed, retried, or missed.
 
 ## 2. Environment
 
@@ -17,6 +17,7 @@ Required for polling and tracker writes:
 AGENTIC_PM_TRACKER=linear
 LINEAR_API_KEY=lin_api_...
 LINEAR_TEAM_KEY=ENG
+LINEAR_PROJECT_SLUG=
 ```
 
 Required for verified webhooks:
@@ -32,7 +33,10 @@ Workflow state names must exist in Linear:
 LINEAR_ACTIVE_STATES=Ready for Agent,Changes Requested
 LINEAR_RUNNING_STATE=Agent Running
 LINEAR_REVIEW_STATE=Human Review
+LINEAR_FAILURE_STATE=Changes Requested
 ```
+
+Environment values override workflow front matter so local operators can switch Linear teams/states without editing `WORKFLOW.md`.
 
 ## 3. Webhook Endpoint
 
@@ -52,7 +56,54 @@ Invalid signatures and stale timestamps return `401 Unauthorized`.
 
 If `LINEAR_WEBHOOK_SECRET` is not configured, the endpoint returns `503 Service Unavailable`.
 
-## 4. Fastify Raw Body Rule
+## 4. Polling And Upsert
+
+The worker polls Linear through `listActiveIssues` with:
+
+- `LINEAR_TEAM_KEY`
+- `LINEAR_ACTIVE_STATES`
+
+Each active issue is normalized into the internal issue model, upserted into MongoDB by `{ tracker, externalId }`, and assigned a local work item if one does not already exist.
+
+Each reconciliation emits `tracker.issue.reconciled`.
+
+## 5. State Sync
+
+The worker syncs external tracker state at durable lifecycle points:
+
+| Local lifecycle | Linear state |
+| --- | --- |
+| Run starts | `LINEAR_RUNNING_STATE` |
+| Run waits for review | `LINEAR_REVIEW_STATE` |
+| Run fails during setup/execution | `LINEAR_FAILURE_STATE` when configured |
+
+Successful sync:
+
+- Calls Linear `issueUpdate`.
+- Updates the local MongoDB issue state.
+- Emits `tracker.issue.state_synced`.
+
+Failed sync:
+
+- Emits `tracker.issue.state_sync_failed`.
+- Leaves the local run/work item lifecycle intact so the dashboard remains the source of truth during tracker outages.
+
+If `LINEAR_FAILURE_STATE` is not set, the worker defaults it to `Changes Requested` when that state is present in `LINEAR_ACTIVE_STATES`.
+
+## 6. Run Comments
+
+The worker posts Linear comments for:
+
+- `run_started`: run id, runtime, and workspace path.
+- `run_failed`: failure reason and available artifact ids.
+- `review_ready`: review packet id, PR draft id, and the manual merge gate reminder.
+- `setup_failed`: setup failure reason when a run cannot be created.
+
+Successful comments emit `tracker.issue.comment_created`.
+
+Failed comments emit `tracker.issue.comment_failed` as warnings and do not fail the run.
+
+## 7. Fastify Raw Body Rule
 
 Signature validation must use the raw request body bytes. The API replaces Fastify's default JSON parser with a raw-buffer parser that:
 
@@ -60,7 +111,7 @@ Signature validation must use the raw request body bytes. The API replaces Fasti
 - Parses JSON once for normal route handlers.
 - Leaves all non-webhook JSON routes working as before.
 
-## 5. Local Setup
+## 8. Local Setup
 
 1. Copy `.env.example` to `.env`.
 2. Set `LINEAR_API_KEY`.
@@ -76,7 +127,7 @@ https://<public-host>/webhooks/linear
 
 For localhost testing, expose the API with a tunnel such as ngrok or Cloudflare Tunnel, then use that public HTTPS URL in Linear.
 
-## 6. Smoke Tests
+## 9. Smoke Tests
 
 Valid signature:
 
@@ -102,14 +153,27 @@ curl -i \
   http://127.0.0.1:4000/webhooks/linear
 ```
 
-## 7. References
+Worker smoke with fake tracker writes:
+
+```sh
+AGENTIC_PM_TRACKER=fake AGENT_RUNTIME=fake AGENTIC_PM_RUN_ONCE=true node apps/worker/dist/index.js
+```
+
+Then confirm run events include:
+
+- `tracker.issue.state_synced`
+- `tracker.issue.comment_created`
+- `artifact.created`
+
+## 10. References
 
 - Linear webhook docs: https://linear.app/developers/webhooks
 - Linear SDK webhook docs: https://linear.app/docs/api/sdk-webhooks
 
-## 8. Future Work
+## 11. Future Work
 
 - Normalize verified webhook issue payloads directly into MongoDB.
 - Deduplicate webhook deliveries by `Linear-Delivery`.
 - Add IP allowlisting as an optional defense-in-depth check.
 - Add a dashboard health badge for Linear webhook configuration.
+- Add optional done/cancelled Linear states for operator cancel and manual complete actions.

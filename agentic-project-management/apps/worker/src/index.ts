@@ -45,6 +45,7 @@ const mongo = await connectMongo(readMongoConfig());
 await ensureIndexes(getCollections(mongo.db));
 
 const repository = new AgenticRepository(mongo.db);
+const trackerSettings = readTrackerSettings();
 const tracker = createTracker();
 const runtime = createRuntime();
 const workspaceRoot = expandEnvReference(workflow.config.workspace.root);
@@ -60,6 +61,18 @@ interface CapturedAgentEvent {
   payload?: Record<string, unknown>;
   createdAt: Date;
 }
+
+interface TrackerSettings {
+  activeStates: string[];
+  teamKey?: string;
+  projectSlug?: string;
+  runningState: string;
+  reviewState: string;
+  failureState?: string;
+}
+
+type TrackerStateSyncReason = "run_started" | "run_failed" | "review_ready" | "setup_failed";
+type TrackerCommentKind = "run_started" | "run_failed" | "review_ready" | "setup_failed";
 
 const runtimePreflight = await runRuntimePreflight(runtime);
 if (!runtimePreflight.ok) {
@@ -101,9 +114,9 @@ await mongo.client.close();
 
 async function reconcileTracker(): Promise<void> {
   const issues = await tracker.listActiveIssues({
-    activeStates: workflow.config.tracker.active_states,
-    teamKey: workflow.config.tracker.team_key ?? process.env.LINEAR_TEAM_KEY,
-    projectSlug: workflow.config.tracker.project_slug
+    activeStates: trackerSettings.activeStates,
+    teamKey: trackerSettings.teamKey,
+    projectSlug: trackerSettings.projectSlug
   });
 
   for (const issue of issues) {
@@ -142,11 +155,6 @@ async function dispatchOne(): Promise<void> {
   const capturedAgentEvents: CapturedAgentEvent[] = [];
 
   try {
-    await tracker.moveIssue({
-      issueExternalId: issue.externalId,
-      stateName: workflow.config.tracker.running_state
-    });
-
     const workspacePath = await workspaces.prepareIssueWorkspace({
       projectSlug,
       issue,
@@ -170,6 +178,21 @@ async function dispatchOne(): Promise<void> {
       payload: {
         workspacePath
       }
+    });
+
+    await syncTrackerIssueState({
+      issue,
+      workItem,
+      run,
+      stateName: trackerSettings.runningState,
+      reason: "run_started"
+    });
+    await commentOnTrackerIssue({
+      issue,
+      workItem,
+      run,
+      kind: "run_started",
+      body: buildRunStartedComment(issue, run)
     });
 
     const prompt = await renderWorkflowPrompt(workflow, {
@@ -244,29 +267,48 @@ async function dispatchOne(): Promise<void> {
     }
 
     if (failed) {
-      await captureRunLogArtifact({ run, workItem, issue, capturedAgentEvents });
+      const logArtifact = await captureRunLogArtifact({ run, workItem, issue, capturedAgentEvents });
       await repository.setRunStatus(run.id, "failed", "agent failed");
       await repository.markWorkItemStatus(workItem.id, "failed");
+      await syncFailureTrackerState({
+        issue,
+        workItem,
+        run,
+        reason: "run_failed"
+      });
+      await commentOnTrackerIssue({
+        issue,
+        workItem,
+        run,
+        kind: "run_failed",
+        body: buildRunFailedComment(issue, run, "agent failed", logArtifact ? [logArtifact] : [])
+      });
       return;
     }
 
     const artifacts = await captureReviewArtifacts({ run, workItem, issue, capturedAgentEvents });
     await repository.setRunStatus(run.id, "waiting_for_review");
     await repository.markWorkItemStatus(workItem.id, "waiting_for_review");
-    await tracker.moveIssue({
-      issueExternalId: issue.externalId,
-      stateName: workflow.config.tracker.review_state
+    await syncTrackerIssueState({
+      issue,
+      workItem,
+      run,
+      stateName: trackerSettings.reviewState,
+      reason: "review_ready"
     });
-    await tracker.commentOnIssue({
-      issueExternalId: issue.externalId,
-      body: buildReviewComment(run, artifacts)
+    await commentOnTrackerIssue({
+      issue,
+      workItem,
+      run,
+      kind: "review_ready",
+      body: buildReviewComment(issue, run, artifacts)
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await repository.markWorkItemStatus(workItem.id, "failed");
 
     if (run) {
-      await captureRunLogArtifact({ run, workItem, issue, capturedAgentEvents });
+      const logArtifact = await captureRunLogArtifact({ run, workItem, issue, capturedAgentEvents });
       await repository.setRunStatus(run.id, "failed", message);
       await repository.appendEvent({
         projectId,
@@ -275,6 +317,19 @@ async function dispatchOne(): Promise<void> {
         type: "run.failed",
         level: "error",
         message
+      });
+      await syncFailureTrackerState({
+        issue,
+        workItem,
+        run,
+        reason: "run_failed"
+      });
+      await commentOnTrackerIssue({
+        issue,
+        workItem,
+        run,
+        kind: "run_failed",
+        body: buildRunFailedComment(issue, run, message, logArtifact ? [logArtifact] : [])
       });
       return;
     }
@@ -285,6 +340,17 @@ async function dispatchOne(): Promise<void> {
       type: "run.setup_failed",
       level: "error",
       message
+    });
+    await syncFailureTrackerState({
+      issue,
+      workItem,
+      reason: "setup_failed"
+    });
+    await commentOnTrackerIssue({
+      issue,
+      workItem,
+      kind: "setup_failed",
+      body: buildSetupFailedComment(issue, message)
     });
   }
 }
@@ -592,6 +658,137 @@ async function capturePullRequestArtifact(
   }
 }
 
+async function syncFailureTrackerState(input: {
+  issue: Issue;
+  workItem: { id: string; projectId: string };
+  run?: Run;
+  reason: Extract<TrackerStateSyncReason, "run_failed" | "setup_failed">;
+}): Promise<boolean> {
+  if (!trackerSettings.failureState) {
+    return false;
+  }
+
+  return syncTrackerIssueState({
+    issue: input.issue,
+    workItem: input.workItem,
+    run: input.run,
+    stateName: trackerSettings.failureState,
+    reason: input.reason
+  });
+}
+
+async function syncTrackerIssueState(input: {
+  issue: Issue;
+  workItem: { id: string; projectId: string };
+  run?: Run;
+  stateName: string;
+  reason: TrackerStateSyncReason;
+}): Promise<boolean> {
+  try {
+    await tracker.moveIssue({
+      issueExternalId: input.issue.externalId,
+      stateName: input.stateName
+    });
+
+    await repository.upsertIssue({
+      ...input.issue,
+      state: input.stateName,
+      updatedAt: new Date()
+    });
+
+    await repository.appendEvent({
+      projectId: input.workItem.projectId,
+      workItemId: input.workItem.id,
+      runId: input.run?.id,
+      type: "tracker.issue.state_synced",
+      level: "info",
+      message: `Synced ${input.issue.identifier} to ${input.stateName}`,
+      payload: {
+        issueExternalId: input.issue.externalId,
+        issueIdentifier: input.issue.identifier,
+        reason: input.reason,
+        stateName: input.stateName,
+        tracker: tracker.kind
+      }
+    });
+
+    return true;
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    await repository.appendEvent({
+      projectId: input.workItem.projectId,
+      workItemId: input.workItem.id,
+      runId: input.run?.id,
+      type: "tracker.issue.state_sync_failed",
+      level: "warn",
+      message: `Could not sync ${input.issue.identifier} to ${input.stateName}`,
+      payload: {
+        detail,
+        issueExternalId: input.issue.externalId,
+        issueIdentifier: input.issue.identifier,
+        reason: input.reason,
+        stateName: input.stateName,
+        tracker: tracker.kind
+      }
+    });
+
+    return false;
+  }
+}
+
+async function commentOnTrackerIssue(input: {
+  issue: Issue;
+  workItem: { id: string; projectId: string };
+  run?: Run;
+  kind: TrackerCommentKind;
+  body: string;
+}): Promise<boolean> {
+  try {
+    await tracker.commentOnIssue({
+      issueExternalId: input.issue.externalId,
+      body: input.body
+    });
+
+    await repository.appendEvent({
+      projectId: input.workItem.projectId,
+      workItemId: input.workItem.id,
+      runId: input.run?.id,
+      type: "tracker.issue.comment_created",
+      level: "info",
+      message: `Posted ${input.kind.replace("_", " ")} comment to ${input.issue.identifier}`,
+      payload: {
+        bodyLength: Buffer.byteLength(input.body, "utf8"),
+        bodyPreview: input.body.slice(0, 280),
+        commentKind: input.kind,
+        issueExternalId: input.issue.externalId,
+        issueIdentifier: input.issue.identifier,
+        tracker: tracker.kind
+      }
+    });
+
+    return true;
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    await repository.appendEvent({
+      projectId: input.workItem.projectId,
+      workItemId: input.workItem.id,
+      runId: input.run?.id,
+      type: "tracker.issue.comment_failed",
+      level: "warn",
+      message: `Could not post ${input.kind.replace("_", " ")} comment to ${input.issue.identifier}`,
+      payload: {
+        commentKind: input.kind,
+        detail,
+        issueExternalId: input.issue.externalId,
+        issueIdentifier: input.issue.identifier,
+        tracker: tracker.kind
+      }
+    });
+
+    return false;
+  }
+}
+
 function buildRunLog(issue: Issue, run: Run, events: CapturedAgentEvent[]): string {
   const lines = [
     `Run: ${run.id}`,
@@ -651,10 +848,79 @@ ${artifactLines}
 `;
 }
 
-function buildReviewComment(run: Run, artifacts: Artifact[]): string {
+function buildRunStartedComment(issue: Issue, run: Run): string {
+  return `Agent run ${run.id} started for ${issue.identifier}.
+
+Runtime: ${run.agentRuntime}
+Workspace: ${run.workspacePath}
+`;
+}
+
+function buildRunFailedComment(issue: Issue, run: Run, reason: string, artifacts: Artifact[]): string {
+  const artifactLines = formatArtifactCommentLines(artifacts);
+  return `Agent run ${run.id} failed for ${issue.identifier}.
+
+Reason: ${reason}
+
+Artifacts:
+${artifactLines}
+`;
+}
+
+function buildSetupFailedComment(issue: Issue, reason: string): string {
+  return `Agent setup failed for ${issue.identifier}.
+
+Reason: ${reason}
+`;
+}
+
+function buildReviewComment(issue: Issue, run: Run, artifacts: Artifact[]): string {
   const reviewPacket = artifacts.find((artifact) => artifact.type === "review_packet");
-  const suffix = reviewPacket ? ` Review packet artifact: ${reviewPacket.id}.` : "";
-  return `Agent run ${run.id} finished and is ready for human review.${suffix}`;
+  const pullRequest = artifacts.find((artifact) => artifact.type === "pr");
+  const reviewLine = reviewPacket ? `Review packet artifact: ${reviewPacket.id}` : "Review packet artifact: not captured";
+  const pullRequestLine = pullRequest ? `Pull request draft artifact: ${pullRequest.id}` : "Pull request draft artifact: not captured";
+
+  return `Agent run ${run.id} finished for ${issue.identifier} and is ready for human review.
+
+${reviewLine}
+${pullRequestLine}
+
+Manual merge gate: review and merge externally, then mark the work item complete in Symphony.
+`;
+}
+
+function formatArtifactCommentLines(artifacts: Artifact[]): string {
+  if (!artifacts.length) {
+    return "- No artifacts were captured.";
+  }
+
+  return artifacts.map((artifact) => `- ${artifact.type}: ${artifact.id}`).join("\n");
+}
+
+function readTrackerSettings(): TrackerSettings {
+  const activeStates = readCommaSeparatedEnv("LINEAR_ACTIVE_STATES") ?? workflow.config.tracker.active_states;
+
+  return {
+    activeStates,
+    teamKey: readOptionalEnv("LINEAR_TEAM_KEY") ?? workflow.config.tracker.team_key,
+    projectSlug: readOptionalEnv("LINEAR_PROJECT_SLUG") ?? workflow.config.tracker.project_slug,
+    runningState: readOptionalEnv("LINEAR_RUNNING_STATE") ?? workflow.config.tracker.running_state,
+    reviewState: readOptionalEnv("LINEAR_REVIEW_STATE") ?? workflow.config.tracker.review_state,
+    failureState: readOptionalEnv("LINEAR_FAILURE_STATE") ?? activeStates.find((state) => state === "Changes Requested")
+  };
+}
+
+function readOptionalEnv(key: string): string | undefined {
+  const value = process.env[key]?.trim();
+  return value ? value : undefined;
+}
+
+function readCommaSeparatedEnv(key: string): string[] | undefined {
+  const values = process.env[key]
+    ?.split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  return values?.length ? values : undefined;
 }
 
 function createTracker(): TrackerAdapter {
@@ -675,7 +941,7 @@ function createTracker(): TrackerAdapter {
     identifier: "ENG-1",
     title: "Wire the first local agent run",
     description: "A safe fake issue for verifying the orchestrator loop before connecting Linear.",
-    state: workflow.config.tracker.active_states[0] ?? "Ready for Agent",
+    state: trackerSettings.activeStates[0] ?? "Ready for Agent",
     labels: ["agent"],
     blockedBy: [],
     repoRefs: [],

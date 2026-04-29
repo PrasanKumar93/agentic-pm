@@ -32,12 +32,13 @@ Date: 2026-04-29
 - Real Codex worker smoke test with `CODEX_API_KEY` env bridging, explicit model, explicit reasoning effort, persisted run events, and review packet capture.
 - Real Cursor Agent CLI worker smoke test with stream-json parsing, sandboxed/trusted generated workspace, persisted run events, and review packet capture.
 - Local PR draft artifact generation and manual `complete` gate for review-state work items.
+- Linear polling/upsert, tracker state sync events, local issue-state updates, failure-state fallback, and run start/failure/review comments.
 
 ## In Progress
 
-- Linear state sync and run comments.
+- Runtime stderr severity normalization for known CLI warnings.
 
 ## Next Queue
 
-- Runtime stderr severity normalization for known CLI warnings.
 - Remote GitHub PR creation with `gh pr create` after explicit project configuration.
+- Dashboard health badge for Linear webhook/tracker configuration.
