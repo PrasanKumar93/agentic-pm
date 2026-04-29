@@ -1,6 +1,6 @@
 # Agent Runtime Spec
 
-Status: Draft v0.1
+Status: Draft v0.2
 Date: 2026-04-29
 
 ## 1. Purpose
@@ -29,6 +29,30 @@ Normalized event types:
 
 The worker persists non-heartbeat events into MongoDB and uses heartbeats for responsive cancellation checks.
 
+## 3. Event Severity
+
+The worker classifies persisted runtime events so the dashboard can highlight real failures without turning harmless CLI warnings into errors.
+
+Default severities:
+
+| Runtime event | Persisted level |
+| --- | --- |
+| `session.failed` | `error` |
+| `stderr` | `error` |
+| other non-heartbeat events | `info` |
+
+Known warning-shaped stderr is downgraded to `warn` and annotated with `severityReason: "known_stderr_warning"`.
+
+Recognized warning forms:
+
+- `Warning:` or `Warn:` lines.
+- `[warn]` lines.
+- `npm warn`, `pnpm warn`, and `yarn warn`.
+- Node `DeprecationWarning` and `ExperimentalWarning`.
+- Browserslist `caniuse-lite is outdated` messages.
+
+If a stderr chunk contains error-shaped words such as `error`, `failed`, `fatal`, or `exception`, it remains `error` unless it is a Node warning class.
+
 Startup preflight checks are persisted as project events:
 
 - `worker.runtime_preflight_passed`
@@ -36,7 +60,7 @@ Startup preflight checks are persisted as project events:
 
 If a selected runtime fails preflight, the worker logs the failed checks, closes MongoDB, and exits before claiming work.
 
-## 3. Supported Runtime Modes
+## 4. Supported Runtime Modes
 
 ### `fake`
 
@@ -160,7 +184,7 @@ AGENT_RUNTIME_ARGS=--json --non-interactive
 
 Use this for Claude Code, OpenAI Agents SDK runners, internal agent tools, or wrappers when they can accept a prompt through stdin and run inside a workspace without manual editor interaction.
 
-## 4. Runtime Environment
+## 5. Runtime Environment
 
 Common controls:
 
@@ -182,7 +206,7 @@ Or JSON for quoted arguments:
 AGENT_RUNTIME_ARGS=["run","--profile","agent mode"]
 ```
 
-## 5. Tool Policy
+## 6. Tool Policy
 
 Codex remains the reference runtime for the MVP because it maps directly to the Symphony-style orchestration model. Cursor Agent CLI is also first-class because it supports noninteractive automation through `cursor-agent --print`.
 
@@ -194,6 +218,6 @@ Other popular tools are supported through the adapter boundary when one of these
 
 Desktop-only editor automation is not an MVP target because it is fragile, hard to cancel reliably, and hard to audit. It can be added later as a specialized adapter if needed.
 
-## 6. Next Runtime Work
+## 7. Next Runtime Work
 
 - Add per-runtime safety profiles for allowed file writes and command execution.

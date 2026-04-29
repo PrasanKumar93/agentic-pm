@@ -10,6 +10,7 @@ import {
   FakeAgentRuntime,
   GenericCliRuntime,
   type AgentRuntime,
+  type AgentEvent,
   type AgentRuntimePreflightResult,
   type AgentSession
 } from "@agentic-pm/agents";
@@ -73,6 +74,11 @@ interface TrackerSettings {
 
 type TrackerStateSyncReason = "run_started" | "run_failed" | "review_ready" | "setup_failed";
 type TrackerCommentKind = "run_started" | "run_failed" | "review_ready" | "setup_failed";
+
+interface AgentEventSeverity {
+  level: EventLevel;
+  reason?: string;
+}
 
 const runtimePreflight = await runRuntimePreflight(runtime);
 if (!runtimePreflight.ok) {
@@ -222,13 +228,13 @@ async function dispatchOne(): Promise<void> {
       await repository.heartbeatRun(run.id);
 
       if (agentEvent.type !== "heartbeat") {
-        const level: EventLevel =
-          agentEvent.type === "stderr" || agentEvent.type === "session.failed" ? "error" : "info";
+        const severity = classifyAgentEventSeverity(agentEvent);
+        const payload = buildAgentEventPayload(agentEvent.payload, severity.reason);
         capturedAgentEvents.push({
           type: agentEvent.type,
-          level,
+          level: severity.level,
           message: agentEvent.message,
-          payload: agentEvent.payload,
+          payload,
           createdAt: new Date()
         });
 
@@ -237,9 +243,9 @@ async function dispatchOne(): Promise<void> {
           workItemId: workItem.id,
           runId: run.id,
           type: `agent.${agentEvent.type}`,
-          level,
+          level: severity.level,
           message: agentEvent.message,
-          payload: agentEvent.payload
+          payload
         });
       }
 
@@ -381,6 +387,69 @@ async function stopRun(input: {
       workItemStatus: input.stopRequest.workItemStatus
     }
   });
+}
+
+function classifyAgentEventSeverity(event: AgentEvent): AgentEventSeverity {
+  if (event.type === "session.failed") {
+    return {
+      level: "error",
+      reason: "session_failed"
+    };
+  }
+
+  if (event.type !== "stderr") {
+    return {
+      level: "info"
+    };
+  }
+
+  if (isKnownWarningStderr(event.message)) {
+    return {
+      level: "warn",
+      reason: "known_stderr_warning"
+    };
+  }
+
+  return {
+    level: "error",
+    reason: "stderr"
+  };
+}
+
+function buildAgentEventPayload(
+  payload: Record<string, unknown> | undefined,
+  severityReason: string | undefined
+): Record<string, unknown> | undefined {
+  if (!severityReason) {
+    return payload;
+  }
+
+  return {
+    ...(payload ?? {}),
+    severityReason
+  };
+}
+
+function isKnownWarningStderr(message: string): boolean {
+  const normalized = message.trim();
+  if (!normalized) {
+    return false;
+  }
+
+  const lower = normalized.toLowerCase();
+  const warningPatternMatched =
+    /^\s*(warning|warn):/im.test(normalized) ||
+    /^\s*\[warn\]/im.test(normalized) ||
+    /^\s*(npm|pnpm|yarn)\s+warn/im.test(normalized) ||
+    /\b(deprecationwarning|experimentalwarning)\b/i.test(normalized) ||
+    /^\s*browserslist: caniuse-lite is outdated/im.test(normalized);
+
+  if (!warningPatternMatched) {
+    return false;
+  }
+
+  const isWarningException = /\b(deprecationwarning|experimentalwarning)\b/i.test(normalized);
+  return isWarningException || !/\b(error|failed|fatal|exception)\b/.test(lower);
 }
 
 async function captureReviewArtifacts(input: {

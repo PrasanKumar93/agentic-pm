@@ -33,12 +33,13 @@ Date: 2026-04-29
 - Real Cursor Agent CLI worker smoke test with stream-json parsing, sandboxed/trusted generated workspace, persisted run events, and review packet capture.
 - Local PR draft artifact generation and manual `complete` gate for review-state work items.
 - Linear polling/upsert, tracker state sync events, local issue-state updates, failure-state fallback, and run start/failure/review comments.
+- Runtime stderr severity normalization for known CLI warnings.
 
 ## In Progress
 
-- Runtime stderr severity normalization for known CLI warnings.
+- Remote GitHub PR creation with `gh pr create` after explicit project configuration.
 
 ## Next Queue
 
-- Remote GitHub PR creation with `gh pr create` after explicit project configuration.
 - Dashboard health badge for Linear webhook/tracker configuration.
+- Operator action tracker sync for cancel and complete states.
