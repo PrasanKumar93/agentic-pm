@@ -380,7 +380,7 @@ h2 {
   display: grid;
   font-size: 13px;
   gap: 12px;
-  grid-template-columns: 82px minmax(180px, 1fr) 150px 120px 80px 116px;
+  grid-template-columns: 82px minmax(180px, 1fr) 150px 120px 80px 152px;
   min-height: 46px;
   padding: 0 12px;
 }
@@ -396,12 +396,34 @@ h2 {
   justify-content: flex-end;
 }
 
+.actionGroup form {
+  display: flex;
+  gap: 6px;
+}
+
 .actionButton {
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--text);
+  display: inline-flex;
   height: 30px;
   justify-content: center;
   min-height: 30px;
   padding: 0;
   width: 32px;
+}
+
+.actionButton:hover {
+  border-color: #b8c1bb;
+  text-decoration: none;
+}
+
+.selectedAction {
+  background: #edf7f5;
+  border-color: #a8d8d2;
+  color: var(--teal);
 }
 
 .dangerAction {
@@ -410,6 +432,10 @@ h2 {
 
 .row:first-child {
   border-top: 0;
+}
+
+.selectedRow {
+  background: #f1faf8;
 }
 
 .tableHead {
@@ -659,6 +685,40 @@ h2 {
   text-transform: capitalize;
 }
 
+.artifactTitleRow {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.artifactAction {
+  align-items: center;
+  border: 1px solid #c9d4d0;
+  border-radius: 7px;
+  color: var(--teal);
+  display: inline-flex;
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  gap: 5px;
+  min-height: 26px;
+  padding: 0 7px;
+}
+
+.artifactAction:hover {
+  background: #edf7f5;
+  text-decoration: none;
+}
+
+.artifactAction span {
+  color: inherit;
+  display: inline;
+  font-size: inherit;
+  margin-top: 0;
+  overflow-wrap: normal;
+}
+
 .artifactItem p {
   color: var(--text);
   font-size: 12px;
@@ -721,7 +781,19 @@ h2 {
   }
 
   .row {
-    grid-template-columns: 70px minmax(130px, 1fr) 130px 74px;
+    gap: 8px;
+    grid-template-columns: 70px minmax(110px, 1fr) 120px 130px;
+  }
+
+  .actionButton {
+    height: 28px;
+    min-height: 28px;
+    width: 28px;
+  }
+
+  .actionGroup,
+  .actionGroup form {
+    gap: 4px;
   }
 
   .row span:nth-child(4),

@@ -1,6 +1,6 @@
 # Artifact Capture Spec
 
-Status: Draft v0.2
+Status: Draft v0.3
 Date: 2026-04-29
 
 ## 1. Purpose
@@ -18,6 +18,8 @@ Covered:
 - Review packet artifact for successful runs.
 - Artifact metadata registration in MongoDB.
 - Artifact list in the dashboard for the selected run.
+- Safe local text artifact content reads through the API.
+- Dashboard PR artifact actions for local drafts and remote PRs.
 
 Not covered:
 
@@ -87,6 +89,19 @@ GET /runs/:runId/artifacts
 ```
 
 It renders artifact type, summary, local path suffix, and relative capture time.
+
+For `pr` artifacts, the dashboard also renders an action:
+
+- `Open PR` when artifact metadata contains `remotePrUrl`.
+- `Open draft` when no remote URL exists; this opens the stored local `pull-request.md` through the API.
+
+The API text-read endpoint is:
+
+```txt
+GET /artifacts/:artifactId/content
+```
+
+It only serves registered local text artifacts where `metadata.local === true`. Supported text types are `log`, `patch`, `pr`, `test_report`, `review_packet`, and `plan`.
 
 ## 6. Validation
 

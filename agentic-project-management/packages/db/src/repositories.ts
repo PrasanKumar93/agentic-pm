@@ -538,6 +538,10 @@ export class AgenticRepository {
     return artifact;
   }
 
+  async getArtifact(artifactId: string): Promise<Artifact | null> {
+    return this.collections.artifacts.findOne({ id: artifactId });
+  }
+
   async listArtifacts(runId: string): Promise<Artifact[]> {
     return this.collections.artifacts.find({ runId }).sort({ createdAt: 1 }).toArray();
   }

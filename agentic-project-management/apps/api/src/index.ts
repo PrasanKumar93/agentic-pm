@@ -1,8 +1,17 @@
 import "dotenv/config";
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import cors from "@fastify/cors";
 import Fastify, { type FastifyRequest } from "fastify";
-import type { DispatchActionName, Issue, OperatorActionName, OperatorActionResult, RunEvent } from "@agentic-pm/core";
+import type {
+  Artifact,
+  ArtifactType,
+  DispatchActionName,
+  Issue,
+  OperatorActionName,
+  OperatorActionResult,
+  RunEvent
+} from "@agentic-pm/core";
 import {
   AgenticRepository,
   connectMongo,
@@ -30,6 +39,7 @@ const app = Fastify({
 });
 const allowedOperatorActions = new Set<OperatorActionName>(["start", "retry", "pause", "resume", "cancel", "complete"]);
 const allowedDispatchActions = new Set<DispatchActionName>(["pause", "resume", "start_eligible"]);
+const readableTextArtifactTypes = new Set<ArtifactType>(["log", "patch", "pr", "test_report", "review_packet", "plan"]);
 type IntegrationHealthStatus = "ok" | "warn" | "error";
 type OperatorTrackerSyncReason = "operator_cancel" | "operator_complete";
 
@@ -239,6 +249,36 @@ app.get("/runs/:runId/artifacts", async (request) => {
   return {
     data: await repository.listArtifacts(runId)
   };
+});
+
+app.get("/artifacts/:artifactId/content", async (request, reply) => {
+  const { artifactId } = request.params as { artifactId: string };
+  const artifact = await repository.getArtifact(artifactId);
+
+  if (!artifact) {
+    return reply.code(404).send({
+      error: `Artifact not found: ${artifactId}`
+    });
+  }
+
+  if (!isReadableLocalTextArtifact(artifact)) {
+    return reply.code(415).send({
+      error: `Artifact content is not readable through this endpoint: ${artifactId}`
+    });
+  }
+
+  try {
+    const content = await readFile(artifact.uri, "utf8");
+    return reply
+      .type(contentTypeForArtifact(artifact.type))
+      .header("content-disposition", `inline; filename="${artifactFileName(artifact)}"`)
+      .send(content);
+  } catch (error) {
+    app.log.warn({ artifactId, error }, "Could not read artifact content");
+    return reply.code(404).send({
+      error: `Artifact content not found: ${artifactId}`
+    });
+  }
 });
 
 app.post("/webhooks/linear", async (request, reply) => {
@@ -576,4 +616,40 @@ function readCommaSeparated(value: string | undefined, fallback: string[]): stri
     .map((item) => item.trim())
     .filter(Boolean);
   return parsed?.length ? parsed : fallback;
+}
+
+function isReadableLocalTextArtifact(artifact: Artifact): boolean {
+  return artifact.metadata?.local === true && readableTextArtifactTypes.has(artifact.type);
+}
+
+function contentTypeForArtifact(type: ArtifactType): string {
+  switch (type) {
+    case "patch":
+      return "text/x-patch; charset=utf-8";
+    case "pr":
+    case "plan":
+    case "review_packet":
+      return "text/markdown; charset=utf-8";
+    case "log":
+    case "test_report":
+      return "text/plain; charset=utf-8";
+    case "screenshot":
+    case "video":
+      return "application/octet-stream";
+  }
+}
+
+function artifactFileName(artifact: Artifact): string {
+  const fileNameByType: Record<ArtifactType, string> = {
+    log: "agent-events.log",
+    patch: "workspace.patch",
+    pr: "pull-request.md",
+    screenshot: "screenshot",
+    video: "video",
+    test_report: "test-report.txt",
+    review_packet: "review-packet.md",
+    plan: "plan.md"
+  };
+
+  return `${artifact.id}-${fileNameByType[artifact.type]}`.replace(/[^a-zA-Z0-9._-]/g, "_");
 }

@@ -1,6 +1,6 @@
 # PR Manual Gate Spec
 
-Status: Draft v0.2
+Status: Draft v0.3
 Date: 2026-04-29
 
 ## 1. Purpose
@@ -16,6 +16,7 @@ Covered:
 - Include suggested branch, commit, push, and `gh pr create --draft` commands.
 - Optionally create a remote GitHub draft PR after explicit project configuration.
 - Keep merge manual by policy.
+- Surface local PR drafts or remote PR URLs from the dashboard run detail panel.
 - Let an operator mark a `waiting_for_review` work item as `completed` after external review/merge.
 
 Not covered:
@@ -70,6 +71,11 @@ If remote config is missing or `gh` fails, the run still moves to review and the
 ## 5. Manual Gate
 
 The dashboard shows a manual merge gate for review-state runs. The `complete` operator action is allowed only when a work item is `waiting_for_review`.
+
+The selected run artifact list exposes PR review evidence:
+
+- Local-only PR artifacts open `GET /artifacts/:artifactId/content`.
+- GitHub draft PR artifacts with `metadata.remotePrUrl` open the remote pull request.
 
 The action:
 

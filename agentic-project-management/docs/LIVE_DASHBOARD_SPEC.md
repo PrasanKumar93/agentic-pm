@@ -1,6 +1,6 @@
 # Live Dashboard Spec
 
-Status: Draft v0.2
+Status: Draft v0.3
 Date: 2026-04-29
 
 ## 1. Purpose
@@ -13,7 +13,8 @@ This spec covers the first live data slice:
 - API returns integration health without exposing secrets.
 - Web dashboard fetches the API at request time.
 - UI renders empty, error, and live-data states.
-- Operator actions remain visually present but disabled until action endpoints are implemented.
+- Operator actions are submitted through server actions.
+- Run artifacts include PR draft or remote PR affordances when available.
 
 ## 2. Contract
 
@@ -124,12 +125,13 @@ Each row shows:
 - Work item status
 - Claimed worker or `unclaimed`
 - Relative updated time
+- An inspect action that selects the row for the run detail panel via `?workItemId=<id>`
 
 If no work items exist, show an empty state that tells the operator to run the worker or connect a tracker.
 
 ### Run Detail
 
-The run detail panel uses the first non-terminal/high-priority row, falling back to the newest row.
+The run detail panel uses `?workItemId=<id>` when present. Without an explicit selection, it uses the first non-terminal/high-priority row, falling back to the newest row.
 
 It shows:
 
@@ -140,6 +142,12 @@ It shows:
 - Last event message
 - Event count
 - Latest run event timeline
+- Latest run artifacts
+
+For `pr` artifacts, the artifact row shows:
+
+- `Open PR` when artifact metadata contains a remote GitHub PR URL.
+- `Open draft` when the artifact is a local draft; the link opens `GET /artifacts/:artifactId/content`.
 
 If no work item is selected, show a quiet empty state.
 

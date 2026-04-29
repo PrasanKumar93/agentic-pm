@@ -3,6 +3,8 @@ import {
   CheckCircle2,
   CirclePause,
   Database,
+  Eye,
+  ExternalLink,
   FileText,
   Play,
   RefreshCw,
@@ -168,6 +170,12 @@ type ActionFeedback = {
   message: string;
 };
 
+type ArtifactAction = {
+  href: string;
+  label: string;
+  title: string;
+};
+
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 export default async function DashboardPage({
@@ -179,7 +187,7 @@ export default async function DashboardPage({
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const actionFeedback = parseActionFeedback(resolvedSearchParams);
   const lanes = buildLanes(dashboard.items);
-  const selected = selectRunDetailItem(dashboard.items);
+  const selected = selectRunDetailItem(dashboard.items, firstParam(resolvedSearchParams.workItemId));
   const [runEvents, runArtifacts] = selected?.latestRun
     ? await Promise.all([fetchRunEvents(selected.latestRun.id), fetchRunArtifacts(selected.latestRun.id)])
     : [{ events: [] }, { artifacts: [] }];
@@ -298,7 +306,7 @@ export default async function DashboardPage({
                   <span>Actions</span>
                 </div>
                 {dashboard.items.map((row) => (
-                  <div className="row" key={row.id}>
+                  <div className={`row ${selected?.id === row.id ? "selectedRow" : ""}`} key={row.id}>
                     {row.issue.url ? (
                       <a href={row.issue.url} target="_blank" rel="noreferrer">
                         {row.issue.identifier}
@@ -310,22 +318,32 @@ export default async function DashboardPage({
                     <span className={`pill ${row.status}`}>{formatStatus(row.status)}</span>
                     <span>{row.claimedBy ?? row.latestRun?.agentRuntime ?? "unclaimed"}</span>
                     <span>{formatRelativeTime(row.updatedAt)}</span>
-                    <form action={submitWorkItemAction} className="actionGroup">
-                      <input name="workItemId" type="hidden" value={row.id} />
-                      {getAvailableActions(row.status).map((action) => (
-                        <button
-                          aria-label={action.label}
-                          className={`actionButton ${action.name === "cancel" ? "dangerAction" : ""}`}
-                          key={action.name}
-                          name="action"
-                          title={action.label}
-                          type="submit"
-                          value={action.name}
-                        >
-                          <ActionIcon action={action.name} />
-                        </button>
-                      ))}
-                    </form>
+                    <div className="actionGroup">
+                      <a
+                        aria-label="Inspect run"
+                        className={`actionButton ${selected?.id === row.id ? "selectedAction" : ""}`}
+                        href={`/?workItemId=${encodeURIComponent(row.id)}`}
+                        title="Inspect run"
+                      >
+                        <Eye size={14} />
+                      </a>
+                      <form action={submitWorkItemAction}>
+                        <input name="workItemId" type="hidden" value={row.id} />
+                        {getAvailableActions(row.status).map((action) => (
+                          <button
+                            aria-label={action.label}
+                            className={`actionButton ${action.name === "cancel" ? "dangerAction" : ""}`}
+                            key={action.name}
+                            name="action"
+                            title={action.label}
+                            type="submit"
+                            value={action.name}
+                          >
+                            <ActionIcon action={action.name} />
+                          </button>
+                        ))}
+                      </form>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -424,16 +442,34 @@ export default async function DashboardPage({
                     <div className="timelineNotice">{runArtifacts.error}</div>
                   ) : runArtifacts.artifacts.length > 0 ? (
                     <div className="artifactStack">
-                      {runArtifacts.artifacts.map((artifact) => (
-                        <div className="artifactItem" key={artifact.id}>
-                          <FileText size={14} />
-                          <div>
-                            <strong>{formatArtifactType(artifact.type)}</strong>
-                            <p>{artifact.summary ?? artifact.uri}</p>
-                            <span>{formatArtifactUri(artifact.uri)} · {formatRelativeTime(artifact.createdAt)}</span>
+                      {runArtifacts.artifacts.map((artifact) => {
+                        const action = getArtifactAction(artifact);
+
+                        return (
+                          <div className="artifactItem" key={artifact.id}>
+                            <FileText size={14} />
+                            <div>
+                              <div className="artifactTitleRow">
+                                <strong>{formatArtifactType(artifact.type)}</strong>
+                                {action ? (
+                                  <a
+                                    className="artifactAction"
+                                    href={action.href}
+                                    rel="noreferrer"
+                                    target="_blank"
+                                    title={action.title}
+                                  >
+                                    <ExternalLink size={12} />
+                                    <span>{action.label}</span>
+                                  </a>
+                                ) : null}
+                              </div>
+                              <p>{artifact.summary ?? artifact.uri}</p>
+                              <span>{formatArtifactUri(artifact.uri)} · {formatRelativeTime(artifact.createdAt)}</span>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   ) : (
                     <div className="timelineNotice">No artifacts captured yet.</div>
@@ -636,8 +672,11 @@ function getRecentEvents(events: RunEventSummary[]): RunEventSummary[] {
   return events.slice(-8).reverse();
 }
 
-function selectRunDetailItem(items: WorkItemSummary[]): WorkItemSummary | undefined {
+function selectRunDetailItem(items: WorkItemSummary[], requestedWorkItemId?: string): WorkItemSummary | undefined {
+  const requested = requestedWorkItemId ? items.find((item) => item.id === requestedWorkItemId) : undefined;
+
   return (
+    requested ??
     items.find((item) => item.status === "running") ??
     items.find((item) => item.status === "waiting_for_review") ??
     items[0]
@@ -742,6 +781,32 @@ function formatArtifactUri(uri: string): string {
   const normalized = uri.replaceAll("\\", "/");
   const parts = normalized.split("/");
   return parts.slice(-2).join("/");
+}
+
+function getArtifactAction(artifact: ArtifactSummary): ArtifactAction | undefined {
+  if (artifact.type !== "pr") {
+    return undefined;
+  }
+
+  const remotePrUrl = readMetadataString(artifact.metadata, "remotePrUrl");
+  if (remotePrUrl) {
+    return {
+      href: remotePrUrl,
+      label: "Open PR",
+      title: "Open remote pull request"
+    };
+  }
+
+  return {
+    href: `${apiUrl}/artifacts/${artifact.id}/content`,
+    label: "Open draft",
+    title: "Open local pull request draft"
+  };
+}
+
+function readMetadataString(metadata: Record<string, unknown> | undefined, key: string): string | undefined {
+  const value = metadata?.[key];
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
 }
 
 function formatRelativeTime(value: string): string {
