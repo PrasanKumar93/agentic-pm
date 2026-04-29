@@ -1197,7 +1197,43 @@ h2 {
   display: grid;
   gap: 10px;
   margin-left: 5px;
+  max-height: 520px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: 2px;
   padding-left: 14px;
+  padding-right: 6px;
+  padding-top: 2px;
+  scrollbar-color: #b8c1bb #eef2ef;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+}
+
+.scrollableList {
+  background: linear-gradient(
+    to left,
+    #eef2ef 0,
+    #eef2ef 8px,
+    transparent 8px
+  );
+  border-right: 1px solid #cbd4cf;
+}
+
+.timelineList::-webkit-scrollbar,
+.artifactStack::-webkit-scrollbar {
+  width: 10px;
+}
+
+.timelineList::-webkit-scrollbar-track,
+.artifactStack::-webkit-scrollbar-track {
+  background: #eef2ef;
+  border-radius: 999px;
+}
+
+.timelineList::-webkit-scrollbar-thumb,
+.artifactStack::-webkit-scrollbar-thumb {
+  background: #b8c1bb;
+  border-radius: 999px;
 }
 
 .timelineItem {
@@ -1245,6 +1281,13 @@ h2 {
 .artifactStack {
   display: grid;
   gap: 8px;
+  max-height: 440px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 6px;
+  scrollbar-color: #b8c1bb #eef2ef;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
 }
 
 .artifactItem {

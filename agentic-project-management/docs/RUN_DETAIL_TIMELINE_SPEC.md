@@ -36,7 +36,7 @@ GET /runs/:runId/events
 }
 ```
 
-Events are returned in ascending `createdAt` order from the repository. The dashboard renders the latest eight events newest-first.
+Events are returned in ascending `createdAt` order from the repository. The dashboard renders the full event list newest-first inside a bounded scroll region, so the event count and visible rows stay consistent for long Codex/Cursor runs.
 
 ## 3. Dashboard Behavior
 
@@ -55,9 +55,11 @@ When the selected work item has a latest run, the dashboard fetches `/runs/:runI
 
 If the event API fails, the panel keeps the rest of the run detail visible and shows a scoped timeline error.
 
+The timeline list must show an explicit vertical scrollbar and reserved scroll rail when the selected run has more events than fit in the panel. Artifact lists use the same bounded-scroll treatment when a run captures many proof files.
+
 ## 4. Future Work
 
-- Add event pagination once long runs produce large logs.
+- Add server-side event pagination once long runs produce large logs.
 - Add live streaming with Server-Sent Events or WebSocket fanout.
 - Add event filters for agent output, tracker transitions, policy checks, and artifacts.
 - Link timeline events to artifacts and workspace files.

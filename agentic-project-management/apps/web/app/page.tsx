@@ -371,7 +371,19 @@ export default async function DashboardPage({
           fetchRunArtifacts(selected.latestRun.id),
         ])
       : [{ events: [] }, { artifacts: [] }];
-  const recentEvents = getRecentEvents(runEvents.events);
+  const timelineEvents = getTimelineEvents(runEvents.events);
+  const timelineListClassName = [
+    "timelineList",
+    timelineEvents.length > 5 ? "scrollableList" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const artifactStackClassName = [
+    "artifactStack",
+    runArtifacts.artifacts.length > 4 ? "scrollableList" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
     <main className="shell">
@@ -917,10 +929,18 @@ export default async function DashboardPage({
 
                       {runEvents.error ? (
                         <div className="timelineNotice">{runEvents.error}</div>
-                      ) : recentEvents.length > 0 ? (
-                        <div className="timelineList">
-                          {recentEvents.map((event) => (
-                            <div className="timelineItem" key={event.id}>
+                      ) : timelineEvents.length > 0 ? (
+                        <div
+                          aria-label="Run event timeline"
+                          className={timelineListClassName}
+                          role="list"
+                        >
+                          {timelineEvents.map((event) => (
+                            <div
+                              className="timelineItem"
+                              key={event.id}
+                              role="listitem"
+                            >
                               <div>
                                 <strong>{event.type}</strong>
                                 <span>
@@ -952,12 +972,20 @@ export default async function DashboardPage({
                           {runArtifacts.error}
                         </div>
                       ) : runArtifacts.artifacts.length > 0 ? (
-                        <div className="artifactStack">
+                        <div
+                          aria-label="Run artifacts"
+                          className={artifactStackClassName}
+                          role="list"
+                        >
                           {runArtifacts.artifacts.map((artifact) => {
                             const action = getArtifactAction(artifact);
 
                             return (
-                              <div className="artifactItem" key={artifact.id}>
+                              <div
+                                className="artifactItem"
+                                key={artifact.id}
+                                role="listitem"
+                              >
                                 <FileText size={14} />
                                 <div>
                                   <div className="artifactTitleRow">
@@ -1466,8 +1494,8 @@ function countStatus(items: WorkItemSummary[], status: WorkItemStatus): number {
   return items.filter((item) => item.status === status).length;
 }
 
-function getRecentEvents(events: RunEventSummary[]): RunEventSummary[] {
-  return events.slice(-8).reverse();
+function getTimelineEvents(events: RunEventSummary[]): RunEventSummary[] {
+  return [...events].reverse();
 }
 
 function selectRunDetailItem(

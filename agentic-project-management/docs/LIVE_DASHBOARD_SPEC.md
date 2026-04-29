@@ -241,8 +241,8 @@ It shows:
 - Manual merge gate policy
 - Last event message
 - Event count
-- Latest run event timeline
-- Latest run artifacts
+- Latest run event timeline, newest-first and scrollable for long runs
+- Latest run artifacts, scrollable when many proof files are captured
 
 For artifact rows, the dashboard exposes readable proof files:
 

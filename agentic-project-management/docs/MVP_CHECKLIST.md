@@ -77,3 +77,4 @@
 - [x] Optionally create remote GitHub draft PRs after explicit config.
 - [x] Open PR drafts and remote PR artifacts from the dashboard.
 - [x] Open local log, patch, test report, review packet, and plan artifacts from the dashboard.
+- [x] Show full run timelines and long artifact lists in explicit scroll regions.
