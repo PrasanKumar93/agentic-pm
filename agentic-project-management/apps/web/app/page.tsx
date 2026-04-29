@@ -179,6 +179,12 @@ type DispatchControlResponse = {
 };
 
 type IntegrationHealthStatus = "ok" | "warn" | "error";
+type LinearVerificationStatus =
+  | "disabled"
+  | "missing_config"
+  | "verified"
+  | "missing_states"
+  | "failed";
 
 type IntegrationHealth = {
   tracker: {
@@ -199,6 +205,20 @@ type IntegrationHealth = {
     failureState: string;
     doneState: string;
     cancelledState: string;
+    verification?: {
+      status: LinearVerificationStatus;
+      checkedAt?: string;
+      message: string;
+      team?: {
+        id: string;
+        key: string;
+        name: string;
+      };
+      matchedStateNames: string[];
+      missingStateNames: string[];
+      availableStateNames: string[];
+      error?: string;
+    };
   };
 };
 
@@ -984,6 +1004,7 @@ export default async function DashboardPage({
           />
         ) : (
           <ConfigView
+            integrations={dashboard.integrations}
             repositories={dashboard.repositories}
             selectedProjectId={dashboard.selectedProjectId}
           />
@@ -1548,12 +1569,28 @@ function ProjectMenu({
 }
 
 function ConfigView({
+  integrations,
   repositories,
   selectedProjectId,
 }: {
+  integrations: IntegrationHealth;
   repositories: RepositoryOption[];
   selectedProjectId: string;
 }) {
+  const verification = integrations.linear.verification;
+  const verificationTone = getLinearVerificationTone(verification?.status);
+  const stateChecks = [
+    ...integrations.linear.activeStates.map((state) => ({
+      label: "Active",
+      value: state,
+    })),
+    { label: "Running", value: integrations.linear.runningState },
+    { label: "Review", value: integrations.linear.reviewState },
+    { label: "Failure", value: integrations.linear.failureState },
+    { label: "Done", value: integrations.linear.doneState },
+    { label: "Cancelled", value: integrations.linear.cancelledState },
+  ];
+
   return (
     <section className="configView">
       <section className="metrics auditMetrics">
@@ -1581,6 +1618,78 @@ function ConfigView({
           <strong className="neutral">
             {repositories[0]?.defaultBranch ?? "main"}
           </strong>
+        </div>
+      </section>
+
+      <section className="panel linearConfigPanel">
+        <div className="panelHeader compact">
+          <div>
+            <h2>Linear verification</h2>
+            <p>{verification?.message ?? integrations.tracker.message}</p>
+          </div>
+          {verificationTone === "ok" ? (
+            <ShieldCheck size={17} />
+          ) : (
+            <AlertTriangle size={17} />
+          )}
+        </div>
+
+        <div className="linearStatusGrid">
+          <div className={`linearStatusCard ${verificationTone}`}>
+            <span>Status</span>
+            <strong>{formatLinearVerificationStatus(verification?.status)}</strong>
+            <small>
+              {verification?.checkedAt
+                ? `checked ${formatRelativeTime(verification.checkedAt)}`
+                : integrations.linear.enabled
+                  ? "not checked"
+                  : "tracker inactive"}
+            </small>
+          </div>
+          <div className="linearStatusCard">
+            <span>API key</span>
+            <strong>
+              {integrations.linear.apiKeyConfigured ? "configured" : "missing"}
+            </strong>
+            <small>secret hidden</small>
+          </div>
+          <div className="linearStatusCard">
+            <span>Team</span>
+            <strong>{verification?.team?.key ?? "unverified"}</strong>
+            <small>{verification?.team?.name ?? "LINEAR_TEAM_KEY"}</small>
+          </div>
+          <div className="linearStatusCard">
+            <span>Webhook</span>
+            <strong>
+              {integrations.linear.webhookSecretConfigured
+                ? "configured"
+                : "missing"}
+            </strong>
+            <small>{integrations.linear.webhookToleranceMs}ms window</small>
+          </div>
+        </div>
+
+        {verification?.error ? (
+          <div className="linearError">{verification.error}</div>
+        ) : null}
+
+        <div className="stateCheckGrid">
+          {stateChecks.map((state, index) => {
+            const matched =
+              verification?.matchedStateNames.includes(state.value) ?? false;
+            const missing =
+              verification?.missingStateNames.includes(state.value) ?? false;
+            return (
+              <div
+                className={`stateCheck ${matched ? "ok" : missing ? "error" : ""}`}
+                key={`${state.label}-${state.value}-${index}`}
+              >
+                {matched ? <CheckCircle2 size={14} /> : <Square size={14} />}
+                <span>{state.label}</span>
+                <strong>{state.value}</strong>
+              </div>
+            );
+          })}
         </div>
       </section>
 
@@ -1814,6 +1923,39 @@ function buildWebhookAuditStats(deliveries: WebhookDeliverySummary[]) {
   ];
 }
 
+function getLinearVerificationTone(
+  status: LinearVerificationStatus | undefined,
+): "ok" | "warn" | "error" {
+  if (status === "verified") {
+    return "ok";
+  }
+
+  if (status === "disabled") {
+    return "warn";
+  }
+
+  return "error";
+}
+
+function formatLinearVerificationStatus(
+  status: LinearVerificationStatus | undefined,
+): string {
+  switch (status) {
+    case "verified":
+      return "verified";
+    case "missing_states":
+      return "missing states";
+    case "missing_config":
+      return "missing config";
+    case "failed":
+      return "failed";
+    case "disabled":
+      return "disabled";
+    default:
+      return "unknown";
+  }
+}
+
 function TrackerHealthBadge({ health }: { health: IntegrationHealth }) {
   const title = health.linear.enabled
     ? [
@@ -1821,6 +1963,7 @@ function TrackerHealthBadge({ health }: { health: IntegrationHealth }) {
         `API key: ${health.linear.apiKeyConfigured ? "configured" : "missing"}`,
         `Team key: ${health.linear.teamKeyConfigured ? "configured" : "missing"}`,
         `Webhook secret: ${health.linear.webhookSecretConfigured ? "configured" : "missing"}`,
+        `Verification: ${formatLinearVerificationStatus(health.linear.verification?.status)}`,
         `Review state: ${health.linear.reviewState}`,
         `Done state: ${health.linear.doneState}`,
         `Cancelled state: ${health.linear.cancelledState}`,

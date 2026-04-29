@@ -557,6 +557,110 @@ h2 {
   gap: 14px;
 }
 
+.linearConfigPanel {
+  display: grid;
+  gap: 14px;
+}
+
+.linearStatusGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.linearStatusCard {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.linearStatusCard.ok {
+  border-color: #b8ddcf;
+  background: #edf7f3;
+}
+
+.linearStatusCard.warn {
+  border-color: #ecd19d;
+  background: #fff8e9;
+}
+
+.linearStatusCard.error {
+  border-color: #efc1c1;
+  background: #fff0f0;
+}
+
+.linearStatusCard span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.linearStatusCard strong {
+  font-size: 15px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.linearStatusCard small {
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.linearError {
+  background: #fff0f0;
+  border: 1px solid #efc1c1;
+  border-radius: 8px;
+  color: var(--red);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  padding: 10px 12px;
+}
+
+.stateCheckGrid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}
+
+.stateCheck {
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: auto 72px minmax(0, 1fr);
+  min-height: 40px;
+  padding: 0 10px;
+}
+
+.stateCheck.ok {
+  color: var(--green);
+}
+
+.stateCheck.error {
+  color: var(--red);
+}
+
+.stateCheck span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.stateCheck strong {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
 .repoForm {
   display: grid;
   gap: 10px;
@@ -1213,6 +1317,7 @@ h2 {
 
   .auditMetrics,
   .configGrid,
+  .linearStatusGrid,
   .contentGrid,
   .metrics {
     grid-template-columns: 1fr;

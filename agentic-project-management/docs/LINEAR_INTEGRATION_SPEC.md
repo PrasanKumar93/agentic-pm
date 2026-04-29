@@ -1,13 +1,13 @@
 # Linear Integration Spec
 
-Status: Draft v0.5
+Status: Draft v0.6
 Date: 2026-04-29
 
 ## 1. Purpose
 
 Linear integration brings tracker events into the same local orchestration loop as polling.
 
-This slice adds webhook security, polling reconciliation, state sync events, and run comments. The worker still keeps polling because webhooks can be delayed, retried, or missed.
+This slice adds webhook security, polling reconciliation, state sync events, run comments, and live configuration verification. The worker still keeps polling because webhooks can be delayed, retried, or missed.
 
 ## 2. Environment
 
@@ -40,7 +40,30 @@ LINEAR_CANCELLED_STATE=Cancelled
 
 Environment values override workflow front matter so local operators can switch Linear teams/states without editing `WORKFLOW.md`.
 
-## 3. Webhook Endpoint
+## 3. Configuration Verification
+
+```txt
+GET /integrations/health
+```
+
+When `AGENTIC_PM_TRACKER=linear` and both `LINEAR_API_KEY` and `LINEAR_TEAM_KEY` are configured, the API performs a read-only Linear GraphQL verification:
+
+- Authenticates with the configured personal API key.
+- Looks up the team by `LINEAR_TEAM_KEY`.
+- Lists workflow states for that team.
+- Compares the returned state names against `LINEAR_ACTIVE_STATES`, `LINEAR_RUNNING_STATE`, `LINEAR_REVIEW_STATE`, `LINEAR_FAILURE_STATE`, `LINEAR_DONE_STATE`, and `LINEAR_CANCELLED_STATE`.
+
+The response never returns secret values. It exposes booleans for API key, team key, and webhook secret presence, plus a verification object with:
+
+- `status`: `disabled`, `missing_config`, `verified`, `missing_states`, or `failed`.
+- `team`: verified team id/key/name when Linear returns it.
+- `matchedStateNames` and `missingStateNames`.
+- `availableStateNames` for the configured team.
+- `checkedAt` and a sanitized error string when verification fails.
+
+Dashboard Config renders this as the operator-facing Linear verification panel. A fully usable Linear loop requires `status: verified`; missing webhook secret is allowed but keeps the overall health in warning state because polling can run while webhooks remain inactive.
+
+## 4. Webhook Endpoint
 
 ```txt
 POST /webhooks/linear
@@ -85,7 +108,7 @@ Invalid signatures and stale timestamps return `401 Unauthorized`.
 
 If `LINEAR_WEBHOOK_SECRET` is not configured, the endpoint returns `503 Service Unavailable`.
 
-## 4. Polling And Upsert
+## 5. Polling And Upsert
 
 The worker polls Linear through `listActiveIssues` with:
 
@@ -105,7 +128,7 @@ Polling and webhook normalization share the same Linear issue mapping:
 - workflow state name -> `state`
 - labels, assignee, relations, URL, priority, timestamps, and raw payload
 
-## 5. State Sync
+## 6. State Sync
 
 The worker syncs external tracker state at durable lifecycle points:
 
@@ -132,7 +155,7 @@ If `LINEAR_FAILURE_STATE` is not set, the worker defaults it to `Changes Request
 
 Operator action sync is performed by the API after the local MongoDB transition succeeds. It is best-effort: a Linear failure emits `tracker.issue.state_sync_failed` and does not roll back local Symphony state.
 
-## 6. Run Comments
+## 7. Run Comments
 
 The worker posts Linear comments for:
 
@@ -145,7 +168,7 @@ Successful comments emit `tracker.issue.comment_created`.
 
 Failed comments emit `tracker.issue.comment_failed` as warnings and do not fail the run.
 
-## 7. Fastify Raw Body Rule
+## 8. Fastify Raw Body Rule
 
 Signature validation must use the raw request body bytes. The API replaces Fastify's default JSON parser with a raw-buffer parser that:
 
@@ -153,7 +176,7 @@ Signature validation must use the raw request body bytes. The API replaces Fasti
 - Parses JSON once for normal route handlers.
 - Leaves all non-webhook JSON routes working as before.
 
-## 8. Local Setup
+## 9. Local Setup
 
 1. Copy `.env.example` to `.env`.
 2. Set `LINEAR_API_KEY`.
@@ -169,7 +192,19 @@ https://<public-host>/webhooks/linear
 
 For localhost testing, expose the API with a tunnel such as ngrok or Cloudflare Tunnel, then use that public HTTPS URL in Linear.
 
-## 9. Smoke Tests
+## 10. Smoke Tests
+
+Live configuration:
+
+```sh
+curl -s http://127.0.0.1:4000/integrations/health
+```
+
+Expected result for a complete Linear setup:
+
+- `data.tracker.status` is `ok` when webhook secret is present or `warn` when only polling is configured.
+- `data.linear.verification.status` is `verified`.
+- `data.linear.verification.missingStateNames` is empty.
 
 Valid signature:
 
@@ -209,11 +244,11 @@ Then confirm run events include:
 
 Webhook smoke should return `data.status: "reconciled"` for active issue payloads and create a local work item for the configured project. Replaying the exact same payload and `Linear-Delivery` should return `data.status: "duplicate"` and should not append another `tracker.issue.webhook_reconciled` event.
 
-## 10. References
+## 11. References
 
 - Linear webhook docs: https://linear.app/developers/webhooks
 - Linear SDK webhook docs: https://linear.app/docs/api/sdk-webhooks
 
-## 11. Future Work
+## 12. Future Work
 
 - Add IP allowlisting as an optional defense-in-depth check.

@@ -48,11 +48,12 @@ Date: 2026-04-29
 - Repository-backed local work item intake with dashboard repository selection.
 - Repository-aware workspace materialization with local git worktree and clone fallback.
 - Repository Config view for registering managed repositories from the dashboard.
+- Live Linear configuration verification for team key and workflow states, surfaced in the Config view.
 
 ## In Progress
 
-- Linear team/project configuration verification against a live Linear workspace.
+- Repository edit/archive controls with explicit confirmation.
 
 ## Next Queue
 
-- Repository edit/archive controls with explicit confirmation.
+- Live Linear worker smoke against the user's configured workspace once `LINEAR_TEAM_KEY` and workflow state names verify cleanly.

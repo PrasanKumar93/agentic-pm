@@ -38,6 +38,40 @@ export interface LinearIssueNode {
   updatedAt?: string | null;
 }
 
+export interface LinearWorkflowStateNode {
+  id: string;
+  name: string;
+  type?: string | null;
+  team?: {
+    id?: string | null;
+    key?: string | null;
+    name?: string | null;
+  } | null;
+}
+
+export interface LinearTeamNode {
+  id: string;
+  key: string;
+  name: string;
+}
+
+export interface LinearVerificationInput {
+  teamKey: string;
+  stateNames: string[];
+}
+
+export interface LinearVerificationResult {
+  viewer: {
+    id: string;
+    name?: string | null;
+    email?: string | null;
+  };
+  team?: LinearTeamNode;
+  states: LinearWorkflowStateNode[];
+  matchedStateNames: string[];
+  missingStateNames: string[];
+}
+
 interface LinearNormalizeOptions {
   fallbackUrl?: string;
 }
@@ -122,6 +156,58 @@ export class LinearTrackerAdapter implements TrackerAdapter {
       issueId: input.issueExternalId,
       stateId
     });
+  }
+
+  async verifyConnection(input: LinearVerificationInput): Promise<LinearVerificationResult> {
+    const expectedStateNames = uniqueValues(input.stateNames);
+    const query = `
+      query AgenticLinearVerification($teamKey: String!) {
+        viewer {
+          id
+          name
+          email
+        }
+        teams(filter: { key: { eq: $teamKey } }, first: 1) {
+          nodes {
+            id
+            key
+            name
+          }
+        }
+        workflowStates(filter: { team: { key: { eq: $teamKey } } }, first: 100) {
+          nodes {
+            id
+            name
+            type
+            team {
+              id
+              key
+              name
+            }
+          }
+        }
+      }
+    `;
+
+    const data = await this.request<{
+      viewer: LinearVerificationResult["viewer"];
+      teams: { nodes: LinearTeamNode[] };
+      workflowStates: { nodes: LinearWorkflowStateNode[] };
+    }>(query, {
+      teamKey: input.teamKey,
+    });
+
+    const team = data.teams.nodes[0];
+    const states = data.workflowStates.nodes;
+    const availableNames = new Set(states.map((state) => state.name));
+
+    return {
+      viewer: data.viewer,
+      team,
+      states,
+      matchedStateNames: expectedStateNames.filter((name) => availableNames.has(name)),
+      missingStateNames: expectedStateNames.filter((name) => !availableNames.has(name)),
+    };
   }
 
   private async findStateId(name: string): Promise<string> {
@@ -227,4 +313,8 @@ function readLinearDate(value: string | null | undefined, fallback: Date): Date 
 
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? fallback : date;
+}
+
+function uniqueValues(values: string[]): string[] {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }

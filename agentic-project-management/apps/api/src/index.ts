@@ -96,7 +96,28 @@ const readableTextArtifactTypes = new Set<ArtifactType>([
   "plan",
 ]);
 type IntegrationHealthStatus = "ok" | "warn" | "error";
+type LinearVerificationStatus =
+  | "disabled"
+  | "missing_config"
+  | "verified"
+  | "missing_states"
+  | "failed";
 type OperatorTrackerSyncReason = "operator_cancel" | "operator_complete";
+
+type LinearVerificationHealth = {
+  status: LinearVerificationStatus;
+  checkedAt?: string;
+  message: string;
+  team?: {
+    id: string;
+    key: string;
+    name: string;
+  };
+  matchedStateNames: string[];
+  missingStateNames: string[];
+  availableStateNames: string[];
+  error?: string;
+};
 
 type OperatorTrackerSyncResult =
   | {
@@ -210,7 +231,7 @@ app.get("/health", async () => {
 
 app.get("/integrations/health", async () => {
   return {
-    data: buildIntegrationHealth(),
+    data: await buildIntegrationHealth(),
     meta: {
       generatedAt: new Date().toISOString(),
     },
@@ -1110,10 +1131,12 @@ async function appendTrackerSyncEvent(input: {
   });
 }
 
-function buildIntegrationHealth() {
-  const trackerKind = process.env.AGENTIC_PM_TRACKER ?? "fake";
-  const linearApiKeyConfigured = Boolean(process.env.LINEAR_API_KEY?.trim());
-  const linearTeamKeyConfigured = Boolean(process.env.LINEAR_TEAM_KEY?.trim());
+async function buildIntegrationHealth() {
+  const trackerKind = readTrackerKind();
+  const linearApiKey = process.env.LINEAR_API_KEY?.trim();
+  const linearTeamKey = process.env.LINEAR_TEAM_KEY?.trim();
+  const linearApiKeyConfigured = Boolean(linearApiKey);
+  const linearTeamKeyConfigured = Boolean(linearTeamKey);
   const linearWebhookSecretConfigured = Boolean(linearWebhookSecret?.trim());
   const linearActiveStates = readCommaSeparated(
     process.env.LINEAR_ACTIVE_STATES,
@@ -1129,22 +1152,101 @@ function buildIntegrationHealth() {
   const linearCancelledState =
     process.env.LINEAR_CANCELLED_STATE?.trim() || "Cancelled";
   const linearEnabled = trackerKind === "linear";
+  const expectedStateNames = uniqueTextValues([
+    ...linearActiveStates,
+    linearRunningState,
+    linearReviewState,
+    linearFailureState,
+    linearDoneState,
+    linearCancelledState,
+  ]);
   const missingRequired =
     linearEnabled && (!linearApiKeyConfigured || !linearTeamKeyConfigured);
-  const status: IntegrationHealthStatus = !linearEnabled
-    ? "ok"
-    : missingRequired
-      ? "error"
-      : linearWebhookSecretConfigured
-        ? "ok"
-        : "warn";
-  const message = !linearEnabled
-    ? `Using ${trackerKind} tracker`
-    : missingRequired
-      ? "Linear is missing required polling config"
-      : linearWebhookSecretConfigured
-        ? "Linear polling and webhooks configured"
-        : "Linear polling configured; webhook secret missing";
+  let status: IntegrationHealthStatus = "ok";
+  let message = `Using ${trackerKind} tracker`;
+  let verification: LinearVerificationHealth = {
+    status: "disabled",
+    message: "Linear tracker disabled",
+    matchedStateNames: [],
+    missingStateNames: [],
+    availableStateNames: [],
+  };
+
+  if (linearEnabled && missingRequired) {
+    status = "error";
+    message = "Linear is missing required polling config";
+    verification = {
+      status: "missing_config",
+      message,
+      matchedStateNames: [],
+      missingStateNames: expectedStateNames,
+      availableStateNames: [],
+    };
+  } else if (linearEnabled && linearApiKey && linearTeamKey) {
+    const checkedAt = new Date().toISOString();
+    try {
+      const tracker = new LinearTrackerAdapter({ apiKey: linearApiKey });
+      const result = await tracker.verifyConnection({
+        teamKey: linearTeamKey,
+        stateNames: expectedStateNames,
+      });
+      const availableStateNames = uniqueTextValues(
+        result.states.map((state) => state.name),
+      );
+
+      if (!result.team) {
+        status = "error";
+        message = "Linear team key was not found";
+        verification = {
+          status: "failed",
+          checkedAt,
+          message,
+          matchedStateNames: [],
+          missingStateNames: expectedStateNames,
+          availableStateNames,
+          error: `Team ${linearTeamKey} was not returned by Linear`,
+        };
+      } else if (result.missingStateNames.length > 0) {
+        status = "error";
+        message = "Linear workflow states are missing";
+        verification = {
+          status: "missing_states",
+          checkedAt,
+          message,
+          team: result.team,
+          matchedStateNames: result.matchedStateNames,
+          missingStateNames: result.missingStateNames,
+          availableStateNames,
+        };
+      } else {
+        status = linearWebhookSecretConfigured ? "ok" : "warn";
+        message = linearWebhookSecretConfigured
+          ? "Linear team and workflow states verified"
+          : "Linear verified; webhook secret missing";
+        verification = {
+          status: "verified",
+          checkedAt,
+          message,
+          team: result.team,
+          matchedStateNames: result.matchedStateNames,
+          missingStateNames: [],
+          availableStateNames,
+        };
+      }
+    } catch (error) {
+      status = "error";
+      message = "Linear verification failed";
+      verification = {
+        status: "failed",
+        checkedAt,
+        message,
+        matchedStateNames: [],
+        missingStateNames: expectedStateNames,
+        availableStateNames: [],
+        error: sanitizeIntegrationError(error),
+      };
+    }
+  }
 
   return {
     tracker: {
@@ -1165,6 +1267,7 @@ function buildIntegrationHealth() {
       failureState: linearFailureState,
       doneState: linearDoneState,
       cancelledState: linearCancelledState,
+      verification,
     },
   };
 }
@@ -1178,6 +1281,15 @@ function readCommaSeparated(
     .map((item) => item.trim())
     .filter(Boolean);
   return parsed?.length ? parsed : fallback;
+}
+
+function uniqueTextValues(values: string[]): string[] {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function sanitizeIntegrationError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.length > 280 ? `${message.slice(0, 277)}...` : message;
 }
 
 async function normalizeLinearWebhookPayload(
