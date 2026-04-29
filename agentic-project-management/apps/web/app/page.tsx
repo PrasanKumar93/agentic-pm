@@ -9,6 +9,7 @@ import {
   FileText,
   FolderKanban,
   GitBranch,
+  HardDrive,
   Play,
   Plus,
   RefreshCw,
@@ -21,6 +22,7 @@ import {
 import {
   submitCreateWorkItem,
   submitDispatchAction,
+  submitRepositoryRegistration,
   submitRuntimePreference,
   submitWorkItemAction,
 } from "./actions";
@@ -289,7 +291,7 @@ type StatusFilterTab = {
   label: string;
 };
 
-type DashboardView = "work" | "audit";
+type DashboardView = "work" | "audit" | "config";
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -374,7 +376,15 @@ export default async function DashboardPage({
           </a>
           <a>Runs</a>
           <a>Artifacts</a>
-          <a>Config</a>
+          <a
+            className={view === "config" ? "active" : ""}
+            href={buildDashboardHref({
+              projectId: dashboard.selectedProjectId,
+              view: "config",
+            })}
+          >
+            Config
+          </a>
           <a
             className={view === "audit" ? "active" : ""}
             href={buildDashboardHref({
@@ -391,7 +401,7 @@ export default async function DashboardPage({
         <header className="topbar">
           <div>
             <p className="eyebrow">Symphony-style orchestration</p>
-            <h1>{view === "audit" ? "Webhook audit" : "Agent runs"}</h1>
+            <h1>{dashboardTitle(view)}</h1>
           </div>
 
           <div className="toolbar">
@@ -967,9 +977,14 @@ export default async function DashboardPage({
               </aside>
             </section>
           </>
-        ) : (
+        ) : view === "audit" ? (
           <WebhookAuditView
             audit={webhookAudit}
+            selectedProjectId={dashboard.selectedProjectId}
+          />
+        ) : (
+          <ConfigView
+            repositories={dashboard.repositories}
             selectedProjectId={dashboard.selectedProjectId}
           />
         )}
@@ -1263,7 +1278,11 @@ function firstParam(value: string | string[] | undefined): string | undefined {
 }
 
 function parseDashboardView(value: string | undefined): DashboardView {
-  return value === "audit" ? "audit" : "work";
+  if (value === "audit" || value === "config") {
+    return value;
+  }
+
+  return "work";
 }
 
 function parseStatusFilter(value: string | undefined): StatusFilter {
@@ -1333,8 +1352,8 @@ function buildDashboardHref(input: {
     params.set("projectId", input.projectId);
   }
 
-  if (view === "audit") {
-    params.set("view", "audit");
+  if (view !== "work") {
+    params.set("view", view);
   }
 
   if (view === "work" && input.status && input.status !== "all") {
@@ -1347,6 +1366,17 @@ function buildDashboardHref(input: {
 
   const query = params.toString();
   return query ? `/?${query}` : "/";
+}
+
+function dashboardTitle(view: DashboardView): string {
+  switch (view) {
+    case "audit":
+      return "Webhook audit";
+    case "config":
+      return "Configuration";
+    case "work":
+      return "Agent runs";
+  }
 }
 
 function selectedProjectLabel(
@@ -1514,6 +1544,151 @@ function ProjectMenu({
         ))}
       </div>
     </details>
+  );
+}
+
+function ConfigView({
+  repositories,
+  selectedProjectId,
+}: {
+  repositories: RepositoryOption[];
+  selectedProjectId: string;
+}) {
+  return (
+    <section className="configView">
+      <section className="metrics auditMetrics">
+        <div className="metric">
+          <span>Repositories</span>
+          <strong className="neutral">{repositories.length}</strong>
+        </div>
+        <div className="metric">
+          <span>With local path</span>
+          <strong className="green">
+            {repositories.filter((repository) => repository.localPath).length}
+          </strong>
+        </div>
+        <div className="metric">
+          <span>Queued routes</span>
+          <strong className="blue">
+            {repositories.reduce(
+              (total, repository) => total + repository.workItemCount,
+              0,
+            )}
+          </strong>
+        </div>
+        <div className="metric">
+          <span>Default branch</span>
+          <strong className="neutral">
+            {repositories[0]?.defaultBranch ?? "main"}
+          </strong>
+        </div>
+      </section>
+
+      <section className="configGrid">
+        <div className="panel configPanel">
+          <div className="panelHeader compact">
+            <div>
+              <h2>Register repository</h2>
+              <p>{selectedProjectId}</p>
+            </div>
+            <GitBranch size={17} />
+          </div>
+
+          <form action={submitRepositoryRegistration} className="repoForm">
+            <input name="projectId" type="hidden" value={selectedProjectId} />
+            <input name="view" type="hidden" value="config" />
+            <label>
+              <span>Name</span>
+              <input
+                maxLength={120}
+                name="name"
+                placeholder="agentic-project-management"
+                required
+              />
+            </label>
+            <label>
+              <span>Repository URL</span>
+              <input
+                maxLength={2000}
+                name="url"
+                placeholder="file:///path/to/repo or git@github.com:org/repo.git"
+                required
+              />
+            </label>
+            <label>
+              <span>Default branch</span>
+              <input
+                maxLength={120}
+                name="defaultBranch"
+                placeholder="main"
+              />
+            </label>
+            <label>
+              <span>Local path</span>
+              <input
+                maxLength={2000}
+                name="localPath"
+                placeholder="/path/to/local/repo"
+              />
+            </label>
+            <button className="primary" title="Register repository" type="submit">
+              <Plus size={16} />
+              Register
+            </button>
+          </form>
+        </div>
+
+        <div className="panel configPanel">
+          <div className="panelHeader compact">
+            <div>
+              <h2>Managed repositories</h2>
+              <p>{repositories.length} repository refs</p>
+            </div>
+            <HardDrive size={17} />
+          </div>
+
+          {repositories.length > 0 ? (
+            <div className="repoList">
+              {repositories.map((repository) => (
+                <article className="repoItem" key={repository.id}>
+                  <div>
+                    <strong>{repository.name}</strong>
+                    <span>{repository.id}</span>
+                  </div>
+                  <dl>
+                    <div>
+                      <dt>URL</dt>
+                      <dd>{repository.url}</dd>
+                    </div>
+                    <div>
+                      <dt>Local path</dt>
+                      <dd>{repository.localPath ?? "not set"}</dd>
+                    </div>
+                    <div>
+                      <dt>Branch</dt>
+                      <dd>{repository.defaultBranch}</dd>
+                    </div>
+                    <div>
+                      <dt>Work items</dt>
+                      <dd>{repository.workItemCount}</dd>
+                    </div>
+                  </dl>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="emptyState">
+              <Database size={18} />
+              <strong>No repositories registered</strong>
+              <span>
+                Register a repository to make it available in the work item
+                intake selector.
+              </span>
+            </div>
+          )}
+        </div>
+      </section>
+    </section>
   );
 }
 

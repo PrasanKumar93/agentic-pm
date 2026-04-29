@@ -24,7 +24,7 @@ const allowedDesiredRuntimes = new Set<DesiredRuntimePreference>([
   "cursor",
   "generic",
 ]);
-const allowedViews = new Set(["audit"]);
+const allowedViews = new Set(["audit", "config"]);
 const allowedStatusFilters = new Set([
   "queued",
   "running",
@@ -61,6 +61,7 @@ type ReturnState = {
 type ActionResponse = {
   data?: {
     id?: string;
+    name?: string;
     desiredRuntime?: string;
     repository?: {
       name?: string;
@@ -72,6 +73,67 @@ type ActionResponse = {
   };
   error?: string;
 };
+
+export async function submitRepositoryRegistration(
+  formData: FormData,
+): Promise<void> {
+  const name = String(formData.get("name") ?? "").trim();
+  const url = String(formData.get("url") ?? "").trim();
+  const defaultBranch = String(formData.get("defaultBranch") ?? "").trim();
+  const localPath = String(formData.get("localPath") ?? "").trim();
+  const returnState = {
+    ...readReturnState(formData),
+    view: "config",
+  };
+  let redirectUrl = createFeedbackUrl(
+    "error",
+    "Repository name and URL are required.",
+    returnState,
+  );
+
+  if (name && url) {
+    try {
+      const response = await fetch(`${apiUrl}/repositories`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorId: "dashboard",
+          defaultBranch,
+          localPath,
+          name,
+          projectId: returnState.projectId,
+          url,
+        }),
+        cache: "no-store",
+      });
+
+      const payload = await readActionResponse(response);
+      redirectUrl = response.ok
+        ? createFeedbackUrl(
+            "success",
+            formatRepositorySuccess(payload),
+            returnState,
+          )
+        : createFeedbackUrl(
+            "error",
+            payload.error ??
+              `Repository registration failed with HTTP ${response.status}.`,
+            returnState,
+          );
+    } catch (error) {
+      redirectUrl = createFeedbackUrl(
+        "error",
+        formatRequestError("Repository registration failed", error),
+        returnState,
+      );
+    }
+  }
+
+  revalidatePath("/");
+  redirect(redirectUrl);
+}
 
 export async function submitCreateWorkItem(formData: FormData): Promise<void> {
   const title = String(formData.get("title") ?? "").trim();
@@ -428,6 +490,11 @@ function formatCreateWorkItemSuccess(payload: ActionResponse): string {
   return repository
     ? `Created ${identifier} for ${repository}.`
     : `Created ${identifier}.`;
+}
+
+function formatRepositorySuccess(payload: ActionResponse): string {
+  const name = payload.data?.name ?? "repository";
+  return `Registered ${name}.`;
 }
 
 function formatRequestError(prefix: string, error: unknown): string {

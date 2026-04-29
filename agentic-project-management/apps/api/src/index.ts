@@ -244,6 +244,69 @@ app.get("/repositories", async (request) => {
   };
 });
 
+app.post("/repositories", async (request, reply) => {
+  const body = (request.body ?? {}) as {
+    actorId?: string;
+    defaultBranch?: string;
+    id?: string;
+    localPath?: string;
+    name?: string;
+    projectId?: string;
+    url?: string;
+  };
+  const requestedProjectId = readProjectId(body.projectId) ?? projectId;
+  await ensureDefaultRepositoryForProject(requestedProjectId);
+
+  const name = readRequiredText(body.name, 120);
+  const url = readRequiredText(body.url, 2_000);
+  if (!name || !url) {
+    return reply.code(400).send({
+      error: "Repository name and URL are required.",
+    });
+  }
+
+  const now = new Date();
+  const repositoryRef = await repository.ensureRepository({
+    id:
+      readRepositoryId(body.id) ??
+      createRepositoryId(requestedProjectId, name),
+    projectId: requestedProjectId,
+    name,
+    url,
+    defaultBranch: readRequiredText(body.defaultBranch, 120) ?? "main",
+    localPath: readOptionalText(body.localPath, 2_000),
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  await repository.appendEvent({
+    projectId: requestedProjectId,
+    type: "repository.configured",
+    level: "info",
+    message: `${body.actorId || "local-operator"} configured ${repositoryRef.name}`,
+    payload: {
+      actorId: body.actorId,
+      repositoryId: repositoryRef.id,
+      repositoryName: repositoryRef.name,
+      url: repositoryRef.url,
+      defaultBranch: repositoryRef.defaultBranch,
+      hasLocalPath: Boolean(repositoryRef.localPath),
+    },
+  });
+
+  const options = await repository.listRepositoryOptions(requestedProjectId);
+  const data = options.find((option) => option.id === repositoryRef.id);
+
+  return reply.code(201).send({
+    data: data ?? repositoryRef,
+    meta: {
+      action: "repository.configure",
+      projectId: requestedProjectId,
+      generatedAt: new Date().toISOString(),
+    },
+  });
+});
+
 app.get("/work-items", async (request) => {
   const query = request.query as { limit?: string; projectId?: string };
   const requestedLimit = Number(query.limit ?? 50);
@@ -794,6 +857,12 @@ function readDesiredRuntime(
   return allowedDesiredRuntimes.has(value as DesiredAgentRuntime)
     ? (value as DesiredAgentRuntime)
     : undefined;
+}
+
+function createRepositoryId(selectedProjectId: string, name: string): string {
+  const projectPart = slugify(selectedProjectId).slice(0, 48) || "project";
+  const namePart = slugify(name).slice(0, 64) || "repository";
+  return `repo_${projectPart}_${namePart}`.slice(0, 128);
 }
 
 function readDefaultRepositoryRef(

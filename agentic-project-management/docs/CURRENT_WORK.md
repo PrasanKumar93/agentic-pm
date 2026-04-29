@@ -47,11 +47,12 @@ Date: 2026-04-29
 - Per-work-item runtime selector for Codex, Cursor, fake, and generic worker routing.
 - Repository-backed local work item intake with dashboard repository selection.
 - Repository-aware workspace materialization with local git worktree and clone fallback.
+- Repository Config view for registering managed repositories from the dashboard.
 
 ## In Progress
 
-- Repository configuration UI for registering multiple managed repositories.
+- Linear team/project configuration verification against a live Linear workspace.
 
 ## Next Queue
 
-- Linear team/project configuration verification against a live Linear workspace.
+- Repository edit/archive controls with explicit confirmation.

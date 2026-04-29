@@ -30,6 +30,7 @@
 - [x] Scope the dashboard by selected project.
 - [x] Select a repository while creating local work items.
 - [x] Create local tracker-backed work items from the dashboard.
+- [x] Register managed repositories from the dashboard.
 
 ## Milestone 3: Linear Loop
 
