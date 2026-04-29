@@ -921,46 +921,6 @@ export default async function DashboardPage({
                       </p>
                     </div>
 
-                    <div className="eventTimeline">
-                      <div className="eventTimelineHeader">
-                        <span>Timeline</span>
-                        <strong>{selected.eventCount} events</strong>
-                      </div>
-
-                      {runEvents.error ? (
-                        <div className="timelineNotice">{runEvents.error}</div>
-                      ) : timelineEvents.length > 0 ? (
-                        <div
-                          aria-label="Run event timeline"
-                          className={timelineListClassName}
-                          role="list"
-                        >
-                          {timelineEvents.map((event) => (
-                            <div
-                              className="timelineItem"
-                              key={event.id}
-                              role="listitem"
-                            >
-                              <div>
-                                <strong>{event.type}</strong>
-                                <span>
-                                  {formatRelativeTime(event.createdAt)}
-                                </span>
-                              </div>
-                              <p>{event.message}</p>
-                              <span className={`eventLevel ${event.level}`}>
-                                {event.level}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="timelineNotice">
-                          No run events captured yet.
-                        </div>
-                      )}
-                    </div>
-
                     <div className="artifactList">
                       <div className="eventTimelineHeader">
                         <span>Artifacts</span>
@@ -1018,6 +978,50 @@ export default async function DashboardPage({
                       ) : (
                         <div className="timelineNotice">
                           No artifacts captured yet.
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="eventTimeline">
+                      <div className="eventTimelineHeader">
+                        <span>Timeline</span>
+                        <strong>{selected.eventCount} events</strong>
+                      </div>
+
+                      {runEvents.error ? (
+                        <div className="timelineNotice">{runEvents.error}</div>
+                      ) : timelineEvents.length > 0 ? (
+                        <div
+                          aria-label="Run event timeline"
+                          className={timelineListClassName}
+                          role="list"
+                        >
+                          {timelineEvents.map((event) => (
+                            <div
+                              className="timelineItem"
+                              key={event.id}
+                              role="listitem"
+                            >
+                              <div className="timelineItemHeader">
+                                <strong>{event.type}</strong>
+                                <span className="timelineMeta">
+                                  <span
+                                    className={`eventLevel ${event.level}`}
+                                  >
+                                    {event.level}
+                                  </span>
+                                  <span>
+                                    {formatRelativeTime(event.createdAt)}
+                                  </span>
+                                </span>
+                              </div>
+                              <p>{event.message}</p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="timelineNotice">
+                          No run events captured yet.
                         </div>
                       )}
                     </div>

@@ -1175,7 +1175,7 @@ h2 {
 }
 
 .eventTimelineHeader,
-.timelineItem > div {
+.timelineItemHeader {
   align-items: center;
   display: flex;
   justify-content: space-between;
@@ -1241,8 +1241,8 @@ h2 {
   border: 1px solid var(--border);
   border-radius: 8px;
   display: grid;
-  gap: 7px;
-  padding: 10px;
+  gap: 5px;
+  padding: 9px 10px;
   position: relative;
 }
 
@@ -1260,6 +1260,10 @@ h2 {
 
 .timelineItem strong {
   font-size: 12px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .timelineItem p,
@@ -1273,7 +1277,21 @@ h2 {
   overflow-wrap: anywhere;
 }
 
-.timelineItem div span {
+.timelineItemHeader {
+  gap: 10px;
+  min-width: 0;
+}
+
+.timelineMeta {
+  align-items: center;
+  color: var(--muted);
+  display: inline-flex;
+  flex-shrink: 0;
+  font-size: 11px;
+  gap: 7px;
+}
+
+.timelineMeta > span:not(.eventLevel) {
   color: var(--muted);
   font-size: 11px;
 }
@@ -1360,8 +1378,9 @@ h2 {
   border-radius: 999px;
   border: 1px solid var(--border);
   font-size: 11px;
-  justify-self: start;
-  padding: 3px 7px;
+  line-height: 1;
+  padding: 3px 6px;
+  text-transform: lowercase;
 }
 
 .eventLevel.info,

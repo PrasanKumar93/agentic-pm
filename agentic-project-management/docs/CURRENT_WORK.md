@@ -58,6 +58,7 @@ Date: 2026-04-30
 - Live Linear worker smoke with Cursor runtime against `project_linear_live_smoke`: after the absolute path fix, dispatched `PRA-4`, materialized a repository-backed git worktree, synced `Todo -> In Progress -> In Review`, posted Linear comments, persisted 97 Cursor stream events, and captured log, patch, PR draft, and review packet artifacts. A prior `PRA-1` Cursor attempt failed on the relative workspace path and correctly returned Linear to `Todo`.
 - Work board titles now select work items directly, and dashboard artifact actions open all readable local text artifacts through the API, not only PR drafts.
 - Run detail now renders the full event timeline newest-first in an explicit scroll region, with artifact lists also bounded and scrollable when they overflow.
+- Run detail now prioritizes artifacts above the event timeline, and timeline rows show level and time in the header to reduce long-run row height.
 
 ## In Progress
 

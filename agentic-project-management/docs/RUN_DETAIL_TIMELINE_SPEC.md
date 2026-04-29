@@ -48,10 +48,8 @@ The selected run is the same run shown in the detail panel:
 
 When the selected work item has a latest run, the dashboard fetches `/runs/:runId/events` and shows:
 
-- Event type.
-- Relative event time.
-- Event message.
-- Event level.
+- Event type, event level, and relative event time in the timeline row header.
+- Event message in the row body.
 
 If the event API fails, the panel keeps the rest of the run detail visible and shows a scoped timeline error.
 
