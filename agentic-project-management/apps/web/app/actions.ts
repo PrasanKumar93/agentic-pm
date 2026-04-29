@@ -6,9 +6,24 @@ import { redirect } from "next/navigation";
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 const allowedActions = new Set<WorkItemAction>(["start", "retry", "pause", "resume", "cancel", "complete"]);
 const allowedDispatchActions = new Set<DispatchAction>(["pause", "resume", "start_eligible"]);
+const allowedStatusFilters = new Set([
+  "queued",
+  "running",
+  "waiting_for_review",
+  "blocked",
+  "paused",
+  "failed",
+  "completed",
+  "cancelled"
+]);
 
 type WorkItemAction = "start" | "retry" | "pause" | "resume" | "cancel" | "complete";
 type DispatchAction = "pause" | "resume" | "start_eligible";
+
+type ReturnState = {
+  status?: string;
+  workItemId?: string;
+};
 
 type ActionResponse = {
   data?: {
@@ -23,7 +38,8 @@ type ActionResponse = {
 export async function submitWorkItemAction(formData: FormData): Promise<void> {
   const workItemId = String(formData.get("workItemId") ?? "");
   const action = String(formData.get("action") ?? "");
-  let redirectUrl = createFeedbackUrl("error", "Choose a valid work item action.");
+  const returnState = readReturnState(formData);
+  let redirectUrl = createFeedbackUrl("error", "Choose a valid work item action.", returnState);
 
   if (workItemId && isWorkItemAction(action)) {
     try {
@@ -40,10 +56,10 @@ export async function submitWorkItemAction(formData: FormData): Promise<void> {
 
       const payload = await readActionResponse(response);
       redirectUrl = response.ok
-        ? createFeedbackUrl("success", formatWorkItemSuccess(action, payload))
-        : createFeedbackUrl("error", payload.error ?? `Action failed with HTTP ${response.status}.`);
+        ? createFeedbackUrl("success", formatWorkItemSuccess(action, payload), returnState)
+        : createFeedbackUrl("error", payload.error ?? `Action failed with HTTP ${response.status}.`, returnState);
     } catch (error) {
-      redirectUrl = createFeedbackUrl("error", formatRequestError("Work item action failed", error));
+      redirectUrl = createFeedbackUrl("error", formatRequestError("Work item action failed", error), returnState);
     }
   }
 
@@ -53,7 +69,8 @@ export async function submitWorkItemAction(formData: FormData): Promise<void> {
 
 export async function submitDispatchAction(formData: FormData): Promise<void> {
   const action = String(formData.get("action") ?? "");
-  let redirectUrl = createFeedbackUrl("error", "Choose a valid dispatch action.");
+  const returnState = readReturnState(formData);
+  let redirectUrl = createFeedbackUrl("error", "Choose a valid dispatch action.", returnState);
 
   if (isDispatchAction(action)) {
     try {
@@ -70,10 +87,10 @@ export async function submitDispatchAction(formData: FormData): Promise<void> {
 
       const payload = await readActionResponse(response);
       redirectUrl = response.ok
-        ? createFeedbackUrl("success", formatDispatchSuccess(action))
-        : createFeedbackUrl("error", payload.error ?? `Dispatch action failed with HTTP ${response.status}.`);
+        ? createFeedbackUrl("success", formatDispatchSuccess(action), returnState)
+        : createFeedbackUrl("error", payload.error ?? `Dispatch action failed with HTTP ${response.status}.`, returnState);
     } catch (error) {
-      redirectUrl = createFeedbackUrl("error", formatRequestError("Dispatch action failed", error));
+      redirectUrl = createFeedbackUrl("error", formatRequestError("Dispatch action failed", error), returnState);
     }
   }
 
@@ -103,13 +120,35 @@ async function readActionResponse(response: Response): Promise<ActionResponse> {
   }
 }
 
-function createFeedbackUrl(tone: "success" | "error", message: string): string {
+function createFeedbackUrl(tone: "success" | "error", message: string, returnState: ReturnState): string {
   const params = new URLSearchParams({
     feedback: tone,
     message: message.slice(0, 220)
   });
 
+  if (returnState.status) {
+    params.set("status", returnState.status);
+  }
+
+  if (returnState.workItemId) {
+    params.set("workItemId", returnState.workItemId);
+  }
+
   return `/?${params.toString()}`;
+}
+
+function readReturnState(formData: FormData): ReturnState {
+  const status = String(formData.get("status") ?? "");
+  const workItemId = String(formData.get("workItemId") ?? "");
+
+  return {
+    status: allowedStatusFilters.has(status) ? status : undefined,
+    workItemId: isSafeQueryValue(workItemId) ? workItemId : undefined
+  };
+}
+
+function isSafeQueryValue(value: string): boolean {
+  return /^[A-Za-z0-9_-]{1,128}$/.test(value);
 }
 
 function formatWorkItemSuccess(action: WorkItemAction, payload: ActionResponse): string {

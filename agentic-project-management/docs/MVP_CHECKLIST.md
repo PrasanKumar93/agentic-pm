@@ -25,6 +25,7 @@
 - [x] Show the selected run event timeline in the dashboard.
 - [x] Control project dispatch from the dashboard toolbar.
 - [x] Show action result banners after dashboard actions.
+- [x] Filter dashboard work board by status lane.
 
 ## Milestone 3: Linear Loop
 

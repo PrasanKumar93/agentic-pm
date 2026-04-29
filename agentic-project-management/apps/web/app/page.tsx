@@ -176,7 +176,26 @@ type ArtifactAction = {
   title: string;
 };
 
+type StatusFilter = "all" | WorkItemStatus;
+
+type StatusFilterTab = {
+  value: StatusFilter;
+  label: string;
+};
+
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+
+const statusFilterTabs: StatusFilterTab[] = [
+  { value: "all", label: "All" },
+  { value: "queued", label: "Queued" },
+  { value: "running", label: "Running" },
+  { value: "waiting_for_review", label: "Review" },
+  { value: "paused", label: "Paused" },
+  { value: "blocked", label: "Blocked" },
+  { value: "failed", label: "Failed" },
+  { value: "completed", label: "Completed" },
+  { value: "cancelled", label: "Cancelled" }
+];
 
 export default async function DashboardPage({
   searchParams
@@ -186,8 +205,11 @@ export default async function DashboardPage({
   const dashboard = await fetchDashboardData();
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const actionFeedback = parseActionFeedback(resolvedSearchParams);
+  const statusFilter = parseStatusFilter(firstParam(resolvedSearchParams.status));
+  const filteredItems = filterWorkItemsByStatus(dashboard.items, statusFilter);
+  const filterTabs = buildStatusFilterTabs(dashboard.items, statusFilter);
   const lanes = buildLanes(dashboard.items);
-  const selected = selectRunDetailItem(dashboard.items, firstParam(resolvedSearchParams.workItemId));
+  const selected = selectRunDetailItem(filteredItems, firstParam(resolvedSearchParams.workItemId));
   const [runEvents, runArtifacts] = selected?.latestRun
     ? await Promise.all([fetchRunEvents(selected.latestRun.id), fetchRunArtifacts(selected.latestRun.id)])
     : [{ events: [] }, { artifacts: [] }];
@@ -222,10 +244,12 @@ export default async function DashboardPage({
 
           <div className="toolbar">
             <TrackerHealthBadge health={dashboard.integrations} />
-            <a className="iconButton" href="/" title="Refresh">
+            <a className="iconButton" href={buildDashboardHref({ status: statusFilter, workItemId: selected?.id })} title="Refresh">
               <RefreshCw size={16} />
             </a>
             <form action={submitDispatchAction}>
+              <input name="status" type="hidden" value={statusFilter} />
+              <input name="workItemId" type="hidden" value={selected?.id ?? ""} />
               <button
                 name="action"
                 title={dashboard.dispatch.paused ? "Resume dispatch" : "Pause dispatch"}
@@ -237,6 +261,8 @@ export default async function DashboardPage({
               </button>
             </form>
             <form action={submitDispatchAction}>
+              <input name="status" type="hidden" value={statusFilter} />
+              <input name="workItemId" type="hidden" value={selected?.id ?? ""} />
               <button className="primary" name="action" title="Start eligible" type="submit" value="start_eligible">
                 <Play size={16} />
                 Start eligible
@@ -268,7 +294,7 @@ export default async function DashboardPage({
           >
             {actionFeedback.tone === "error" ? <AlertTriangle size={16} /> : <CheckCircle2 size={16} />}
             <span>{actionFeedback.message}</span>
-            <a className="bannerDismiss" href="/" title="Dismiss">
+            <a className="bannerDismiss" href={buildDashboardHref({ status: statusFilter, workItemId: selected?.id })} title="Dismiss">
               <XCircle size={14} />
             </a>
           </section>
@@ -288,14 +314,30 @@ export default async function DashboardPage({
             <div className="panelHeader">
               <div>
                 <h2>Work board</h2>
-                <p>Issues normalized into agent work items.</p>
+                <p>{formatWorkBoardCount(filteredItems.length, dashboard.items.length)}</p>
               </div>
               <button disabled title="Retry failed">
                 <RotateCcw size={16} />
               </button>
             </div>
 
-            {dashboard.items.length > 0 ? (
+            <nav aria-label="Work item status" className="filterTabs" role="tablist">
+              {filterTabs.map((tab) => (
+                <a
+                  aria-current={tab.active ? "page" : undefined}
+                  aria-selected={tab.active}
+                  className={`filterTab ${tab.active ? "active" : ""}`}
+                  href={buildDashboardHref({ status: tab.value })}
+                  key={tab.value}
+                  role="tab"
+                >
+                  <span>{tab.label}</span>
+                  <strong>{tab.count}</strong>
+                </a>
+              ))}
+            </nav>
+
+            {filteredItems.length > 0 ? (
               <div className="table">
                 <div className="row tableHead">
                   <span>Issue</span>
@@ -305,7 +347,7 @@ export default async function DashboardPage({
                   <span>Updated</span>
                   <span>Actions</span>
                 </div>
-                {dashboard.items.map((row) => (
+                {filteredItems.map((row) => (
                   <div className={`row ${selected?.id === row.id ? "selectedRow" : ""}`} key={row.id}>
                     {row.issue.url ? (
                       <a href={row.issue.url} target="_blank" rel="noreferrer">
@@ -322,12 +364,13 @@ export default async function DashboardPage({
                       <a
                         aria-label="Inspect run"
                         className={`actionButton ${selected?.id === row.id ? "selectedAction" : ""}`}
-                        href={`/?workItemId=${encodeURIComponent(row.id)}`}
+                        href={buildDashboardHref({ status: statusFilter, workItemId: row.id })}
                         title="Inspect run"
                       >
                         <Eye size={14} />
                       </a>
                       <form action={submitWorkItemAction}>
+                        <input name="status" type="hidden" value={statusFilter} />
                         <input name="workItemId" type="hidden" value={row.id} />
                         {getAvailableActions(row.status).map((action) => (
                           <button
@@ -347,11 +390,17 @@ export default async function DashboardPage({
                   </div>
                 ))}
               </div>
-            ) : (
+            ) : dashboard.items.length === 0 ? (
               <div className="emptyState">
                 <Database size={18} />
                 <strong>No work items yet</strong>
                 <span>Run the worker with the fake tracker, or connect Linear and move an issue into an active state.</span>
+              </div>
+            ) : (
+              <div className="emptyState">
+                <Database size={18} />
+                <strong>No {formatStatusFilterLabel(statusFilter)} work items</strong>
+                <span>Choose another lane or move a tracker issue into this status.</span>
               </div>
             )}
           </div>
@@ -652,6 +701,57 @@ function parseActionFeedback(params: DashboardSearchParams): ActionFeedback | un
 
 function firstParam(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
+}
+
+function parseStatusFilter(value: string | undefined): StatusFilter {
+  return statusFilterTabs.some((tab) => tab.value === value) ? (value as StatusFilter) : "all";
+}
+
+function filterWorkItemsByStatus(items: WorkItemSummary[], statusFilter: StatusFilter): WorkItemSummary[] {
+  if (statusFilter === "all") {
+    return items;
+  }
+
+  return items.filter((item) => item.status === statusFilter);
+}
+
+function buildStatusFilterTabs(items: WorkItemSummary[], activeFilter: StatusFilter) {
+  return statusFilterTabs.map((tab) => ({
+    ...tab,
+    active: tab.value === activeFilter,
+    count: tab.value === "all" ? items.length : countStatus(items, tab.value)
+  }));
+}
+
+function buildDashboardHref(input: { status?: StatusFilter; workItemId?: string }): string {
+  const params = new URLSearchParams();
+
+  if (input.status && input.status !== "all") {
+    params.set("status", input.status);
+  }
+
+  if (input.workItemId) {
+    params.set("workItemId", input.workItemId);
+  }
+
+  const query = params.toString();
+  return query ? `/?${query}` : "/";
+}
+
+function formatWorkBoardCount(filteredCount: number, totalCount: number): string {
+  if (filteredCount === totalCount) {
+    return `${totalCount} work items`;
+  }
+
+  return `${filteredCount} of ${totalCount} work items`;
+}
+
+function formatStatusFilterLabel(statusFilter: StatusFilter): string {
+  if (statusFilter === "all") {
+    return "matching";
+  }
+
+  return formatStatus(statusFilter);
 }
 
 function buildLanes(items: WorkItemSummary[]) {

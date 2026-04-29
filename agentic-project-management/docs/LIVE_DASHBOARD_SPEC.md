@@ -1,6 +1,6 @@
 # Live Dashboard Spec
 
-Status: Draft v0.3
+Status: Draft v0.4
 Date: 2026-04-29
 
 ## 1. Purpose
@@ -15,6 +15,7 @@ This spec covers the first live data slice:
 - UI renders empty, error, and live-data states.
 - Operator actions are submitted through server actions.
 - Run artifacts include PR draft or remote PR affordances when available.
+- Work board status filters are URL-backed and preserve operator context after actions.
 
 ## 2. Contract
 
@@ -118,6 +119,20 @@ The badge never renders API keys or secrets; it only shows configured/missing bo
 
 ### Work Board
 
+The work board exposes status filter tabs backed by `?status=<work_item_status>`. Supported filters are:
+
+- `all`
+- `queued`
+- `running`
+- `waiting_for_review`
+- `paused`
+- `blocked`
+- `failed`
+- `completed`
+- `cancelled`
+
+Each tab shows the count from the full `/work-items` response. Filtering is applied in the dashboard render, so metrics remain full-project totals while the table narrows to the selected lane.
+
 Each row shows:
 
 - Issue identifier
@@ -126,6 +141,8 @@ Each row shows:
 - Claimed worker or `unclaimed`
 - Relative updated time
 - An inspect action that selects the row for the run detail panel via `?workItemId=<id>`
+
+Inspect links preserve the active status filter. Dashboard action redirects preserve the active filter and selected work item when possible.
 
 If no work items exist, show an empty state that tells the operator to run the worker or connect a tracker.
 

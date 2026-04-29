@@ -368,6 +368,55 @@ h2 {
   gap: 14px;
 }
 
+.filterTabs {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.filterTab {
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--muted);
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 700;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 10px;
+}
+
+.filterTab:hover {
+  border-color: #b8c1bb;
+  text-decoration: none;
+}
+
+.filterTab strong {
+  align-items: center;
+  background: #f0f3ef;
+  border-radius: 999px;
+  color: var(--text);
+  display: inline-flex;
+  font-size: 11px;
+  justify-content: center;
+  min-width: 22px;
+  padding: 2px 7px;
+}
+
+.filterTab.active {
+  background: var(--sidebar);
+  border-color: var(--sidebar);
+  color: #fff;
+}
+
+.filterTab.active strong {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+
 .table {
   border: 1px solid var(--border);
   border-radius: 8px;

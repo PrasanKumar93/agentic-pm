@@ -40,12 +40,12 @@ Date: 2026-04-29
 - PR artifact dashboard affordance for selecting a run and opening a local draft or remote PR URL.
 - Verified Linear issue webhook normalization into MongoDB with active-state work item creation.
 - Linear webhook delivery-id idempotency with duplicate audit events.
+- Dashboard filter tabs for status lanes.
 
 ## In Progress
 
-- Dashboard filter tabs for status lanes.
+- Webhook replay audit view in the dashboard.
 
 ## Next Queue
 
-- Webhook replay audit view in the dashboard.
 - Cleanup controls for local smoke/test data.
