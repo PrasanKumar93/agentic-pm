@@ -13,6 +13,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "cleanup:smoke": "node scripts/cleanup-local-smoke-data.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src --ext .ts",
     "test": "vitest run"

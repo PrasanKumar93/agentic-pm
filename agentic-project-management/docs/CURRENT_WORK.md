@@ -42,11 +42,12 @@ Date: 2026-04-29
 - Linear webhook delivery-id idempotency with duplicate audit events.
 - Dashboard filter tabs for status lanes.
 - Webhook replay audit view in the dashboard.
+- Dry-run-first local cleanup command for smoke/test MongoDB data.
 
 ## In Progress
 
-- Cleanup controls for local smoke/test data.
+- Project-scoped dashboard filtering.
 
 ## Next Queue
 
-- Project-scoped dashboard filtering.
+- Runtime selector for Codex/Cursor task intake.
