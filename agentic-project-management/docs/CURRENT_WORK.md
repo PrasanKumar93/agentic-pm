@@ -49,11 +49,12 @@ Date: 2026-04-29
 - Repository-aware workspace materialization with local git worktree and clone fallback.
 - Repository Config view for registering managed repositories from the dashboard.
 - Live Linear configuration verification for team key and workflow states, surfaced in the Config view.
+- Live Linear workspace mapping verified against `PRA` / `Prasan-symphony` using existing workflow states: `Todo`, `In Progress`, `In Review`, `Done`, and `Canceled`.
 
 ## In Progress
 
-- Repository edit/archive controls with explicit confirmation.
+- Live Linear worker smoke against the verified workspace mapping. This requires explicit operator confirmation before mutating Linear issues with state changes or comments.
 
 ## Next Queue
 
-- Live Linear worker smoke against the user's configured workspace once `LINEAR_TEAM_KEY` and workflow state names verify cleanly.
+- Repository edit/archive controls with explicit confirmation.

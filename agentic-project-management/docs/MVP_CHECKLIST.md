@@ -34,7 +34,7 @@
 
 ## Milestone 3: Linear Loop
 
-- [ ] Configure Linear API key and team key.
+- [x] Configure Linear API key and team key.
 - [x] Add webhook signature validation.
 - [x] Add Linear setup guide.
 - [x] Poll Linear active states.

@@ -38,6 +38,18 @@ LINEAR_DONE_STATE=Done
 LINEAR_CANCELLED_STATE=Cancelled
 ```
 
+For a Linear team that already uses the default workflow states, Symphony can map into those states instead of creating new Linear states:
+
+```txt
+AGENTIC_PM_TRACKER=linear
+LINEAR_ACTIVE_STATES=Todo
+LINEAR_RUNNING_STATE=In Progress
+LINEAR_REVIEW_STATE=In Review
+LINEAR_FAILURE_STATE=Todo
+LINEAR_DONE_STATE=Done
+LINEAR_CANCELLED_STATE=Canceled
+```
+
 Environment values override workflow front matter so local operators can switch Linear teams/states without editing `WORKFLOW.md`.
 
 ## 3. Configuration Verification
