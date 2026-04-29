@@ -556,6 +556,14 @@ export class AgenticRepository {
     return this.collections.artifacts.find({ runId }).sort({ createdAt: 1 }).toArray();
   }
 
+  async listWebhookDeliveries(limit = 50, projectId?: string): Promise<WebhookDelivery[]> {
+    return this.collections.webhookDeliveries
+      .find(projectId ? { projectId } : {}, { projection: { _id: 0 } })
+      .sort({ lastReceivedAt: -1 })
+      .limit(limit)
+      .toArray();
+  }
+
   async claimWebhookDelivery(input: {
     projectId: string;
     provider: string;

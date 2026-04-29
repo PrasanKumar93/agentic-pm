@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 const allowedActions = new Set<WorkItemAction>(["start", "retry", "pause", "resume", "cancel", "complete"]);
 const allowedDispatchActions = new Set<DispatchAction>(["pause", "resume", "start_eligible"]);
+const allowedViews = new Set(["audit"]);
 const allowedStatusFilters = new Set([
   "queued",
   "running",
@@ -22,6 +23,7 @@ type DispatchAction = "pause" | "resume" | "start_eligible";
 
 type ReturnState = {
   status?: string;
+  view?: string;
   workItemId?: string;
 };
 
@@ -130,6 +132,10 @@ function createFeedbackUrl(tone: "success" | "error", message: string, returnSta
     params.set("status", returnState.status);
   }
 
+  if (returnState.view) {
+    params.set("view", returnState.view);
+  }
+
   if (returnState.workItemId) {
     params.set("workItemId", returnState.workItemId);
   }
@@ -139,10 +145,12 @@ function createFeedbackUrl(tone: "success" | "error", message: string, returnSta
 
 function readReturnState(formData: FormData): ReturnState {
   const status = String(formData.get("status") ?? "");
+  const view = String(formData.get("view") ?? "");
   const workItemId = String(formData.get("workItemId") ?? "");
 
   return {
     status: allowedStatusFilters.has(status) ? status : undefined,
+    view: allowedViews.has(view) ? view : undefined,
     workItemId: isSafeQueryValue(workItemId) ? workItemId : undefined
   };
 }

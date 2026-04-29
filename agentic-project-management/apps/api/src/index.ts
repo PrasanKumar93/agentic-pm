@@ -289,6 +289,22 @@ app.get("/runs/:runId/artifacts", async (request) => {
   };
 });
 
+app.get("/webhook-deliveries", async (request) => {
+  const query = request.query as { limit?: string; projectId?: string };
+  const requestedLimit = Number(query.limit ?? 50);
+  const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 100) : 50;
+  const requestedProjectId = query.projectId?.trim() || undefined;
+
+  return {
+    data: await repository.listWebhookDeliveries(limit, requestedProjectId),
+    meta: {
+      limit,
+      projectId: requestedProjectId ?? "all",
+      generatedAt: new Date().toISOString()
+    }
+  };
+});
+
 app.get("/artifacts/:artifactId/content", async (request, reply) => {
   const { artifactId } = request.params as { artifactId: string };
   const artifact = await repository.getArtifact(artifactId);

@@ -44,6 +44,7 @@ Environment values override workflow front matter so local operators can switch 
 
 ```txt
 POST /webhooks/linear
+GET /webhook-deliveries?limit=50
 ```
 
 The API verifies:
@@ -75,6 +76,8 @@ Duplicate `Linear-Delivery` values:
 - Do not normalize the payload or create/update a work item again.
 
 If Linear omits `Linear-Delivery`, the API still verifies and processes the webhook but records `deliveryStatus: "missing_delivery_id"` in the received event. Those requests cannot be deduplicated.
+
+Recent delivery claims are exposed through `GET /webhook-deliveries?limit=50` for the dashboard Audit view. The endpoint is read-only and returns delivery id, provider, status, attempt count, result summary, and receive/process timestamps across the local delivery ledger by default. A `projectId` query parameter can narrow the result set.
 
 The response body includes a machine-readable normalization result, while still returning `200 OK` for verified but ignored payloads so Linear does not retry permanent non-work items.
 

@@ -1,6 +1,6 @@
 # Live Dashboard Spec
 
-Status: Draft v0.4
+Status: Draft v0.5
 Date: 2026-04-29
 
 ## 1. Purpose
@@ -16,6 +16,7 @@ This spec covers the first live data slice:
 - Operator actions are submitted through server actions.
 - Run artifacts include PR draft or remote PR affordances when available.
 - Work board status filters are URL-backed and preserve operator context after actions.
+- The Audit nav exposes recent webhook delivery attempts and replay outcomes.
 
 ## 2. Contract
 
@@ -24,6 +25,10 @@ This spec covers the first live data slice:
 `GET /work-items?limit=50`
 
 `GET /integrations/health`
+
+`GET /webhook-deliveries?limit=50`
+
+`GET /webhook-deliveries?projectId=project_local&limit=50`
 
 ### Response
 
@@ -91,6 +96,42 @@ Integration health response:
       "doneState": "Done",
       "cancelledState": "Cancelled"
     }
+  }
+}
+```
+
+Webhook delivery response:
+
+```json
+{
+  "data": [
+    {
+      "id": "whd_123",
+      "projectId": "project_local",
+      "provider": "linear",
+      "deliveryId": "linear-delivery-id",
+      "event": "Issue",
+      "action": "update",
+      "type": "Issue",
+      "status": "processed",
+      "result": {
+        "status": "reconciled",
+        "issueIdentifier": "ENG-1",
+        "state": "Ready for Agent",
+        "workItemId": "work_123"
+      },
+      "attemptCount": 2,
+      "firstReceivedAt": "2026-04-29T12:00:00.000Z",
+      "lastReceivedAt": "2026-04-29T12:00:10.000Z",
+      "processedAt": "2026-04-29T12:00:01.000Z",
+      "createdAt": "2026-04-29T12:00:00.000Z",
+      "updatedAt": "2026-04-29T12:00:10.000Z"
+    }
+  ],
+  "meta": {
+    "limit": 50,
+    "projectId": "all",
+    "generatedAt": "2026-04-29T12:01:05.000Z"
   }
 }
 ```
@@ -167,6 +208,18 @@ For `pr` artifacts, the artifact row shows:
 - `Open draft` when the artifact is a local draft; the link opens `GET /artifacts/:artifactId/content`.
 
 If no work item is selected, show a quiet empty state.
+
+### Audit View
+
+The sidebar Audit nav opens `?view=audit`.
+
+The audit view shows:
+
+- Recent `webhook_deliveries` rows across the local dashboard by default.
+- Counts for deliveries, replayed deliveries, failures, and processing deliveries.
+- Delivery id, provider, event, action, delivery status, attempt count, normalization result, and relative receive/process times.
+
+The view is read-only. It does not delete, replay, or mutate webhook data.
 
 ### Error State
 

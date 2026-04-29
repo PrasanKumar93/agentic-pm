@@ -41,11 +41,12 @@ Date: 2026-04-29
 - Verified Linear issue webhook normalization into MongoDB with active-state work item creation.
 - Linear webhook delivery-id idempotency with duplicate audit events.
 - Dashboard filter tabs for status lanes.
+- Webhook replay audit view in the dashboard.
 
 ## In Progress
 
-- Webhook replay audit view in the dashboard.
+- Cleanup controls for local smoke/test data.
 
 ## Next Queue
 
-- Cleanup controls for local smoke/test data.
+- Project-scoped dashboard filtering.

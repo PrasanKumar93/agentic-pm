@@ -41,6 +41,7 @@
 - [x] Sync operator cancel/complete actions to Linear terminal states.
 - [x] Normalize verified Linear issue webhooks into MongoDB.
 - [x] Deduplicate Linear webhook deliveries by `Linear-Delivery`.
+- [x] Show webhook delivery replay audit in the dashboard.
 
 ## Milestone 4: Agent Runtime Loop
 

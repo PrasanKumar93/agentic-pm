@@ -145,6 +145,35 @@ type ArtifactsResponse = {
   data: ArtifactSummary[];
 };
 
+type WebhookDeliveryStatus = "processing" | "processed" | "ignored" | "failed";
+
+type WebhookDeliverySummary = {
+  id: string;
+  projectId: string;
+  provider: string;
+  deliveryId: string;
+  event?: string;
+  action?: string;
+  type?: string;
+  status: WebhookDeliveryStatus;
+  result?: Record<string, unknown>;
+  attemptCount: number;
+  firstReceivedAt: string;
+  lastReceivedAt: string;
+  processedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type WebhookDeliveriesResponse = {
+  data: WebhookDeliverySummary[];
+  meta?: {
+    limit: number;
+    projectId: string;
+    generatedAt: string;
+  };
+};
+
 type DashboardData = {
   items: WorkItemSummary[];
   dispatch: DispatchControl;
@@ -160,6 +189,12 @@ type RunEventsData = {
 
 type RunArtifactsData = {
   artifacts: ArtifactSummary[];
+  error?: string;
+};
+
+type WebhookAuditData = {
+  deliveries: WebhookDeliverySummary[];
+  generatedAt?: string;
   error?: string;
 };
 
@@ -183,6 +218,8 @@ type StatusFilterTab = {
   label: string;
 };
 
+type DashboardView = "work" | "audit";
+
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 const statusFilterTabs: StatusFilterTab[] = [
@@ -205,12 +242,14 @@ export default async function DashboardPage({
   const dashboard = await fetchDashboardData();
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const actionFeedback = parseActionFeedback(resolvedSearchParams);
+  const view = parseDashboardView(firstParam(resolvedSearchParams.view));
   const statusFilter = parseStatusFilter(firstParam(resolvedSearchParams.status));
   const filteredItems = filterWorkItemsByStatus(dashboard.items, statusFilter);
   const filterTabs = buildStatusFilterTabs(dashboard.items, statusFilter);
   const lanes = buildLanes(dashboard.items);
   const selected = selectRunDetailItem(filteredItems, firstParam(resolvedSearchParams.workItemId));
-  const [runEvents, runArtifacts] = selected?.latestRun
+  const webhookAudit = view === "audit" ? await fetchWebhookDeliveries() : { deliveries: [] };
+  const [runEvents, runArtifacts] = view === "work" && selected?.latestRun
     ? await Promise.all([fetchRunEvents(selected.latestRun.id), fetchRunArtifacts(selected.latestRun.id)])
     : [{ events: [] }, { artifacts: [] }];
   const recentEvents = getRecentEvents(runEvents.events);
@@ -227,11 +266,15 @@ export default async function DashboardPage({
         </div>
 
         <nav className="nav">
-          <a className="active">Work</a>
+          <a className={view === "work" ? "active" : ""} href={buildDashboardHref({ status: statusFilter })}>
+            Work
+          </a>
           <a>Runs</a>
           <a>Artifacts</a>
           <a>Config</a>
-          <a>Audit</a>
+          <a className={view === "audit" ? "active" : ""} href={buildDashboardHref({ view: "audit" })}>
+            Audit
+          </a>
         </nav>
       </aside>
 
@@ -239,15 +282,20 @@ export default async function DashboardPage({
         <header className="topbar">
           <div>
             <p className="eyebrow">Symphony-style orchestration</p>
-            <h1>Agent runs</h1>
+            <h1>{view === "audit" ? "Webhook audit" : "Agent runs"}</h1>
           </div>
 
           <div className="toolbar">
             <TrackerHealthBadge health={dashboard.integrations} />
-            <a className="iconButton" href={buildDashboardHref({ status: statusFilter, workItemId: selected?.id })} title="Refresh">
+            <a
+              className="iconButton"
+              href={buildDashboardHref({ status: statusFilter, view, workItemId: selected?.id })}
+              title="Refresh"
+            >
               <RefreshCw size={16} />
             </a>
             <form action={submitDispatchAction}>
+              <input name="view" type="hidden" value={view} />
               <input name="status" type="hidden" value={statusFilter} />
               <input name="workItemId" type="hidden" value={selected?.id ?? ""} />
               <button
@@ -261,6 +309,7 @@ export default async function DashboardPage({
               </button>
             </form>
             <form action={submitDispatchAction}>
+              <input name="view" type="hidden" value={view} />
               <input name="status" type="hidden" value={statusFilter} />
               <input name="workItemId" type="hidden" value={selected?.id ?? ""} />
               <button className="primary" name="action" title="Start eligible" type="submit" value="start_eligible">
@@ -294,23 +343,29 @@ export default async function DashboardPage({
           >
             {actionFeedback.tone === "error" ? <AlertTriangle size={16} /> : <CheckCircle2 size={16} />}
             <span>{actionFeedback.message}</span>
-            <a className="bannerDismiss" href={buildDashboardHref({ status: statusFilter, workItemId: selected?.id })} title="Dismiss">
+            <a
+              className="bannerDismiss"
+              href={buildDashboardHref({ status: statusFilter, view, workItemId: selected?.id })}
+              title="Dismiss"
+            >
               <XCircle size={14} />
             </a>
           </section>
         ) : null}
 
-        <section className="metrics">
-          {lanes.map((lane) => (
-            <div className="metric" key={lane.label}>
-              <span>{lane.label}</span>
-              <strong className={lane.tone}>{lane.value}</strong>
-            </div>
-          ))}
-        </section>
+        {view === "work" ? (
+          <>
+            <section className="metrics">
+              {lanes.map((lane) => (
+                <div className="metric" key={lane.label}>
+                  <span>{lane.label}</span>
+                  <strong className={lane.tone}>{lane.value}</strong>
+                </div>
+              ))}
+            </section>
 
-        <section className="contentGrid">
-          <div className="panel board">
+            <section className="contentGrid">
+              <div className="panel board">
             <div className="panelHeader">
               <div>
                 <h2>Work board</h2>
@@ -403,9 +458,9 @@ export default async function DashboardPage({
                 <span>Choose another lane or move a tracker issue into this status.</span>
               </div>
             )}
-          </div>
+              </div>
 
-          <aside className="panel runDetail">
+              <aside className="panel runDetail">
             {selected ? (
               <>
                 <div className="panelHeader compact">
@@ -532,8 +587,12 @@ export default async function DashboardPage({
                 <span>The latest run will appear here after the worker claims an issue.</span>
               </div>
             )}
-          </aside>
-        </section>
+              </aside>
+            </section>
+          </>
+        ) : (
+          <WebhookAuditView audit={webhookAudit} />
+        )}
       </section>
     </main>
   );
@@ -651,6 +710,30 @@ async function fetchRunArtifacts(runId: string): Promise<RunArtifactsData> {
   }
 }
 
+async function fetchWebhookDeliveries(): Promise<WebhookAuditData> {
+  try {
+    const response = await fetch(`${apiUrl}/webhook-deliveries?limit=50`, {
+      cache: "no-store"
+    });
+
+    if (!response.ok) {
+      throw new Error(`API returned ${response.status}`);
+    }
+
+    const payload = (await response.json()) as WebhookDeliveriesResponse;
+    return {
+      deliveries: payload.data,
+      generatedAt: payload.meta?.generatedAt
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown API error";
+    return {
+      deliveries: [],
+      error: `Could not load webhook deliveries: ${message}`
+    };
+  }
+}
+
 function createDefaultDispatchControl(): DispatchControl {
   const now = new Date().toISOString();
   return {
@@ -703,6 +786,10 @@ function firstParam(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
 
+function parseDashboardView(value: string | undefined): DashboardView {
+  return value === "audit" ? "audit" : "work";
+}
+
 function parseStatusFilter(value: string | undefined): StatusFilter {
   return statusFilterTabs.some((tab) => tab.value === value) ? (value as StatusFilter) : "all";
 }
@@ -723,14 +810,19 @@ function buildStatusFilterTabs(items: WorkItemSummary[], activeFilter: StatusFil
   }));
 }
 
-function buildDashboardHref(input: { status?: StatusFilter; workItemId?: string }): string {
+function buildDashboardHref(input: { status?: StatusFilter; view?: DashboardView; workItemId?: string }): string {
   const params = new URLSearchParams();
+  const view = input.view ?? "work";
 
-  if (input.status && input.status !== "all") {
+  if (view === "audit") {
+    params.set("view", "audit");
+  }
+
+  if (view === "work" && input.status && input.status !== "all") {
     params.set("status", input.status);
   }
 
-  if (input.workItemId) {
+  if (view === "work" && input.workItemId) {
     params.set("workItemId", input.workItemId);
   }
 
@@ -825,6 +917,90 @@ function getAvailableActions(status: WorkItemStatus): Array<{
   }
 }
 
+function WebhookAuditView({ audit }: { audit: WebhookAuditData }) {
+  const stats = buildWebhookAuditStats(audit.deliveries);
+
+  return (
+    <section className="auditView">
+      <section className="metrics auditMetrics">
+        {stats.map((stat) => (
+          <div className="metric" key={stat.label}>
+            <span>{stat.label}</span>
+            <strong className={stat.tone}>{stat.value}</strong>
+          </div>
+        ))}
+      </section>
+
+      <div className="panel auditPanel">
+        <div className="panelHeader">
+          <div>
+            <h2>Webhook deliveries</h2>
+            <p>
+              {audit.deliveries.length} recent deliveries
+              {audit.generatedAt ? ` · refreshed ${formatRelativeTime(audit.generatedAt)}` : ""}
+            </p>
+          </div>
+          <a className="iconButton" href={buildDashboardHref({ view: "audit" })} title="Refresh audit">
+            <RefreshCw size={16} />
+          </a>
+        </div>
+
+        {audit.error ? (
+          <div className="timelineNotice">{audit.error}</div>
+        ) : audit.deliveries.length > 0 ? (
+          <div className="auditTable">
+            <div className="auditRow auditHead">
+              <span>Delivery</span>
+              <span>Status</span>
+              <span>Result</span>
+              <span>Received</span>
+            </div>
+            {audit.deliveries.map((delivery) => (
+              <div className="auditRow" key={delivery.id}>
+                <div>
+                  <strong>{delivery.deliveryId}</strong>
+                  <span>
+                    {delivery.provider}
+                    {delivery.event ? ` · ${delivery.event}` : ""}
+                    {delivery.action ? ` · ${delivery.action}` : ""}
+                  </span>
+                </div>
+                <div>
+                  <span className={`pill ${delivery.status}`}>{formatStatus(delivery.status)}</span>
+                  <span>{formatAttemptCount(delivery.attemptCount)}</span>
+                </div>
+                <div>
+                  <strong>{formatWebhookResult(delivery)}</strong>
+                  <span>{delivery.type ?? "unknown payload type"}</span>
+                </div>
+                <div>
+                  <strong>{formatRelativeTime(delivery.lastReceivedAt)}</strong>
+                  <span>{delivery.processedAt ? `processed ${formatRelativeTime(delivery.processedAt)}` : "not processed"}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="emptyState">
+            <Database size={18} />
+            <strong>No webhook deliveries yet</strong>
+            <span>After Linear sends a signed webhook, delivery attempts and replay status will appear here.</span>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function buildWebhookAuditStats(deliveries: WebhookDeliverySummary[]) {
+  return [
+    { label: "Deliveries", value: deliveries.length, tone: "neutral" },
+    { label: "Replayed", value: deliveries.filter((delivery) => delivery.attemptCount > 1).length, tone: "amber" },
+    { label: "Failed", value: deliveries.filter((delivery) => delivery.status === "failed").length, tone: "red" },
+    { label: "Processing", value: deliveries.filter((delivery) => delivery.status === "processing").length, tone: "blue" }
+  ];
+}
+
 function TrackerHealthBadge({ health }: { health: IntegrationHealth }) {
   const title = health.linear.enabled
     ? [
@@ -881,6 +1057,27 @@ function formatArtifactUri(uri: string): string {
   const normalized = uri.replaceAll("\\", "/");
   const parts = normalized.split("/");
   return parts.slice(-2).join("/");
+}
+
+function formatAttemptCount(attemptCount: number): string {
+  return attemptCount === 1 ? "1 attempt" : `${attemptCount} attempts`;
+}
+
+function formatWebhookResult(delivery: WebhookDeliverySummary): string {
+  const status = readMetadataString(delivery.result, "status");
+  const issueIdentifier = readMetadataString(delivery.result, "issueIdentifier");
+  const state = readMetadataString(delivery.result, "state");
+  const reason = readMetadataString(delivery.result, "reason");
+
+  if (status === "reconciled") {
+    return [issueIdentifier ?? "issue", state].filter(Boolean).join(" · ");
+  }
+
+  if (reason) {
+    return reason.replaceAll("_", " ");
+  }
+
+  return status ? formatStatus(status) : "No result stored";
 }
 
 function getArtifactAction(artifact: ArtifactSummary): ArtifactAction | undefined {

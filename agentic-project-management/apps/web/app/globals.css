@@ -137,6 +137,7 @@ a:hover {
 }
 
 .workspace {
+  align-content: start;
   display: grid;
   gap: 18px;
   padding: 24px;
@@ -359,6 +360,65 @@ h2 {
   grid-template-columns: minmax(0, 1fr) 380px;
 }
 
+.auditView {
+  display: grid;
+  gap: 18px;
+}
+
+.auditMetrics {
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+}
+
+.auditPanel {
+  display: grid;
+  gap: 14px;
+}
+
+.auditTable {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.auditRow {
+  align-items: center;
+  border-top: 1px solid var(--border);
+  display: grid;
+  font-size: 13px;
+  gap: 14px;
+  grid-template-columns: minmax(240px, 1.15fr) 150px minmax(220px, 1fr) 150px;
+  min-height: 68px;
+  padding: 10px 12px;
+}
+
+.auditRow:first-child {
+  border-top: 0;
+}
+
+.auditRow > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.auditRow strong {
+  overflow-wrap: anywhere;
+}
+
+.auditRow span {
+  color: var(--muted);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.auditHead {
+  background: #f0f3ef;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  min-height: 38px;
+}
+
 .panel {
   min-width: 0;
   padding: 16px;
@@ -514,6 +574,12 @@ h2 {
   color: var(--blue);
 }
 
+.pill.processing {
+  background: #eaf2ff;
+  border-color: #bdd5fb;
+  color: var(--blue);
+}
+
 .pill.queued {
   background: #f4f5f3;
 }
@@ -542,7 +608,14 @@ h2 {
   color: var(--green);
 }
 
+.pill.processed {
+  background: #e7f6ef;
+  border-color: #b8ddca;
+  color: var(--green);
+}
+
 .pill.cancelled,
+.pill.ignored,
 .pill.paused {
   background: #f4f5f3;
 }
@@ -822,8 +895,15 @@ h2 {
     display: none;
   }
 
+  .auditMetrics,
   .contentGrid,
   .metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .auditRow {
+    align-items: start;
+    gap: 8px;
     grid-template-columns: 1fr;
   }
 
