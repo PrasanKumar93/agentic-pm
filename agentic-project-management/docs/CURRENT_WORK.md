@@ -59,14 +59,15 @@ Date: 2026-04-30
 - Work board titles now select work items directly, and dashboard artifact actions open all readable local text artifacts through the API, not only PR drafts.
 - Run detail now renders the full event timeline newest-first in an explicit scroll region, with artifact lists also bounded and scrollable when they overflow.
 - Run detail now prioritizes artifacts above the event timeline, and timeline rows show level and time in the header to reduce long-run row height.
+- Mixed live Linear runtime routing proof: `PRA-1` was queued with `desiredRuntime=codex` and claimed by `codex-cli`; `PRA-3` was queued with `desiredRuntime=cursor` and claimed by `cursor-cli`. Both synced Linear to `In Progress` and then `In Review`, posted run comments, persisted run events, and captured review artifacts. Main git status remained clean after both generated workspace runs.
+- Worker dispatch now falls back to the project default repository when an older queued work item lacks `repositoryId`, and persists that assignment before materializing the workspace.
 
 ## In Progress
 
-- Mixed live Linear runtime routing proof with dashboard-selected `desiredRuntime` values for Codex and Cursor.
+- Real Linear inbound webhook smoke setup.
 
 ## Next Queue
 
-- Verify mixed live Linear runtime routing by assigning queued work items to Codex and Cursor from the dashboard and confirming the matching worker claims each item.
 - Configure `LINEAR_WEBHOOK_SECRET` and run a real inbound webhook smoke through a public tunnel.
 - Repository edit/archive controls with explicit confirmation.
 
@@ -77,5 +78,5 @@ Date: 2026-04-30
 3. Project default repository fallback for tracker-ingested issues: done; `PRA-1` and `PRA-4` were backfilled with the default repo.
 4. Absolute workspace path fix for git worktree + runtime cwd: done.
 5. Live Linear + Cursor runtime smoke: done on `PRA-4` with repository-backed workspace and review artifacts.
-6. Mixed-runtime routing proof with live Linear work items: active next.
+6. Mixed-runtime routing proof with live Linear work items: done on `PRA-1` for Codex and `PRA-3` for Cursor.
 7. Real Linear inbound webhook smoke once `LINEAR_WEBHOOK_SECRET` and a public tunnel are configured.

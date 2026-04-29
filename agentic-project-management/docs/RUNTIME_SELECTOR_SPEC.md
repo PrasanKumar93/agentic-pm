@@ -66,6 +66,8 @@ Examples:
 
 This supports running separate Codex and Cursor workers side by side without mixing explicitly routed work.
 
+When a claimed work item has no `repositoryId` and the issue has no repository reference, the worker falls back to the selected project's default repository and persists that assignment before creating the workspace. This keeps older tracker-ingested work items from running in empty workspaces.
+
 ## 5. Dashboard Behavior
 
 The work board shows a runtime menu for each non-running work item:

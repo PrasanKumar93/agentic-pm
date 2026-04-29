@@ -67,7 +67,7 @@
 - [x] Assign project default repositories to tracker-ingested Linear work items.
 - [x] Resolve workspace paths absolutely before runtime execution.
 - [x] Run a live Linear issue through the real Cursor runtime.
-- [ ] Verify mixed Codex/Cursor routing against live Linear work items.
+- [x] Verify mixed Codex/Cursor routing against live Linear work items.
 - [x] Add worker-side cancellation checks.
 - [x] Add stall detection.
 - [x] Materialize selected repositories into agent workspaces.

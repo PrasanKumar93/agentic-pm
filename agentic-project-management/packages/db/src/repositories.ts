@@ -796,6 +796,61 @@ export class AgenticRepository {
     );
   }
 
+  async assignWorkItemRepository(input: {
+    workItemId: string;
+    repositoryId: string;
+    actorId?: string;
+    reason?: string;
+    now?: Date;
+  }): Promise<WorkItem> {
+    const workItem = await this.collections.workItems.findOne({
+      id: input.workItemId,
+    });
+    if (!workItem) {
+      throw new WorkItemNotFoundError(input.workItemId);
+    }
+
+    const repositoryRef = await this.getRepository(
+      input.repositoryId,
+      workItem.projectId,
+    );
+    if (!repositoryRef) {
+      throw new RepositoryNotFoundError(input.repositoryId);
+    }
+
+    const now = input.now ?? new Date();
+    await this.collections.workItems.updateOne(
+      { id: input.workItemId },
+      {
+        $set: {
+          repositoryId: repositoryRef.id,
+          updatedAt: now,
+        },
+      },
+    );
+
+    await this.appendEvent({
+      projectId: workItem.projectId,
+      workItemId: workItem.id,
+      type: "work_item.repository_assigned",
+      level: "info",
+      message: `${input.actorId ?? "worker"} assigned ${repositoryRef.name} repository`,
+      payload: {
+        actorId: input.actorId,
+        reason: input.reason,
+        repositoryId: repositoryRef.id,
+        repositoryName: repositoryRef.name,
+      },
+      createdAt: now,
+    });
+
+    return {
+      ...workItem,
+      repositoryId: repositoryRef.id,
+      updatedAt: now,
+    };
+  }
+
   async performWorkItemAction(input: {
     workItemId: string;
     action: OperatorActionName;

@@ -295,6 +295,13 @@ Cursor runtime smoke verified on 2026-04-30:
 - Captured log, patch, local PR draft, and review packet artifacts.
 - A prior `PRA-1` Cursor attempt failed on a relative workspace path; the failure path synced the issue back to `Todo` and posted a failure comment.
 
+Mixed-runtime routing smoke verified on 2026-04-30:
+
+- Queued `PRA-1` with `desiredRuntime=codex`; a Codex one-shot worker claimed it, ran `codex-cli`, synced Linear to `In Progress` and then `In Review`, posted Linear comments, persisted 71 events, and captured review artifacts.
+- Queued `PRA-3` with `desiredRuntime=cursor`; a Cursor one-shot worker claimed it, ran `cursor-cli`, synced Linear to `In Progress` and then `In Review`, posted Linear comments, persisted 322 events, and captured review artifacts.
+- Main git status stayed clean after both runs because agent output was isolated to generated workspaces and artifact files.
+- The Cursor half exposed an older no-repository work item. Worker dispatch now falls back to the project default repository and persists that assignment before workspace materialization.
+
 Webhook smoke should return `data.status: "reconciled"` for active issue payloads and create a local work item for the configured project. Replaying the exact same payload and `Linear-Delivery` should return `data.status: "duplicate"` and should not append another `tracker.issue.webhook_reconciled` event.
 
 ## 11. References

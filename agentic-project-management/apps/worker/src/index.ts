@@ -469,14 +469,33 @@ async function resolveWorkItemRepository(
   issue: Issue,
 ): Promise<RepositoryRef | undefined> {
   const repositoryId = workItem.repositoryId ?? issue.repoRefs[0];
-  if (!repositoryId) {
+  if (repositoryId) {
+    const explicitRepository = await repository.getRepository(
+      repositoryId,
+      workItem.projectId,
+    );
+    if (explicitRepository) {
+      return explicitRepository;
+    }
+  }
+
+  const defaultRepository = await repository.getDefaultRepository(
+    workItem.projectId,
+  );
+  if (!defaultRepository) {
     return undefined;
   }
 
-  return (
-    (await repository.getRepository(repositoryId, workItem.projectId)) ??
-    undefined
-  );
+  await repository.assignWorkItemRepository({
+    workItemId: workItem.id,
+    repositoryId: defaultRepository.id,
+    actorId: workerId,
+    reason: repositoryId
+      ? "dispatch_missing_repository"
+      : "dispatch_default_repository",
+  });
+
+  return defaultRepository;
 }
 
 async function stopRun(input: {
