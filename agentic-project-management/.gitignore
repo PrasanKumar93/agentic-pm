@@ -8,8 +8,8 @@ coverage
 *.log
 *.tsbuildinfo
 .DS_Store
-workspaces
-workspaces-smoke
+/workspaces
+/workspaces-smoke
 artifacts
 artifacts-smoke
 packages/*/src/**/*.d.ts

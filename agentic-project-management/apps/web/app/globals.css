@@ -486,6 +486,55 @@ h2 {
   grid-template-columns: minmax(0, 1fr) 380px;
 }
 
+.workColumn {
+  align-content: start;
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.intakePanel {
+  display: grid;
+  gap: 14px;
+}
+
+.intakeForm {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(180px, 1fr) 160px 130px auto;
+}
+
+.intakeForm input,
+.intakeForm select,
+.intakeForm textarea {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  min-width: 0;
+  padding: 0 10px;
+}
+
+.intakeForm input,
+.intakeForm select {
+  height: 36px;
+}
+
+.intakeForm textarea {
+  grid-column: 1 / -2;
+  line-height: 1.45;
+  min-height: 74px;
+  padding: 9px 10px;
+  resize: vertical;
+}
+
+.intakeForm button {
+  align-self: end;
+  justify-content: center;
+}
+
 .auditView {
   display: grid;
   gap: 18px;
@@ -619,9 +668,17 @@ h2 {
   display: grid;
   font-size: 13px;
   gap: 12px;
-  grid-template-columns: 82px minmax(180px, 1fr) 130px 176px 120px 80px 152px;
+  grid-template-columns: 82px minmax(170px, 1fr) 120px 130px 176px 120px 80px 152px;
   min-height: 46px;
   padding: 0 12px;
+}
+
+.repoCell {
+  color: var(--muted);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .row a,
@@ -1056,6 +1113,14 @@ h2 {
     grid-template-columns: 1fr;
   }
 
+  .intakeForm {
+    grid-template-columns: 1fr;
+  }
+
+  .intakeForm textarea {
+    grid-column: auto;
+  }
+
   .auditRow {
     align-items: start;
     gap: 8px;
@@ -1086,6 +1151,7 @@ h2 {
   }
 
   .ownerCell,
+  .repoCell,
   .runtimeForm,
   .updatedCell {
     display: none;

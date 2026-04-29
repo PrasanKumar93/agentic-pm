@@ -65,6 +65,15 @@ export interface RepositoryRef {
   updatedAt: Date;
 }
 
+export interface RepositorySummary {
+  id: string;
+  projectId: string;
+  name: string;
+  url: string;
+  defaultBranch: string;
+  localPath?: string;
+}
+
 export interface Issue {
   id: string;
   tracker: TrackerKind;
@@ -88,6 +97,7 @@ export interface WorkItem {
   id: string;
   issueId: string;
   projectId: string;
+  repositoryId?: string;
   status: WorkItemStatus;
   desiredState?: string;
   desiredRuntime?: DesiredAgentRuntime;
@@ -137,6 +147,7 @@ export interface WorkItemSummary {
   id: string;
   status: WorkItemStatus;
   desiredRuntime?: DesiredAgentRuntime;
+  repository?: RepositorySummary;
   issue: IssueSummary;
   latestRun?: RunSummary;
   eventCount: number;

@@ -8,7 +8,9 @@ import {
   ExternalLink,
   FileText,
   FolderKanban,
+  GitBranch,
   Play,
+  Plus,
   RefreshCw,
   RotateCcw,
   Save,
@@ -17,6 +19,7 @@ import {
   XCircle,
 } from "lucide-react";
 import {
+  submitCreateWorkItem,
   submitDispatchAction,
   submitRuntimePreference,
   submitWorkItemAction,
@@ -51,6 +54,14 @@ type WorkItemSummary = {
   id: string;
   status: WorkItemStatus;
   desiredRuntime?: DesiredAgentRuntime;
+  repository?: {
+    id: string;
+    projectId: string;
+    name: string;
+    url: string;
+    defaultBranch: string;
+    localPath?: string;
+  };
   issue: {
     id: string;
     identifier: string;
@@ -123,10 +134,30 @@ type ProjectOption = {
   isDefault: boolean;
 };
 
+type RepositoryOption = {
+  id: string;
+  projectId: string;
+  name: string;
+  url: string;
+  defaultBranch: string;
+  localPath?: string;
+  workItemCount: number;
+  isDefault: boolean;
+};
+
 type ProjectsResponse = {
   data: ProjectOption[];
   meta?: {
     defaultProjectId: string;
+    generatedAt: string;
+  };
+};
+
+type RepositoriesResponse = {
+  data: RepositoryOption[];
+  meta?: {
+    projectId: string;
+    defaultRepositoryId?: string;
     generatedAt: string;
   };
 };
@@ -215,6 +246,7 @@ type DashboardData = {
   dispatch: DispatchControl;
   integrations: IntegrationHealth;
   projects: ProjectOption[];
+  repositories: RepositoryOption[];
   defaultProjectId: string;
   selectedProjectId: string;
   generatedAt?: string;
@@ -499,7 +531,87 @@ export default async function DashboardPage({
             </section>
 
             <section className="contentGrid">
-              <div className="panel board">
+              <div className="workColumn">
+                <section className="panel intakePanel">
+                  <div className="panelHeader compact">
+                    <div>
+                      <h2>New work item</h2>
+                      <p>
+                        {dashboard.repositories.length}{" "}
+                        {dashboard.repositories.length === 1
+                          ? "repository"
+                          : "repositories"}
+                      </p>
+                    </div>
+                    <GitBranch size={17} />
+                  </div>
+                  <form action={submitCreateWorkItem} className="intakeForm">
+                    <input
+                      name="projectId"
+                      type="hidden"
+                      value={dashboard.selectedProjectId}
+                    />
+                    <input name="status" type="hidden" value={statusFilter} />
+                    <input
+                      name="workItemId"
+                      type="hidden"
+                      value={selected?.id ?? ""}
+                    />
+                    <input
+                      aria-label="Work item title"
+                      maxLength={180}
+                      name="title"
+                      placeholder="Title"
+                      required
+                    />
+                    <select
+                      aria-label="Repository"
+                      defaultValue={dashboard.repositories[0]?.id ?? ""}
+                      disabled={dashboard.repositories.length === 0}
+                      name="repositoryId"
+                      required
+                    >
+                      {dashboard.repositories.length > 0 ? (
+                        dashboard.repositories.map((repo) => (
+                          <option key={repo.id} value={repo.id}>
+                            {repo.name}
+                          </option>
+                        ))
+                      ) : (
+                        <option value="">No repositories</option>
+                      )}
+                    </select>
+                    <select
+                      aria-label="Desired runtime"
+                      defaultValue="default"
+                      name="desiredRuntime"
+                    >
+                      {runtimeOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    <textarea
+                      aria-label="Work item description"
+                      maxLength={8000}
+                      name="description"
+                      placeholder="Description"
+                      rows={3}
+                    />
+                    <button
+                      className="primary"
+                      disabled={dashboard.repositories.length === 0}
+                      title="Create work item"
+                      type="submit"
+                    >
+                      <Plus size={16} />
+                      Create
+                    </button>
+                  </form>
+                </section>
+
+                <div className="panel board">
                 <div className="panelHeader">
                   <div>
                     <h2>Work board</h2>
@@ -543,6 +655,7 @@ export default async function DashboardPage({
                     <div className="row tableHead">
                       <span>Issue</span>
                       <span>Title</span>
+                      <span className="repoCell">Repo</span>
                       <span>Status</span>
                       <span>Runtime</span>
                       <span className="ownerCell">Owner</span>
@@ -566,6 +679,9 @@ export default async function DashboardPage({
                           <strong>{row.issue.identifier}</strong>
                         )}
                         <span>{row.issue.title}</span>
+                        <span className="repoCell">
+                          {row.repository?.name ?? "unassigned"}
+                        </span>
                         <span className={`pill ${row.status}`}>
                           {formatStatus(row.status)}
                         </span>
@@ -687,6 +803,7 @@ export default async function DashboardPage({
                     </span>
                   </div>
                 )}
+                </div>
               </div>
 
               <aside className="panel runDetail">
@@ -872,12 +989,13 @@ async function fetchDashboardData(
       projectState.defaultProjectId,
     );
     const projectQuery = `projectId=${encodeURIComponent(selectedProjectId)}`;
-    const [response, dispatch, integrations] = await Promise.all([
+    const [response, dispatch, integrations, repositories] = await Promise.all([
       fetch(`${apiUrl}/work-items?limit=50&${projectQuery}`, {
         cache: "no-store",
       }),
       fetchDispatchControl(selectedProjectId),
       fetchIntegrationHealth(),
+      fetchRepositories(selectedProjectId),
     ]);
 
     if (!response.ok) {
@@ -890,6 +1008,7 @@ async function fetchDashboardData(
       dispatch,
       integrations,
       projects: projectState.projects,
+      repositories,
       defaultProjectId: projectState.defaultProjectId,
       selectedProjectId,
       generatedAt: payload.meta?.generatedAt,
@@ -903,6 +1022,7 @@ async function fetchDashboardData(
       dispatch: createDefaultDispatchControl(),
       integrations: createUnavailableIntegrationHealth(),
       projects: [createDefaultProjectOption(fallbackProjectId)],
+      repositories: [],
       defaultProjectId: fallbackProjectId,
       selectedProjectId: fallbackProjectId,
       error: `API unavailable at ${apiUrl}: ${message}`,
@@ -933,6 +1053,28 @@ async function fetchProjectOptions(): Promise<{
     projects,
     defaultProjectId,
   };
+}
+
+async function fetchRepositories(
+  projectId: string,
+): Promise<RepositoryOption[]> {
+  try {
+    const response = await fetch(
+      `${apiUrl}/repositories?projectId=${encodeURIComponent(projectId)}`,
+      {
+        cache: "no-store",
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error(`Repository API returned ${response.status}`);
+    }
+
+    const payload = (await response.json()) as RepositoriesResponse;
+    return payload.data;
+  } catch {
+    return [];
+  }
 }
 
 async function fetchDispatchControl(

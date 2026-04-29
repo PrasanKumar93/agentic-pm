@@ -26,7 +26,9 @@ import {
   type DesiredAgentRuntime,
   type EventLevel,
   type Issue,
+  type RepositoryRef,
   type Run,
+  type WorkItem,
 } from "@agentic-pm/core";
 import {
   AgenticRepository,
@@ -199,6 +201,7 @@ async function dispatchOne(): Promise<void> {
     return;
   }
 
+  const workRepository = await resolveWorkItemRepository(workItem, issue);
   let run: Run | undefined;
   const capturedAgentEvents: CapturedAgentEvent[] = [];
 
@@ -206,6 +209,7 @@ async function dispatchOne(): Promise<void> {
     const workspacePath = await workspaces.prepareIssueWorkspace({
       projectSlug,
       issue,
+      repositoryName: workRepository?.name,
       hooks:
         process.env.AGENTIC_PM_ENABLE_HOOKS === "true"
           ? workflow.config.hooks
@@ -227,6 +231,14 @@ async function dispatchOne(): Promise<void> {
       level: "info",
       message: `Started run for ${issue.identifier}`,
       payload: {
+        repository: workRepository
+          ? {
+              id: workRepository.id,
+              name: workRepository.name,
+              url: workRepository.url,
+              defaultBranch: workRepository.defaultBranch,
+            }
+          : undefined,
         workspacePath,
       },
     });
@@ -249,7 +261,9 @@ async function dispatchOne(): Promise<void> {
     const prompt = await renderWorkflowPrompt(workflow, {
       issue,
       repository: {
-        name: projectSlug,
+        name: workRepository?.name ?? projectSlug,
+        url: workRepository?.url ?? "",
+        defaultBranch: workRepository?.defaultBranch ?? "",
       },
       run,
     });
@@ -437,6 +451,21 @@ async function dispatchOne(): Promise<void> {
       body: buildSetupFailedComment(issue, message),
     });
   }
+}
+
+async function resolveWorkItemRepository(
+  workItem: WorkItem,
+  issue: Issue,
+): Promise<RepositoryRef | undefined> {
+  const repositoryId = workItem.repositoryId ?? issue.repoRefs[0];
+  if (!repositoryId) {
+    return undefined;
+  }
+
+  return (
+    (await repository.getRepository(repositoryId, workItem.projectId)) ??
+    undefined
+  );
 }
 
 async function stopRun(input: {

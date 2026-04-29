@@ -60,7 +60,11 @@ type ReturnState = {
 
 type ActionResponse = {
   data?: {
+    id?: string;
     desiredRuntime?: string;
+    repository?: {
+      name?: string;
+    };
     status?: string;
     issue?: {
       identifier?: string;
@@ -68,6 +72,73 @@ type ActionResponse = {
   };
   error?: string;
 };
+
+export async function submitCreateWorkItem(formData: FormData): Promise<void> {
+  const title = String(formData.get("title") ?? "").trim();
+  const description = String(formData.get("description") ?? "").trim();
+  const repositoryId = String(formData.get("repositoryId") ?? "");
+  const desiredRuntime = String(formData.get("desiredRuntime") ?? "default");
+  const returnState = readReturnState(formData);
+  let redirectUrl = createFeedbackUrl(
+    "error",
+    "Choose a valid repository and title.",
+    returnState,
+  );
+
+  if (
+    title &&
+    isSafeQueryValue(repositoryId) &&
+    isDesiredRuntimePreference(desiredRuntime)
+  ) {
+    try {
+      const response = await fetch(`${apiUrl}/work-items`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorId: "dashboard",
+          description,
+          desiredRuntime,
+          projectId: returnState.projectId,
+          repositoryId,
+          title,
+        }),
+        cache: "no-store",
+      });
+
+      const payload = await readActionResponse(response);
+      const nextState = response.ok
+        ? {
+            ...returnState,
+            status: "queued",
+            workItemId: payload.data?.id,
+          }
+        : returnState;
+      redirectUrl = response.ok
+        ? createFeedbackUrl(
+            "success",
+            formatCreateWorkItemSuccess(payload),
+            nextState,
+          )
+        : createFeedbackUrl(
+            "error",
+            payload.error ??
+              `Work item creation failed with HTTP ${response.status}.`,
+            returnState,
+          );
+    } catch (error) {
+      redirectUrl = createFeedbackUrl(
+        "error",
+        formatRequestError("Work item creation failed", error),
+        returnState,
+      );
+    }
+  }
+
+  revalidatePath("/");
+  redirect(redirectUrl);
+}
 
 export async function submitWorkItemAction(formData: FormData): Promise<void> {
   const workItemId = String(formData.get("workItemId") ?? "");
@@ -349,6 +420,14 @@ function formatRuntimeSuccess(
       ? "default runtime"
       : formatStatus(desiredRuntime);
   return `Set ${identifier} to ${runtime}.`;
+}
+
+function formatCreateWorkItemSuccess(payload: ActionResponse): string {
+  const identifier = payload.data?.issue?.identifier ?? "work item";
+  const repository = payload.data?.repository?.name;
+  return repository
+    ? `Created ${identifier} for ${repository}.`
+    : `Created ${identifier}.`;
 }
 
 function formatRequestError(prefix: string, error: unknown): string {

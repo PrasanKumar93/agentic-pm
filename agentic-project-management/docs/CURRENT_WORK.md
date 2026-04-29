@@ -45,11 +45,12 @@ Date: 2026-04-29
 - Dry-run-first local cleanup command for smoke/test MongoDB data.
 - Project-scoped dashboard filtering for work, dispatch, and webhook audit views.
 - Per-work-item runtime selector for Codex, Cursor, fake, and generic worker routing.
+- Repository-backed local work item intake with dashboard repository selection.
 
 ## In Progress
 
-- Repository selection while creating work items.
+- Repository-aware workspace materialization from selected repository.
 
 ## Next Queue
 
-- Task intake form for local tracker-backed work items.
+- Linear team/project configuration verification against a live Linear workspace.

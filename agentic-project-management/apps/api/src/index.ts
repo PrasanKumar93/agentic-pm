@@ -1,6 +1,8 @@
 import "dotenv/config";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { basename } from "node:path";
+import { fileURLToPath } from "node:url";
 import cors from "@fastify/cors";
 import Fastify, { type FastifyRequest } from "fastify";
 import type {
@@ -11,8 +13,11 @@ import type {
   Issue,
   OperatorActionName,
   OperatorActionResult,
+  RepositoryRef,
   RunEvent,
+  TrackerKind,
 } from "@agentic-pm/core";
+import { slugify } from "@agentic-pm/core";
 import {
   AgenticRepository,
   connectMongo,
@@ -20,6 +25,7 @@ import {
   getCollections,
   InvalidWorkItemActionError,
   readMongoConfig,
+  RepositoryNotFoundError,
   type WebhookDeliveryStatus,
   WorkItemNotFoundError,
 } from "@agentic-pm/db";
@@ -32,6 +38,8 @@ import {
 const host = process.env.API_HOST ?? "0.0.0.0";
 const port = Number(process.env.API_PORT ?? 4000);
 const projectId = process.env.AGENTIC_PM_PROJECT_ID ?? "project_local";
+const projectSlug = process.env.AGENTIC_PM_PROJECT_SLUG ?? "local";
+const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const linearWebhookSecret = process.env.LINEAR_WEBHOOK_SECRET;
 const linearWebhookToleranceMs = readPositiveNumber(
   process.env.LINEAR_WEBHOOK_TOLERANCE_MS,
@@ -43,6 +51,20 @@ const collections = getCollections(mongo.db);
 await ensureIndexes(collections);
 
 const repository = new AgenticRepository(mongo.db);
+const defaultRepository = readDefaultRepositoryRef(
+  projectId,
+  projectSlug,
+  repoRoot,
+);
+await repository.ensureProject({
+  id: projectId,
+  name: process.env.AGENTIC_PM_PROJECT_NAME ?? formatProjectName(projectId),
+  slug: projectSlug,
+  trackerKind: readTrackerKind(),
+  repositoryIds: [defaultRepository.id],
+  workflowPath: process.env.AGENTIC_PM_WORKFLOW_ROOT,
+});
+await repository.ensureRepository(defaultRepository);
 const app = Fastify({
   logger: true,
 });
@@ -205,6 +227,23 @@ app.get("/projects", async () => {
   };
 });
 
+app.get("/repositories", async (request) => {
+  const requestedProjectId =
+    readProjectId((request.query as { projectId?: string }).projectId) ??
+    projectId;
+  await ensureDefaultRepositoryForProject(requestedProjectId);
+
+  return {
+    data: await repository.listRepositoryOptions(requestedProjectId),
+    meta: {
+      projectId: requestedProjectId,
+      defaultRepositoryId:
+        requestedProjectId === projectId ? defaultRepository.id : undefined,
+      generatedAt: new Date().toISOString(),
+    },
+  };
+});
+
 app.get("/work-items", async (request) => {
   const query = request.query as { limit?: string; projectId?: string };
   const requestedLimit = Number(query.limit ?? 50);
@@ -227,6 +266,71 @@ app.get("/work-items", async (request) => {
       generatedAt: new Date().toISOString(),
     },
   };
+});
+
+app.post("/work-items", async (request, reply) => {
+  const body = (request.body ?? {}) as {
+    actorId?: string;
+    description?: string;
+    desiredRuntime?: string | null;
+    projectId?: string;
+    repositoryId?: string;
+    title?: string;
+  };
+  const title = readRequiredText(body.title, 180);
+  if (!title) {
+    return reply.code(400).send({
+      error: "Work item title is required.",
+    });
+  }
+
+  const requestedProjectId = readProjectId(body.projectId) ?? projectId;
+  await ensureDefaultRepositoryForProject(requestedProjectId);
+  const repositoryId = readRepositoryId(body.repositoryId);
+  if (!repositoryId) {
+    return reply.code(400).send({
+      error: "Choose a valid repository.",
+    });
+  }
+
+  if (!isRuntimePreferenceInput(body.desiredRuntime)) {
+    return reply.code(400).send({
+      error: `Unknown runtime preference: ${String(body.desiredRuntime)}`,
+    });
+  }
+
+  try {
+    const workItem = await repository.createLocalWorkItem({
+      projectId: requestedProjectId,
+      repositoryId,
+      title,
+      description: readOptionalText(body.description, 8_000),
+      desiredRuntime: readDesiredRuntime(body.desiredRuntime),
+      actorId: body.actorId,
+    });
+    const data = await repository.getWorkItemSummary(workItem.id);
+    if (!data) {
+      return reply.code(404).send({
+        error: `Work item not found: ${workItem.id}`,
+      });
+    }
+
+    return reply.code(201).send({
+      data,
+      meta: {
+        action: "work_item.create",
+        generatedAt: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    if (error instanceof RepositoryNotFoundError) {
+      return reply.code(404).send({
+        error: error.message,
+      });
+    }
+
+    throw error;
+  }
 });
 
 app.get("/dispatch-control", async (request) => {
@@ -651,6 +755,29 @@ function readProjectId(value: string | undefined): string | undefined {
     : undefined;
 }
 
+function readRepositoryId(value: unknown): string | undefined {
+  const repositoryId = typeof value === "string" ? value.trim() : undefined;
+  return repositoryId && /^[A-Za-z0-9_.:-]{1,128}$/.test(repositoryId)
+    ? repositoryId
+    : undefined;
+}
+
+function readRequiredText(
+  value: unknown,
+  maxLength: number,
+): string | undefined {
+  const trimmed = typeof value === "string" ? value.trim() : undefined;
+  return trimmed ? trimmed.slice(0, maxLength) : undefined;
+}
+
+function readOptionalText(
+  value: unknown,
+  maxLength: number,
+): string | undefined {
+  const trimmed = typeof value === "string" ? value.trim() : undefined;
+  return trimmed ? trimmed.slice(0, maxLength) : undefined;
+}
+
 function isRuntimePreferenceInput(value: string | null | undefined): boolean {
   return (
     value === undefined ||
@@ -667,6 +794,77 @@ function readDesiredRuntime(
   return allowedDesiredRuntimes.has(value as DesiredAgentRuntime)
     ? (value as DesiredAgentRuntime)
     : undefined;
+}
+
+function readDefaultRepositoryRef(
+  selectedProjectId: string,
+  selectedProjectSlug: string,
+  root: string,
+): RepositoryRef {
+  const now = new Date();
+  const repositoryName =
+    process.env.AGENTIC_PM_REPOSITORY_NAME?.trim() ||
+    basename(root) ||
+    selectedProjectSlug;
+  const fallbackId = `repo_${slugify(selectedProjectSlug || selectedProjectId) || "local"}`;
+  return {
+    id: readRepositoryId(process.env.AGENTIC_PM_REPOSITORY_ID) ?? fallbackId,
+    projectId: selectedProjectId,
+    name: repositoryName.slice(0, 120),
+    url: process.env.AGENTIC_PM_REPOSITORY_URL?.trim() || `file://${root}`,
+    defaultBranch:
+      process.env.AGENTIC_PM_REPOSITORY_DEFAULT_BRANCH?.trim() || "main",
+    localPath: process.env.AGENTIC_PM_REPOSITORY_LOCAL_PATH?.trim() || root,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+async function ensureDefaultRepositoryForProject(
+  selectedProjectId: string,
+): Promise<RepositoryRef> {
+  const selectedProjectSlug =
+    selectedProjectId === projectId ? projectSlug : slugify(selectedProjectId);
+  const selectedDefaultRepository =
+    selectedProjectId === projectId
+      ? defaultRepository
+      : readDefaultRepositoryRef(selectedProjectId, selectedProjectSlug, repoRoot);
+
+  await repository.ensureProject({
+    id: selectedProjectId,
+    name:
+      selectedProjectId === projectId
+        ? process.env.AGENTIC_PM_PROJECT_NAME ?? formatProjectName(projectId)
+        : formatProjectName(selectedProjectId),
+    slug: selectedProjectSlug,
+    trackerKind: readTrackerKind(),
+    repositoryIds: [selectedDefaultRepository.id],
+    workflowPath: process.env.AGENTIC_PM_WORKFLOW_ROOT,
+  });
+  return repository.ensureRepository(selectedDefaultRepository);
+}
+
+function readTrackerKind(): TrackerKind {
+  const tracker = process.env.AGENTIC_PM_TRACKER?.trim();
+  return tracker === "linear" ||
+    tracker === "github" ||
+    tracker === "jira" ||
+    tracker === "fake"
+    ? tracker
+    : "fake";
+}
+
+function formatProjectName(value: string): string {
+  if (value === "project_local") {
+    return "Local project";
+  }
+
+  return value
+    .replace(/^project_/, "")
+    .split(/[_-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 async function syncOperatorActionTrackerState(input: {

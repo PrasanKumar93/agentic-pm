@@ -10,8 +10,12 @@ import {
   type Issue,
   type OperatorActionName,
   type OperatorActionResult,
+  type Project,
+  type RepositoryRef,
+  type RepositorySummary,
   type Run,
   type RunEvent,
+  type TrackerKind,
   type WorkItem,
   type WorkItemStatus,
   type WorkItemSummary,
@@ -43,6 +47,13 @@ export class WorkItemNotFoundError extends Error {
   }
 }
 
+export class RepositoryNotFoundError extends Error {
+  constructor(repositoryId: string) {
+    super(`Repository not found: ${repositoryId}`);
+    this.name = "RepositoryNotFoundError";
+  }
+}
+
 export class InvalidWorkItemActionError extends Error {
   constructor(message: string) {
     super(message);
@@ -70,11 +81,106 @@ export interface ProjectOption {
   isDefault: boolean;
 }
 
+export interface RepositoryOption extends RepositorySummary {
+  workItemCount: number;
+  isDefault: boolean;
+}
+
 export class AgenticRepository {
   readonly collections: AgenticCollections;
 
   constructor(db: Db) {
     this.collections = getCollections(db);
+  }
+
+  async ensureProject(input: {
+    id: string;
+    name: string;
+    slug: string;
+    trackerKind: TrackerKind;
+    repositoryIds?: string[];
+    workflowPath?: string;
+  }): Promise<Project> {
+    const existing = await this.collections.projects.findOne({ id: input.id });
+    const now = new Date();
+
+    if (existing) {
+      await this.collections.projects.updateOne(
+        { id: input.id },
+        {
+          $set: {
+            name: input.name,
+            slug: input.slug,
+            trackerKind: input.trackerKind,
+            workflowPath: input.workflowPath,
+            updatedAt: now,
+          },
+          ...(input.repositoryIds?.length
+            ? {
+                $addToSet: {
+                  repositoryIds: { $each: input.repositoryIds },
+                },
+              }
+            : {}),
+        },
+      );
+    } else {
+      await this.collections.projects.insertOne({
+        id: input.id,
+        name: input.name,
+        slug: input.slug,
+        trackerKind: input.trackerKind,
+        repositoryIds: input.repositoryIds ?? [],
+        workflowPath: input.workflowPath,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    const stored = await this.collections.projects.findOne({ id: input.id });
+    if (!stored) {
+      throw new Error(`Project ${input.id} was not found after upsert`);
+    }
+
+    return stored;
+  }
+
+  async ensureRepository(repository: RepositoryRef): Promise<RepositoryRef> {
+    const now = new Date();
+    const nextRepository = {
+      ...repository,
+      updatedAt: now,
+      createdAt: repository.createdAt ?? now,
+    };
+    const { id, createdAt, ...mutableRepository } = nextRepository;
+
+    await this.collections.repositories.updateOne(
+      { id },
+      {
+        $set: mutableRepository,
+        $setOnInsert: { id, createdAt },
+      },
+      { upsert: true },
+    );
+
+    await this.collections.projects.updateOne(
+      { id: repository.projectId },
+      {
+        $addToSet: {
+          repositoryIds: id,
+        },
+        $set: {
+          updatedAt: now,
+        },
+      },
+    );
+
+    const stored = await this.collections.repositories.findOne({ id });
+    if (!stored) {
+      throw new Error(`Repository ${repository.name} was not found after upsert`);
+    }
+
+    return stored;
   }
 
   async upsertIssue(issue: Issue): Promise<Issue> {
@@ -109,10 +215,12 @@ export class AgenticRepository {
     issue: Issue,
   ): Promise<WorkItem> {
     const now = new Date();
+    const repositoryId = issue.repoRefs[0];
     const workItem: WorkItem = {
       id: createId("work"),
       issueId: issue.id,
       projectId,
+      ...(repositoryId ? { repositoryId } : {}),
       status: "queued",
       retryCount: 0,
       createdAt: now,
@@ -208,6 +316,146 @@ export class AgenticRepository {
 
       return left.name.localeCompare(right.name);
     });
+  }
+
+  async listRepositoryOptions(
+    projectId: string,
+  ): Promise<RepositoryOption[]> {
+    const repositories = await this.collections.repositories
+      .find({ projectId }, { projection: { _id: 0 } })
+      .sort({ name: 1 })
+      .toArray();
+    const defaultRepositoryId = repositories[0]?.id;
+
+    const options = await Promise.all(
+      repositories.map(async (repository) => ({
+        ...toRepositorySummary(repository),
+        workItemCount: await this.collections.workItems.countDocuments({
+          projectId,
+          repositoryId: repository.id,
+        }),
+        isDefault: repository.id === defaultRepositoryId,
+      })),
+    );
+
+    return options.sort((left, right) => {
+      if (left.isDefault !== right.isDefault) {
+        return left.isDefault ? -1 : 1;
+      }
+
+      return left.name.localeCompare(right.name);
+    });
+  }
+
+  async getRepository(
+    repositoryId: string,
+    projectId?: string,
+  ): Promise<RepositoryRef | null> {
+    return this.collections.repositories.findOne(
+      projectId ? { id: repositoryId, projectId } : { id: repositoryId },
+    );
+  }
+
+  async getDefaultRepository(
+    projectId: string,
+  ): Promise<RepositoryRef | null> {
+    return this.collections.repositories.findOne(
+      { projectId },
+      { sort: { name: 1 } },
+    );
+  }
+
+  async createLocalWorkItem(input: {
+    projectId: string;
+    repositoryId?: string;
+    title: string;
+    description?: string;
+    desiredRuntime?: DesiredAgentRuntime;
+    actorId?: string;
+  }): Promise<WorkItem> {
+    const repositoryRef = input.repositoryId
+      ? await this.getRepository(input.repositoryId, input.projectId)
+      : await this.getDefaultRepository(input.projectId);
+    if (!repositoryRef) {
+      throw new RepositoryNotFoundError(
+        input.repositoryId ?? `${input.projectId}:default`,
+      );
+    }
+
+    const now = new Date();
+    const actorId = input.actorId || "local-operator";
+    const issueExternalId = createId("local_issue");
+    const identifier = await this.nextLocalIssueIdentifier(input.projectId);
+    const issue: Issue = {
+      id: createId("issue"),
+      tracker: "fake",
+      externalId: issueExternalId,
+      identifier,
+      title: input.title,
+      description: input.description,
+      state: "Ready for Agent",
+      labels: ["local-intake"],
+      assignee: actorId,
+      blockedBy: [],
+      repoRefs: [repositoryRef.id],
+      raw: {
+        source: "dashboard.intake",
+        repositoryId: repositoryRef.id,
+      },
+      createdAt: now,
+      updatedAt: now,
+    };
+    const workItem: WorkItem = {
+      id: createId("work"),
+      issueId: issue.id,
+      projectId: input.projectId,
+      repositoryId: repositoryRef.id,
+      status: "queued",
+      ...(input.desiredRuntime
+        ? { desiredRuntime: input.desiredRuntime }
+        : {}),
+      retryCount: 0,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await this.collections.issues.insertOne(issue);
+    await this.collections.workItems.insertOne(workItem);
+
+    await this.collections.operatorActions.insertOne({
+      id: createId("act"),
+      projectId: input.projectId,
+      workItemId: workItem.id,
+      actorId,
+      action: "work_item.create",
+      payload: {
+        issueId: issue.id,
+        issueIdentifier: issue.identifier,
+        repositoryId: repositoryRef.id,
+        repositoryName: repositoryRef.name,
+        desiredRuntime: input.desiredRuntime,
+      },
+      createdAt: now,
+    });
+
+    await this.appendEvent({
+      projectId: input.projectId,
+      workItemId: workItem.id,
+      type: "work_item.created",
+      level: "info",
+      message: `${actorId} created ${issue.identifier}`,
+      payload: {
+        actorId,
+        issueId: issue.id,
+        issueIdentifier: issue.identifier,
+        repositoryId: repositoryRef.id,
+        repositoryName: repositoryRef.name,
+        desiredRuntime: input.desiredRuntime,
+      },
+      createdAt: now,
+    });
+
+    return workItem;
   }
 
   async getWorkItemSummary(
@@ -806,6 +1054,13 @@ export class AgenticRepository {
     ].sort((left, right) => left.localeCompare(right));
   }
 
+  private async nextLocalIssueIdentifier(projectId: string): Promise<string> {
+    const count = await this.collections.workItems.countDocuments({
+      projectId,
+    });
+    return `LOCAL-${count + 1}`;
+  }
+
   async claimWebhookDelivery(input: {
     projectId: string;
     provider: string;
@@ -1036,6 +1291,13 @@ export class AgenticRepository {
     const issue = await this.collections.issues.findOne({
       id: workItem.issueId,
     });
+    const repositoryId = workItem.repositoryId ?? issue?.repoRefs[0];
+    const repositoryRef = repositoryId
+      ? await this.collections.repositories.findOne({
+          id: repositoryId,
+          projectId: workItem.projectId,
+        })
+      : undefined;
     const latestRun = workItem.lastRunId
       ? await this.collections.runs.findOne({ id: workItem.lastRunId })
       : await this.collections.runs.findOne(
@@ -1057,6 +1319,9 @@ export class AgenticRepository {
       id: workItem.id,
       status: workItem.status,
       desiredRuntime: workItem.desiredRuntime,
+      repository: repositoryRef
+        ? toRepositorySummary(repositoryRef)
+        : undefined,
       issue: {
         id: issue?.id ?? workItem.issueId,
         identifier: issue?.identifier ?? "Unknown",
@@ -1101,6 +1366,21 @@ function formatProjectName(projectId: string): string {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+function toRepositorySummary(
+  repository: RepositoryRef | WithId<RepositoryRef>,
+): RepositorySummary {
+  const { _id: _ignored, ...repositoryRef } =
+    repository as WithId<RepositoryRef>;
+  return {
+    id: repositoryRef.id,
+    projectId: repositoryRef.projectId,
+    name: repositoryRef.name,
+    url: repositoryRef.url,
+    defaultBranch: repositoryRef.defaultBranch,
+    localPath: repositoryRef.localPath,
+  };
 }
 
 function isNonEmptyString(value: unknown): value is string {
