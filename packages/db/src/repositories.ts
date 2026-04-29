@@ -1091,6 +1091,84 @@ export class AgenticRepository {
     return this.collections.artifacts.findOne({ id: artifactId });
   }
 
+  async linkPullRequestArtifact(input: {
+    actorId?: string;
+    artifactId: string;
+    remoteBaseBranch?: string;
+    remoteBranchName?: string;
+    remoteDraft?: boolean;
+    remoteName?: string;
+    remotePrUrl: string;
+    remoteState?: string;
+  }): Promise<Artifact | null> {
+    const artifact = await this.getArtifact(input.artifactId);
+    if (!artifact) {
+      return null;
+    }
+
+    const now = new Date();
+    const metadata: Record<string, unknown> = {
+      "metadata.linkedManually": true,
+      "metadata.remotePrUrl": input.remotePrUrl,
+      "metadata.remoteStatus": "linked",
+    };
+    const eventPayload: Record<string, unknown> = {
+      artifactId: artifact.id,
+      linkedManually: true,
+      remotePrUrl: input.remotePrUrl,
+    };
+
+    if (input.remoteName) {
+      metadata["metadata.remoteName"] = input.remoteName;
+      eventPayload.remoteName = input.remoteName;
+    }
+
+    if (input.remoteBranchName) {
+      metadata["metadata.remoteBranchName"] = input.remoteBranchName;
+      eventPayload.remoteBranchName = input.remoteBranchName;
+    }
+
+    if (input.remoteBaseBranch) {
+      metadata["metadata.remoteBaseBranch"] = input.remoteBaseBranch;
+      eventPayload.remoteBaseBranch = input.remoteBaseBranch;
+    }
+
+    if (input.remoteState) {
+      metadata["metadata.remoteState"] = input.remoteState;
+      eventPayload.remoteState = input.remoteState;
+    }
+
+    if (typeof input.remoteDraft === "boolean") {
+      metadata["metadata.remoteDraft"] = input.remoteDraft;
+      eventPayload.remoteDraft = input.remoteDraft;
+    }
+
+    await this.collections.artifacts.updateOne(
+      { id: input.artifactId },
+      { $set: metadata },
+    );
+
+    const run = artifact.runId
+      ? await this.collections.runs.findOne({ id: artifact.runId })
+      : null;
+    const workItem = run
+      ? await this.collections.workItems.findOne({ id: run.workItemId })
+      : null;
+
+    await this.appendEvent({
+      projectId: workItem?.projectId,
+      workItemId: workItem?.id,
+      runId: artifact.runId,
+      type: "github.pr.linked",
+      level: "info",
+      message: `${input.actorId ?? "operator"} linked a GitHub PR`,
+      payload: eventPayload,
+      createdAt: now,
+    });
+
+    return this.getArtifact(input.artifactId);
+  }
+
   async listArtifacts(runId: string): Promise<Artifact[]> {
     return this.collections.artifacts
       .find({ runId })

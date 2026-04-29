@@ -22,6 +22,7 @@ import {
 import {
   submitCreateWorkItem,
   submitDispatchAction,
+  submitPullRequestLink,
   submitRepositoryRegistration,
   submitRuntimePreference,
   submitWorkItemAction,
@@ -939,6 +940,12 @@ export default async function DashboardPage({
                         >
                           {runArtifacts.artifacts.map((artifact) => {
                             const action = getArtifactAction(artifact);
+                            const canLinkPullRequest =
+                              artifact.type === "pr" &&
+                              !readMetadataString(
+                                artifact.metadata,
+                                "remotePrUrl",
+                              );
 
                             return (
                               <div
@@ -970,6 +977,52 @@ export default async function DashboardPage({
                                     {formatArtifactUri(artifact.uri)} ·{" "}
                                     {formatRelativeTime(artifact.createdAt)}
                                   </span>
+                                  {canLinkPullRequest ? (
+                                    <form
+                                      action={submitPullRequestLink}
+                                      className="artifactLinkForm"
+                                    >
+                                      <input
+                                        name="artifactId"
+                                        type="hidden"
+                                        value={artifact.id}
+                                      />
+                                      <input
+                                        name="projectId"
+                                        type="hidden"
+                                        value={dashboard.selectedProjectId}
+                                      />
+                                      <input
+                                        name="status"
+                                        type="hidden"
+                                        value={statusFilter}
+                                      />
+                                      <input
+                                        name="view"
+                                        type="hidden"
+                                        value={view}
+                                      />
+                                      <input
+                                        name="workItemId"
+                                        type="hidden"
+                                        value={selected.id}
+                                      />
+                                      <input
+                                        aria-label="Remote PR URL"
+                                        maxLength={2000}
+                                        name="remotePrUrl"
+                                        placeholder="https://github.com/org/repo/pull/1"
+                                        type="url"
+                                      />
+                                      <button
+                                        title="Link remote pull request"
+                                        type="submit"
+                                      >
+                                        <Save size={12} />
+                                        <span>Link</span>
+                                      </button>
+                                    </form>
+                                  ) : null}
                                 </div>
                               </div>
                             );

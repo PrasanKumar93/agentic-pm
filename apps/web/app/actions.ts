@@ -361,6 +361,55 @@ export async function submitRuntimePreference(
   redirect(redirectUrl);
 }
 
+export async function submitPullRequestLink(formData: FormData): Promise<void> {
+  const artifactId = String(formData.get("artifactId") ?? "");
+  const remotePrUrl = String(formData.get("remotePrUrl") ?? "").trim();
+  const returnState = readReturnState(formData);
+  let redirectUrl = createFeedbackUrl(
+    "error",
+    "Enter a valid pull request URL.",
+    returnState,
+  );
+
+  if (isSafeQueryValue(artifactId) && isHttpUrl(remotePrUrl)) {
+    try {
+      const response = await fetch(
+        `${apiUrl}/artifacts/${artifactId}/link-pr`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            actorId: "dashboard",
+            remoteName: "origin",
+            remotePrUrl,
+          }),
+          cache: "no-store",
+        },
+      );
+
+      const payload = await readActionResponse(response);
+      redirectUrl = response.ok
+        ? createFeedbackUrl("success", "Linked pull request.", returnState)
+        : createFeedbackUrl(
+            "error",
+            payload.error ?? `PR link failed with HTTP ${response.status}.`,
+            returnState,
+          );
+    } catch (error) {
+      redirectUrl = createFeedbackUrl(
+        "error",
+        formatRequestError("PR link failed", error),
+        returnState,
+      );
+    }
+  }
+
+  revalidatePath("/");
+  redirect(redirectUrl);
+}
+
 function isWorkItemAction(value: string): value is WorkItemAction {
   return allowedActions.has(value as WorkItemAction);
 }
@@ -434,6 +483,15 @@ function readReturnState(formData: FormData): ReturnState {
 
 function isSafeQueryValue(value: string): boolean {
   return /^[A-Za-z0-9_.:-]{1,128}$/.test(value);
+}
+
+function isHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 function formatWorkItemSuccess(

@@ -654,6 +654,60 @@ app.get("/artifacts/:artifactId/content", async (request, reply) => {
   }
 });
 
+app.post("/artifacts/:artifactId/link-pr", async (request, reply) => {
+  const { artifactId } = request.params as { artifactId: string };
+  const body = (request.body ?? {}) as {
+    actorId?: string;
+    remoteBaseBranch?: string;
+    remoteBranchName?: string;
+    remoteDraft?: boolean;
+    remoteName?: string;
+    remotePrUrl?: string;
+    remoteState?: string;
+  };
+  const remotePrUrl = readRemotePrUrl(body.remotePrUrl);
+
+  if (!remotePrUrl) {
+    return reply.code(400).send({
+      error: "A valid http(s) pull request URL is required.",
+    });
+  }
+
+  const artifact = await repository.getArtifact(artifactId);
+  if (!artifact) {
+    return reply.code(404).send({
+      error: `Artifact not found: ${artifactId}`,
+    });
+  }
+
+  if (artifact.type !== "pr") {
+    return reply.code(409).send({
+      error: "Only pull request artifacts can be linked to a remote PR.",
+    });
+  }
+
+  const updated = await repository.linkPullRequestArtifact({
+    actorId: readOptionalText(body.actorId, 120),
+    artifactId,
+    remoteBaseBranch: readOptionalText(body.remoteBaseBranch, 120),
+    remoteBranchName: readOptionalText(body.remoteBranchName, 240),
+    remoteDraft:
+      typeof body.remoteDraft === "boolean" ? body.remoteDraft : undefined,
+    remoteName: readOptionalText(body.remoteName, 120) ?? "origin",
+    remotePrUrl,
+    remoteState: readOptionalText(body.remoteState, 80),
+  });
+
+  return {
+    data: updated,
+    meta: {
+      action: "artifact.pr.link",
+      artifactId,
+      generatedAt: new Date().toISOString(),
+    },
+  };
+});
+
 app.post("/webhooks/linear", async (request, reply) => {
   const body = (request.body ?? {}) as LinearWebhookPayload;
   const verification = verifyLinearWebhook(request as RawBodyRequest, body);
@@ -865,6 +919,22 @@ function readOptionalText(
 ): string | undefined {
   const trimmed = typeof value === "string" ? value.trim() : undefined;
   return trimmed ? trimmed.slice(0, maxLength) : undefined;
+}
+
+function readRemotePrUrl(value: unknown): string | undefined {
+  const text = readRequiredText(value, 2_000);
+  if (!text) {
+    return undefined;
+  }
+
+  try {
+    const url = new URL(text);
+    return url.protocol === "http:" || url.protocol === "https:"
+      ? url.toString()
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function isRuntimePreferenceInput(value: string | null | undefined): boolean {

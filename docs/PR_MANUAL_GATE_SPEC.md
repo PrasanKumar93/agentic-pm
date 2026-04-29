@@ -1,7 +1,7 @@
 # PR Manual Gate Spec
 
-Status: Draft v0.3
-Date: 2026-04-29
+Status: Draft v0.4
+Date: 2026-04-30
 
 ## 1. Purpose
 
@@ -15,6 +15,7 @@ Covered:
 - Create a `pr` artifact named `pull-request.md`.
 - Include suggested branch, commit, push, and `gh pr create --draft` commands.
 - Optionally create a remote GitHub draft PR after explicit project configuration.
+- Link a manually created GitHub PR URL back to a local PR artifact.
 - Keep merge manual by policy.
 - Surface local PR drafts or remote PR URLs from the dashboard run detail panel.
 - Let an operator mark a `waiting_for_review` work item as `completed` after external review/merge.
@@ -76,6 +77,25 @@ The selected run artifact list exposes PR review evidence:
 
 - Local-only PR artifacts open `GET /artifacts/:artifactId/content`.
 - GitHub draft PR artifacts with `metadata.remotePrUrl` open the remote pull request.
+- Local PR artifacts without `metadata.remotePrUrl` expose a compact PR URL link form in the dashboard.
+
+Manual PR linking uses:
+
+```http
+POST /artifacts/:artifactId/link-pr
+```
+
+with:
+
+```json
+{
+  "actorId": "dashboard",
+  "remoteName": "origin",
+  "remotePrUrl": "https://github.com/org/repo/pull/123"
+}
+```
+
+The API validates that the artifact exists, is type `pr`, and receives an `http(s)` URL. It stores `metadata.remotePrUrl`, `metadata.remoteStatus: "linked"`, `metadata.linkedManually: true`, and emits a `github.pr.linked` run event.
 
 The action:
 
