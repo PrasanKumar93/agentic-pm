@@ -144,6 +144,13 @@ type RepositoryOption = {
   url: string;
   defaultBranch: string;
   localPath?: string;
+  pullRequest?: {
+    baseBranch?: string;
+    draft?: boolean;
+    ghCommand?: string;
+    mode: "disabled" | "local_draft" | "github_draft";
+    remoteName?: string;
+  };
   workItemCount: number;
   isDefault: boolean;
 };
@@ -1835,6 +1842,34 @@ function ConfigView({
                 placeholder="/path/to/local/repo"
               />
             </label>
+            <label>
+              <span>PR mode</span>
+              <select defaultValue="local_draft" name="prMode">
+                <option value="local_draft">Local draft</option>
+                <option value="github_draft">GitHub draft</option>
+                <option value="disabled">Disabled</option>
+              </select>
+            </label>
+            <label>
+              <span>PR remote</span>
+              <input
+                maxLength={120}
+                name="prRemoteName"
+                placeholder="origin"
+              />
+            </label>
+            <label>
+              <span>PR base branch</span>
+              <input
+                maxLength={120}
+                name="prBaseBranch"
+                placeholder="main"
+              />
+            </label>
+            <label className="checkboxLine">
+              <input defaultChecked name="prDraft" type="checkbox" />
+              <span>Create as draft</span>
+            </label>
             <button className="primary" title="Register repository" type="submit">
               <Plus size={16} />
               Register
@@ -1871,6 +1906,23 @@ function ConfigView({
                     <div>
                       <dt>Branch</dt>
                       <dd>{repository.defaultBranch}</dd>
+                    </div>
+                    <div>
+                      <dt>PR mode</dt>
+                      <dd>
+                        {formatPullRequestMode(repository.pullRequest?.mode)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>PR target</dt>
+                      <dd>
+                        {[
+                          repository.pullRequest?.remoteName,
+                          repository.pullRequest?.baseBranch,
+                        ]
+                          .filter(Boolean)
+                          .join(" / ") || "not set"}
+                      </dd>
                     </div>
                     <div>
                       <dt>Work items</dt>
@@ -2104,6 +2156,10 @@ function ActionIcon({
 
 function formatStatus(status: string): string {
   return status.replaceAll("_", " ");
+}
+
+function formatPullRequestMode(mode: string | undefined): string {
+  return mode ? formatStatus(mode) : "local draft";
 }
 
 function formatArtifactType(type: string): string {

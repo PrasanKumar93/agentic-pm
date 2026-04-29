@@ -17,6 +17,7 @@ Operators can create a local work item against a specific managed repository. Th
   - `url`
   - `defaultBranch`
   - `localPath`
+  - `pullRequest`
 - `issues.repoRefs` stores the selected repository id for local intake issues.
 - `work_items.repositoryId` stores the repository selected for dispatch.
 - `WorkItemSummary.repository` exposes repository name, URL, default branch, and local path to the dashboard.
@@ -52,6 +53,12 @@ Returns repository options for the project.
       "url": "file:///repo",
       "defaultBranch": "main",
       "localPath": "/repo",
+      "pullRequest": {
+        "mode": "local_draft",
+        "remoteName": "origin",
+        "baseBranch": "main",
+        "draft": true
+      },
       "workItemCount": 3,
       "isDefault": true
     }
@@ -95,7 +102,13 @@ Response:
       "name": "agentic-project-management",
       "url": "file:///repo",
       "defaultBranch": "main",
-      "localPath": "/repo"
+      "localPath": "/repo",
+      "pullRequest": {
+        "mode": "local_draft",
+        "remoteName": "origin",
+        "baseBranch": "main",
+        "draft": true
+      }
     },
     "issue": {
       "id": "issue_...",

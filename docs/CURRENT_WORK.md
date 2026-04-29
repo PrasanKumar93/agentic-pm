@@ -65,18 +65,19 @@ Date: 2026-04-30
 - Live `test-linear-app` routing smoke: registered `git@github.com:PrasanKumar93/test-linear-app.git` as the default repository for `project_linear_live_smoke`, created `PRA-5` for Codex and `PRA-6` for Cursor, ran both against isolated git worktrees, captured patch/PR/review artifacts, verified generated tests, and pushed the outputs to separate GitHub branches.
 - Codex runtime now injects `--cd <workspacePath>` automatically so Codex CLI treats generated git worktrees as the writable workspace root.
 - Manual GitHub PR handoff: linked the manually created `test-linear-app` PRs back into their Symphony PR artifacts and added a dashboard/API flow to paste a remote PR URL onto any local PR draft artifact.
+- Repository-scoped PR configuration: managed repositories can now store PR mode, remote, base branch, and draft preference; the worker uses repository settings before falling back to env-only PR settings.
 
 ## In Progress
 
-- First-class GitHub PR creation from successful agent runs.
+- Fresh live Linear task smoke for repository-scoped GitHub draft PR creation.
 
 ## Next Queue
 
 - Configure `LINEAR_WEBHOOK_SECRET` and run a real inbound webhook smoke through a public tunnel.
 - Repository edit/archive controls with explicit confirmation.
 - Optional outer folder rename after the active tool sandbox/workspace path is refreshed.
-- Promote `AGENTIC_PM_PR_MODE=github_draft` from env-only worker configuration into per-repository/project config.
 - Capture GitHub PR state/checks and surface review readiness in the run detail panel.
+- Inline repository editing so PR settings can be adjusted without re-registering the repository name.
 
 ## Immediate Execution Order
 
@@ -89,4 +90,5 @@ Date: 2026-04-30
 7. Project root migration: done; typecheck and build passed from the flattened Git root.
 8. External repository live smoke: done on `test-linear-app`; Codex produced `agentic/pra-5-codex-standup-summary`, Cursor produced `agentic/pra-6-cursor-release-checklist`, and both branches are pushed to GitHub.
 9. Manual PR linking: done; `PRA-5` is linked to GitHub PR #1 and `PRA-6` is linked to GitHub PR #2 in artifact metadata.
-10. First-class PR creation from worker success paths, then real Linear inbound webhook smoke once `LINEAR_WEBHOOK_SECRET` and a public tunnel are configured.
+10. Repository-scoped PR settings: done in API/UI/worker; next is a fresh live Linear smoke that creates a GitHub draft PR from a successful Codex or Cursor run.
+11. Real Linear inbound webhook smoke once `LINEAR_WEBHOOK_SECRET` and a public tunnel are configured.

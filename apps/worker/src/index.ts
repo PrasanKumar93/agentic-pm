@@ -27,6 +27,7 @@ import {
   type DesiredAgentRuntime,
   type EventLevel,
   type Issue,
+  type PullRequestMode,
   type RepositoryRef,
   type Run,
   type WorkItem,
@@ -114,11 +115,19 @@ type TrackerCommentKind =
   | "run_failed"
   | "review_ready"
   | "setup_failed";
-type PullRequestMode = "disabled" | "local_draft" | "github_draft";
 
 interface AgentEventSeverity {
   level: EventLevel;
   reason?: string;
+}
+
+interface ResolvedPullRequestSettings {
+  baseBranch?: string;
+  draft: boolean;
+  ghCommand?: string;
+  mode: PullRequestMode;
+  remoteName?: string;
+  source: "env" | "repository";
 }
 
 const runtimePreflight = await runRuntimePreflight(runtime);
@@ -387,6 +396,7 @@ async function dispatchOne(): Promise<void> {
       workItem,
       issue,
       capturedAgentEvents,
+      repository: workRepository,
     });
     await repository.setRunStatus(run.id, "waiting_for_review");
     await repository.markWorkItemStatus(workItem.id, "waiting_for_review");
@@ -599,6 +609,7 @@ async function captureReviewArtifacts(input: {
   workItem: { id: string; projectId: string };
   issue: Issue;
   capturedAgentEvents: CapturedAgentEvent[];
+  repository?: RepositoryRef;
 }): Promise<Artifact[]> {
   const artifacts: Artifact[] = [];
   const logArtifact = await captureRunLogArtifact(input);
@@ -884,22 +895,24 @@ async function capturePullRequestArtifact(
     run: Run;
     workItem: { id: string; projectId: string };
     issue: Issue;
+    repository?: RepositoryRef;
   },
   artifacts: Artifact[],
 ): Promise<Artifact | undefined> {
-  const prMode = readPullRequestMode();
+  const prSettings = resolvePullRequestSettings(input.repository);
+  const prMode = prSettings.mode;
   if (prMode === "disabled") {
     return undefined;
   }
 
   try {
-    const remoteName = readOptionalEnv("AGENTIC_PM_GITHUB_REMOTE");
+    const remoteName = prSettings.remoteName;
     const draft = await buildPullRequestDraft({
       issueIdentifier: input.issue.identifier,
       issueTitle: input.issue.title,
       runId: input.run.id,
       workspacePath: input.run.workspacePath,
-      baseBranch: readOptionalEnv("AGENTIC_PM_GITHUB_BASE_BRANCH"),
+      baseBranch: prSettings.baseBranch,
       remoteName,
       artifacts,
     });
@@ -924,7 +937,7 @@ async function capturePullRequestArtifact(
           "github.pr.create_skipped",
           "GitHub PR creation skipped",
           new Error(
-            "AGENTIC_PM_GITHUB_REMOTE is required when AGENTIC_PM_PR_MODE=github_draft",
+            "A PR remote name is required when pull request mode is github_draft",
           ),
         );
       } else {
@@ -933,8 +946,8 @@ async function capturePullRequestArtifact(
             workspacePath: input.run.workspacePath,
             draft,
             remoteName,
-            ghCommand: readOptionalEnv("AGENTIC_PM_GH_COMMAND"),
-            draftPr: readBoolean(process.env.AGENTIC_PM_GITHUB_PR_DRAFT, true),
+            ghCommand: prSettings.ghCommand,
+            draftPr: prSettings.draft,
           });
           remoteStatus = "created";
           await repository.appendEvent({
@@ -987,6 +1000,7 @@ async function capturePullRequestArtifact(
         issueIdentifier: input.issue.identifier,
         mergeGate: "manual",
         mode: prMode,
+        pullRequestConfigSource: prSettings.source,
         remoteName,
         remotePrUrl: remoteResult?.remotePrUrl,
         remoteStatus,
@@ -1330,6 +1344,34 @@ function readPullRequestMode(): PullRequestMode {
   }
 
   return "local_draft";
+}
+
+function resolvePullRequestSettings(
+  repositoryRef: RepositoryRef | undefined,
+): ResolvedPullRequestSettings {
+  const repositorySettings = repositoryRef?.pullRequest;
+  if (repositorySettings) {
+    return {
+      baseBranch:
+        repositorySettings.baseBranch ?? repositoryRef?.defaultBranch,
+      draft: repositorySettings.draft ?? true,
+      ghCommand: repositorySettings.ghCommand,
+      mode: repositorySettings.mode,
+      remoteName: repositorySettings.remoteName ?? "origin",
+      source: "repository",
+    };
+  }
+
+  return {
+    baseBranch:
+      readOptionalEnv("AGENTIC_PM_GITHUB_BASE_BRANCH") ??
+      repositoryRef?.defaultBranch,
+    draft: readBoolean(process.env.AGENTIC_PM_GITHUB_PR_DRAFT, true),
+    ghCommand: readOptionalEnv("AGENTIC_PM_GH_COMMAND"),
+    mode: readPullRequestMode(),
+    remoteName: readOptionalEnv("AGENTIC_PM_GITHUB_REMOTE"),
+    source: "env",
+  };
 }
 
 function createTracker(): TrackerAdapter {

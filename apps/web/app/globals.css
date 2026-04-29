@@ -677,7 +677,8 @@ h2 {
   font-weight: 700;
 }
 
-.repoForm input {
+.repoForm input,
+.repoForm select {
   background: #fff;
   border: 1px solid var(--border);
   border-radius: 7px;
@@ -687,6 +688,22 @@ h2 {
   height: 36px;
   min-width: 0;
   padding: 0 10px;
+}
+
+.repoForm select {
+  appearance: none;
+}
+
+.repoForm .checkboxLine {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.repoForm .checkboxLine input {
+  height: 16px;
+  padding: 0;
+  width: 16px;
 }
 
 .repoForm button {

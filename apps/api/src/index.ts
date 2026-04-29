@@ -14,6 +14,7 @@ import type {
   Issue,
   OperatorActionName,
   OperatorActionResult,
+  PullRequestMode,
   RepositoryRef,
   RunEvent,
   TrackerKind,
@@ -91,6 +92,11 @@ const allowedDesiredRuntimes = new Set<DesiredAgentRuntime>([
   "codex",
   "cursor",
   "generic",
+]);
+const allowedPullRequestModes = new Set<PullRequestMode>([
+  "disabled",
+  "local_draft",
+  "github_draft",
 ]);
 const readableTextArtifactTypes = new Set<ArtifactType>([
   "log",
@@ -278,6 +284,13 @@ app.post("/repositories", async (request, reply) => {
     localPath?: string;
     name?: string;
     projectId?: string;
+    pullRequest?: {
+      baseBranch?: string;
+      draft?: boolean;
+      ghCommand?: string;
+      mode?: string;
+      remoteName?: string;
+    };
     url?: string;
   };
   const requestedProjectId = readProjectId(body.projectId) ?? projectId;
@@ -301,6 +314,7 @@ app.post("/repositories", async (request, reply) => {
     url,
     defaultBranch: readRequiredText(body.defaultBranch, 120) ?? "main",
     localPath: readOptionalText(body.localPath, 2_000),
+    pullRequest: readPullRequestSettings(body.pullRequest),
     createdAt: now,
     updatedAt: now,
   });
@@ -317,6 +331,7 @@ app.post("/repositories", async (request, reply) => {
       url: repositoryRef.url,
       defaultBranch: repositoryRef.defaultBranch,
       hasLocalPath: Boolean(repositoryRef.localPath),
+      pullRequestMode: repositoryRef.pullRequest?.mode,
     },
   });
 
@@ -919,6 +934,36 @@ function readOptionalText(
 ): string | undefined {
   const trimmed = typeof value === "string" ? value.trim() : undefined;
   return trimmed ? trimmed.slice(0, maxLength) : undefined;
+}
+
+function readPullRequestSettings(
+  value: {
+    baseBranch?: string;
+    draft?: boolean;
+    ghCommand?: string;
+    mode?: string;
+    remoteName?: string;
+  } | undefined,
+): RepositoryRef["pullRequest"] | undefined {
+  const mode = readPullRequestMode(value?.mode);
+  if (!mode) {
+    return undefined;
+  }
+
+  return {
+    mode,
+    remoteName: readOptionalText(value?.remoteName, 120),
+    baseBranch: readOptionalText(value?.baseBranch, 120),
+    draft: typeof value?.draft === "boolean" ? value.draft : undefined,
+    ghCommand: readOptionalText(value?.ghCommand, 200),
+  };
+}
+
+function readPullRequestMode(value: unknown): PullRequestMode | undefined {
+  const mode = typeof value === "string" ? value.trim() : undefined;
+  return allowedPullRequestModes.has(mode as PullRequestMode)
+    ? (mode as PullRequestMode)
+    : undefined;
 }
 
 function readRemotePrUrl(value: unknown): string | undefined {

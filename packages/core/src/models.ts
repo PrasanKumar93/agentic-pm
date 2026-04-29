@@ -1,5 +1,6 @@
 export type TrackerKind = "linear" | "github" | "jira" | "fake";
 export type DesiredAgentRuntime = "fake" | "codex" | "cursor" | "generic";
+export type PullRequestMode = "disabled" | "local_draft" | "github_draft";
 
 export type WorkItemStatus =
   | "queued"
@@ -61,6 +62,7 @@ export interface RepositoryRef {
   url: string;
   defaultBranch: string;
   localPath?: string;
+  pullRequest?: PullRequestSettings;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -72,6 +74,15 @@ export interface RepositorySummary {
   url: string;
   defaultBranch: string;
   localPath?: string;
+  pullRequest?: PullRequestSettings;
+}
+
+export interface PullRequestSettings {
+  mode: PullRequestMode;
+  remoteName?: string;
+  baseBranch?: string;
+  draft?: boolean;
+  ghCommand?: string;
 }
 
 export interface Issue {

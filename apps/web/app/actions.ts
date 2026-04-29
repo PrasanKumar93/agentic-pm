@@ -24,6 +24,11 @@ const allowedDesiredRuntimes = new Set<DesiredRuntimePreference>([
   "cursor",
   "generic",
 ]);
+const allowedPullRequestModes = new Set<PullRequestMode>([
+  "disabled",
+  "local_draft",
+  "github_draft",
+]);
 const allowedViews = new Set(["audit", "config"]);
 const allowedStatusFilters = new Set([
   "queued",
@@ -50,6 +55,7 @@ type DesiredRuntimePreference =
   | "codex"
   | "cursor"
   | "generic";
+type PullRequestMode = "disabled" | "local_draft" | "github_draft";
 
 type ReturnState = {
   projectId?: string;
@@ -81,6 +87,10 @@ export async function submitRepositoryRegistration(
   const url = String(formData.get("url") ?? "").trim();
   const defaultBranch = String(formData.get("defaultBranch") ?? "").trim();
   const localPath = String(formData.get("localPath") ?? "").trim();
+  const prMode = String(formData.get("prMode") ?? "local_draft").trim();
+  const prRemoteName = String(formData.get("prRemoteName") ?? "").trim();
+  const prBaseBranch = String(formData.get("prBaseBranch") ?? "").trim();
+  const prDraft = formData.get("prDraft") === "on";
   const returnState = {
     ...readReturnState(formData),
     view: "config",
@@ -91,7 +101,7 @@ export async function submitRepositoryRegistration(
     returnState,
   );
 
-  if (name && url) {
+  if (name && url && isPullRequestMode(prMode)) {
     try {
       const response = await fetch(`${apiUrl}/repositories`, {
         method: "POST",
@@ -104,6 +114,12 @@ export async function submitRepositoryRegistration(
           localPath,
           name,
           projectId: returnState.projectId,
+          pullRequest: {
+            baseBranch: prBaseBranch,
+            draft: prDraft,
+            mode: prMode,
+            remoteName: prRemoteName,
+          },
           url,
         }),
         cache: "no-store",
@@ -422,6 +438,10 @@ function isDesiredRuntimePreference(
   value: string,
 ): value is DesiredRuntimePreference {
   return allowedDesiredRuntimes.has(value as DesiredRuntimePreference);
+}
+
+function isPullRequestMode(value: string): value is PullRequestMode {
+  return allowedPullRequestModes.has(value as PullRequestMode);
 }
 
 async function readActionResponse(response: Response): Promise<ActionResponse> {

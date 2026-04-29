@@ -1532,6 +1532,7 @@ function toRepositorySummary(
     url: repositoryRef.url,
     defaultBranch: repositoryRef.defaultBranch,
     localPath: repositoryRef.localPath,
+    pullRequest: repositoryRef.pullRequest,
   };
 }
 

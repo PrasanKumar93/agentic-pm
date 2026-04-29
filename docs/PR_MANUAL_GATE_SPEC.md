@@ -47,7 +47,20 @@ The `pr` artifact metadata includes:
 
 ## 4. GitHub Draft PR Mode
 
-Set:
+Prefer configuring PR mode on the managed repository from the Config view. A repository may store:
+
+```json
+{
+  "pullRequest": {
+    "mode": "github_draft",
+    "remoteName": "origin",
+    "baseBranch": "main",
+    "draft": true
+  }
+}
+```
+
+When a repository has PR settings, the worker uses those settings for that work item. If the repository has no PR settings, the worker falls back to environment variables:
 
 ```env
 AGENTIC_PM_PR_MODE=github_draft
@@ -67,7 +80,7 @@ The worker will:
 6. Emit `github.pr.created` on success.
 7. Still write `pull-request.md` as the durable artifact.
 
-If remote config is missing or `gh` fails, the run still moves to review and the worker records `github.pr.create_skipped` or `github.pr.create_failed`. This keeps local Symphony state authoritative during GitHub outages or auth problems.
+If remote config is missing or `gh` fails, the run still moves to review and the worker records `github.pr.create_skipped` or `github.pr.create_failed`. This keeps local Symphony state authoritative during GitHub outages or auth problems. PR artifact metadata records `pullRequestConfigSource` as `repository` or `env`.
 
 ## 5. Manual Gate
 
