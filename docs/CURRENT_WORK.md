@@ -66,10 +66,11 @@ Date: 2026-04-30
 - Codex runtime now injects `--cd <workspacePath>` automatically so Codex CLI treats generated git worktrees as the writable workspace root.
 - Manual GitHub PR handoff: linked the manually created `test-linear-app` PRs back into their Symphony PR artifacts and added a dashboard/API flow to paste a remote PR URL onto any local PR draft artifact.
 - Repository-scoped PR configuration: managed repositories can now store PR mode, remote, base branch, and draft preference; the worker uses repository settings before falling back to env-only PR settings.
+- Live repository-scoped GitHub draft PR smoke: created Linear issue `PRA-7`, reconciled it into Symphony, routed it to `test-linear-app`, ran Codex against an isolated git worktree, and had the worker create GitHub draft PR #3 from repository PR settings. A first Codex attempt exposed missing writable sandbox args; the retry succeeded with patch, PR, and review artifacts. Manual reviewer verification then found and fixed a restricted-OS-metric test failure on the PR branch.
 
 ## In Progress
 
-- Fresh live Linear task smoke for repository-scoped GitHub draft PR creation.
+- Review change-request loop for existing PRs.
 
 ## Next Queue
 
@@ -78,6 +79,8 @@ Date: 2026-04-30
 - Optional outer folder rename after the active tool sandbox/workspace path is refreshed.
 - Capture GitHub PR state/checks and surface review readiness in the run detail panel.
 - Inline repository editing so PR settings can be adjusted without re-registering the repository name.
+- Bake writable Codex CLI sandbox config into runtime settings for smoke-safe repository worktrees.
+- Add a dashboard action for `Request changes / Fix with Codex` that reruns the selected runtime on the existing PR branch, pushes a follow-up commit, updates artifacts, and writes a Linear/GitHub audit trail.
 
 ## Immediate Execution Order
 
@@ -90,5 +93,7 @@ Date: 2026-04-30
 7. Project root migration: done; typecheck and build passed from the flattened Git root.
 8. External repository live smoke: done on `test-linear-app`; Codex produced `agentic/pra-5-codex-standup-summary`, Cursor produced `agentic/pra-6-cursor-release-checklist`, and both branches are pushed to GitHub.
 9. Manual PR linking: done; `PRA-5` is linked to GitHub PR #1 and `PRA-6` is linked to GitHub PR #2 in artifact metadata.
-10. Repository-scoped PR settings: done in API/UI/worker; next is a fresh live Linear smoke that creates a GitHub draft PR from a successful Codex or Cursor run.
-11. Real Linear inbound webhook smoke once `LINEAR_WEBHOOK_SECRET` and a public tunnel are configured.
+10. Repository-scoped PR settings: done in API/UI/worker.
+11. Fresh live Linear auto-PR smoke: done on `PRA-7`; Symphony created draft PR #3 for `test-linear-app` from repository PR settings.
+12. Implement the review change-request loop: human flags an issue on a PR, Symphony reruns Codex/Cursor on the same PR branch, pushes a follow-up commit, refreshes PR/review artifacts, and keeps merge manual.
+13. Real Linear inbound webhook smoke once `LINEAR_WEBHOOK_SECRET` and a public tunnel are configured.

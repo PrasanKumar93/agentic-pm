@@ -1,6 +1,6 @@
 # PR Manual Gate Spec
 
-Status: Draft v0.4
+Status: Draft v0.5
 Date: 2026-04-30
 
 ## 1. Purpose
@@ -19,11 +19,13 @@ Covered:
 - Keep merge manual by policy.
 - Surface local PR drafts or remote PR URLs from the dashboard run detail panel.
 - Let an operator mark a `waiting_for_review` work item as `completed` after external review/merge.
+- Track the next review-loop slice: rerun an agent on an existing PR branch after human review feedback.
 
 Not covered:
 
 - Reading CI status.
 - Auto-merging.
+- Automatic review-change reruns in the current implementation.
 
 ## 3. Worker Behavior
 
@@ -117,7 +119,20 @@ The action:
 - Writes an `operator.complete` event.
 - Does not merge code.
 
-## 6. Configuration
+## 6. Review Change Requests
+
+Target behavior for the next slice:
+
+1. Human reviews a PR or artifact and finds a bug.
+2. Operator chooses `Request changes / Fix with Codex` or `Fix with Cursor` from the selected work item/run detail.
+3. Symphony resolves the existing PR artifact, `remotePrUrl`, branch name, base branch, and workspace.
+4. Worker checks out the existing PR branch, reruns the selected runtime with review feedback included in the prompt, and keeps the same manual merge gate.
+5. Worker commits and pushes a follow-up commit to the same PR branch.
+6. Symphony records `github.pr.updated`, captures refreshed patch/PR/review artifacts, and comments back to Linear.
+
+This is not the same as the initial PR creation path. Initial PR creation is already implemented for `github_draft`; review-change reruns need explicit branch reuse, feedback capture, and artifact refresh semantics.
+
+## 7. Configuration
 
 ```env
 AGENTIC_PM_PR_MODE=local_draft
@@ -127,7 +142,7 @@ Set `AGENTIC_PM_PR_MODE=disabled` to skip PR draft artifact generation.
 
 `github_draft` mode requires `AGENTIC_PM_GITHUB_REMOTE`; `AGENTIC_PM_GITHUB_BASE_BRANCH` is optional and defaults to the current workspace branch.
 
-## 7. Validation
+## 8. Validation
 
 Required checks:
 
