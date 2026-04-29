@@ -86,21 +86,20 @@ export class AgenticRepository {
       createdAt: now,
       updatedAt: now
     };
-    const { projectId: _projectId, updatedAt: _updatedAt, ...insertWorkItem } = workItem;
+    const { updatedAt: _updatedAt, ...insertWorkItem } = workItem;
 
     await this.collections.workItems.updateOne(
-      { issueId: issue.id },
+      { projectId, issueId: issue.id },
       {
         $setOnInsert: insertWorkItem,
         $set: {
-          projectId,
           updatedAt: now
         }
       },
       { upsert: true }
     );
 
-    const stored = await this.collections.workItems.findOne({ issueId: issue.id });
+    const stored = await this.collections.workItems.findOne({ projectId, issueId: issue.id });
     if (!stored) {
       throw new Error(`Work item for issue ${issue.identifier} was not found after upsert`);
     }

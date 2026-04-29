@@ -53,15 +53,21 @@ First-class CLI process runtime for Codex.
 ```env
 AGENT_RUNTIME=codex
 OPENAI_API_KEY=
+CODEX_API_KEY=
 CODEX_COMMAND=codex
-CODEX_ARGS=exec --json --ask-for-approval never --sandbox workspace-write -
+CODEX_MODEL=gpt-5.1-codex
+CODEX_REASONING_EFFORT=medium
+CODEX_ARGS=--ask-for-approval never --sandbox workspace-write exec --json -
 ```
 
 Codex inherits the hardened process behavior:
 
 - Startup preflight checks `codex --version`.
 - Startup preflight checks `codex exec --help`.
-- Startup preflight checks `codex login status` when `OPENAI_API_KEY` is not set.
+- Startup preflight checks `codex login status` when neither `CODEX_API_KEY` nor `OPENAI_API_KEY` is set.
+- `CODEX_API_KEY` is passed to `codex exec` for automation. If only `OPENAI_API_KEY` is set, Symphony maps it to `CODEX_API_KEY` for the child process without changing the user's global Codex login.
+- Optional `CODEX_MODEL` inserts `-m <model>` into the `exec` command unless `CODEX_ARGS` already includes `-m` or `--model`.
+- Optional `CODEX_REASONING_EFFORT` inserts `-c model_reasoning_effort="<effort>"` before `exec` unless `CODEX_ARGS` already sets `model_reasoning_effort`.
 - Prompt delivered through `stdin`.
 - `stdout` JSONL parsed into sanitized Symphony events.
 - Non-JSON `stdout` and `stderr` streamed as events.
@@ -73,8 +79,10 @@ Codex inherits the hardened process behavior:
 Codex uses the CLI's noninteractive exec mode. The runtime sends the rendered Symphony prompt to stdin:
 
 ```txt
-codex exec --json --ask-for-approval never --sandbox workspace-write -
+codex --ask-for-approval never --sandbox workspace-write exec --json -
 ```
+
+Model availability depends on the installed Codex CLI, account, and auth method. For API-key automation, the current local smoke path is validated with `CODEX_MODEL=gpt-5.1-codex` and `CODEX_REASONING_EFFORT=medium`. Keep `CODEX_MODEL` empty to inherit the CLI default, or set both model and reasoning effort explicitly to avoid incompatible user-level Codex config.
 
 When Codex emits JSONL, the adapter converts each line into sanitized Symphony events:
 
@@ -155,7 +163,7 @@ AGENT_RUNTIME_CANCEL_GRACE_MS=5000
 Argument values can be whitespace-separated:
 
 ```env
-CODEX_ARGS=exec --json --ask-for-approval never --sandbox workspace-write -
+CODEX_ARGS=--ask-for-approval never --sandbox workspace-write exec --json -
 ```
 
 Or JSON for quoted arguments:

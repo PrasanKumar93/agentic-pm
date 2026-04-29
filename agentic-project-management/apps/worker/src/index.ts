@@ -595,10 +595,15 @@ function createRuntime(): AgentRuntime {
   const cancelGraceMs = readPositiveNumber(process.env.AGENT_RUNTIME_CANCEL_GRACE_MS, 5000);
 
   if (requestedRuntime === "codex") {
+    const codexApiKey = readCodexApiKey();
     return new CodexCliRuntime({
       command: process.env.CODEX_COMMAND ?? workflow.config.codex.command,
       args: parseCommandArgs(process.env.CODEX_ARGS, workflow.config.codex.args),
-      apiKeyConfigured: Boolean(process.env.OPENAI_API_KEY?.trim()),
+      apiKeyConfigured: Boolean(codexApiKey.value),
+      apiKeyEnv: codexApiKey.value ? { CODEX_API_KEY: codexApiKey.value } : undefined,
+      apiKeySource: codexApiKey.source,
+      model: process.env.CODEX_MODEL,
+      reasoningEffort: process.env.CODEX_REASONING_EFFORT,
       turnTimeoutMs,
       stallTimeoutMs,
       cancelGraceMs
@@ -636,6 +641,26 @@ function createRuntime(): AgentRuntime {
   }
 
   return new FakeAgentRuntime();
+}
+
+function readCodexApiKey(): { source?: string; value?: string } {
+  const codexApiKey = process.env.CODEX_API_KEY?.trim();
+  if (codexApiKey) {
+    return {
+      source: "CODEX_API_KEY",
+      value: codexApiKey
+    };
+  }
+
+  const openAiApiKey = process.env.OPENAI_API_KEY?.trim();
+  if (openAiApiKey) {
+    return {
+      source: "OPENAI_API_KEY",
+      value: openAiApiKey
+    };
+  }
+
+  return {};
 }
 
 async function runRuntimePreflight(agentRuntime: AgentRuntime): Promise<AgentRuntimePreflightResult> {

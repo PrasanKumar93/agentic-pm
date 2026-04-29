@@ -28,12 +28,15 @@ Date: 2026-04-29
 - Runtime startup preflight for Codex and Cursor.
 - Cursor `stream-json` parsing into sanitized runtime events.
 - Codex `exec --json` defaults and sanitized JSONL parsing.
+- Project-scoped work item uniqueness for multi-project smoke runs.
+- Real Codex worker smoke test with `CODEX_API_KEY` env bridging, explicit model, explicit reasoning effort, persisted run events, and review packet capture.
 
 ## In Progress
 
-- Real Codex worker smoke test.
+- Cursor Agent CLI noninteractive smoke test.
 
 ## Next Queue
 
 - Pull request creation and manual merge gate.
 - Linear state sync and run comments.
+- Runtime stderr severity normalization for known CLI warnings.

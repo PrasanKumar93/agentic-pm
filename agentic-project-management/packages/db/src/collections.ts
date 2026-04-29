@@ -73,13 +73,15 @@ export function getCollections(db: Db): AgenticCollections {
 }
 
 export async function ensureIndexes(collections: AgenticCollections): Promise<void> {
+  await dropLegacyIssueOnlyWorkItemIndex(collections);
+
   await Promise.all([
     collections.projects.createIndex({ slug: 1 }, { unique: true }),
     collections.repositories.createIndex({ projectId: 1, name: 1 }),
     collections.issues.createIndex({ tracker: 1, externalId: 1 }, { unique: true }),
     collections.issues.createIndex({ identifier: 1 }),
     collections.workItems.createIndex({ projectId: 1, status: 1, nextAttemptAt: 1 }),
-    collections.workItems.createIndex({ issueId: 1 }, { unique: true }),
+    collections.workItems.createIndex({ projectId: 1, issueId: 1 }, { unique: true }),
     collections.runs.createIndex({ workItemId: 1, attempt: -1 }),
     collections.runs.createIndex({ status: 1, lastHeartbeatAt: 1 }),
     collections.runEvents.createIndex({ runId: 1, createdAt: 1 }),
@@ -88,4 +90,16 @@ export async function ensureIndexes(collections: AgenticCollections): Promise<vo
     collections.dispatchControls.createIndex({ projectId: 1 }, { unique: true }),
     collections.workflowSnapshots.createIndex({ projectId: 1, createdAt: -1 })
   ]);
+}
+
+async function dropLegacyIssueOnlyWorkItemIndex(collections: AgenticCollections): Promise<void> {
+  const indexes = await collections.workItems.listIndexes().toArray();
+  const legacyIndex = indexes.find((index) => {
+    const key = index.key as Record<string, unknown> | undefined;
+    return index.unique === true && key?.issueId === 1 && Object.keys(key).length === 1;
+  });
+
+  if (legacyIndex?.name) {
+    await collections.workItems.dropIndex(legacyIndex.name);
+  }
 }

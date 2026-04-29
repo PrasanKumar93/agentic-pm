@@ -5,6 +5,10 @@ export interface CodexCliRuntimeConfig {
   command: string;
   args: string[];
   apiKeyConfigured?: boolean;
+  apiKeyEnv?: NodeJS.ProcessEnv;
+  apiKeySource?: string;
+  model?: string;
+  reasoningEffort?: string;
   turnTimeoutMs: number;
   stallTimeoutMs?: number;
   cancelGraceMs?: number;
@@ -15,8 +19,9 @@ export class CodexCliRuntime extends ProcessCliRuntime {
     super({
       name: "codex-cli",
       command: config.command,
-      args: config.args,
+      args: buildCodexArgs(config),
       preflightChecks: buildCodexPreflightChecks(config),
+      env: config.apiKeyEnv,
       turnTimeoutMs: config.turnTimeoutMs,
       stallTimeoutMs: config.stallTimeoutMs,
       cancelGraceMs: config.cancelGraceMs
@@ -41,6 +46,74 @@ export class CodexCliRuntime extends ProcessCliRuntime {
   }
 }
 
+function buildCodexArgs(config: CodexCliRuntimeConfig): string[] {
+  let normalizedArgs = normalizeCodexArgs(config.args);
+
+  if (config.reasoningEffort && !hasConfigOverrideArg(normalizedArgs, "model_reasoning_effort")) {
+    normalizedArgs = insertBeforeExec(normalizedArgs, [
+      "-c",
+      `model_reasoning_effort="${config.reasoningEffort}"`
+    ]);
+  }
+
+  if (!config.model || hasModelArg(normalizedArgs)) {
+    return normalizedArgs;
+  }
+
+  const execIndex = normalizedArgs.indexOf("exec");
+  if (execIndex < 0) {
+    return ["-m", config.model, ...normalizedArgs];
+  }
+
+  return [...normalizedArgs.slice(0, execIndex + 1), "-m", config.model, ...normalizedArgs.slice(execIndex + 1)];
+}
+
+function insertBeforeExec(args: string[], inserted: string[]): string[] {
+  const execIndex = args.indexOf("exec");
+  if (execIndex < 0) {
+    return [...inserted, ...args];
+  }
+
+  return [...args.slice(0, execIndex), ...inserted, ...args.slice(execIndex)];
+}
+
+function normalizeCodexArgs(args: string[]): string[] {
+  const execIndex = args.indexOf("exec");
+  if (execIndex < 0) {
+    return args;
+  }
+
+  const beforeExec = args.slice(0, execIndex);
+  const afterExec = args.slice(execIndex + 1);
+  const normalizedBeforeExec = [...beforeExec];
+  const normalizedAfterExec: string[] = [];
+
+  for (let index = 0; index < afterExec.length; index += 1) {
+    const arg = afterExec[index];
+    if (arg === "--ask-for-approval" || arg === "-a") {
+      normalizedBeforeExec.push(arg);
+      const value = afterExec[index + 1];
+      if (value && !value.startsWith("-")) {
+        normalizedBeforeExec.push(value);
+        index += 1;
+      }
+      continue;
+    }
+
+    normalizedAfterExec.push(arg);
+  }
+
+  return [...normalizedBeforeExec, "exec", ...normalizedAfterExec];
+}
+
+function hasModelArg(args: string[]): boolean {
+  return args.some((arg) => arg === "-m" || arg === "--model");
+}
+
+function hasConfigOverrideArg(args: string[], key: string): boolean {
+  return args.some((arg) => arg.startsWith(`${key}=`));
+}
+
 function buildCodexPreflightChecks(config: CodexCliRuntimeConfig): ProcessCliPreflightCheck[] {
   const checks: ProcessCliPreflightCheck[] = [
     {
@@ -63,9 +136,9 @@ function buildCodexPreflightChecks(config: CodexCliRuntimeConfig): ProcessCliPre
       kind: "static" as const,
       name: "codex authentication",
       status: "passed" as const,
-      message: "OPENAI_API_KEY is configured; Codex will validate it when the run starts.",
+      message: `${config.apiKeySource ?? "CODEX_API_KEY"} is configured; Codex will validate it when the run starts.`,
       payload: {
-        source: "OPENAI_API_KEY"
+        source: config.apiKeySource ?? "CODEX_API_KEY"
       }
     });
     return checks;
@@ -76,7 +149,7 @@ function buildCodexPreflightChecks(config: CodexCliRuntimeConfig): ProcessCliPre
     args: ["login", "status"],
     includeOutput: false,
     timeoutMs: 5000,
-    failureMessage: "Codex CLI is not authenticated. Run codex login or set OPENAI_API_KEY."
+    failureMessage: "Codex CLI is not authenticated. Run codex login or set CODEX_API_KEY."
   });
 
   return checks;
