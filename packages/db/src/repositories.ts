@@ -87,6 +87,19 @@ export interface RepositoryOption extends RepositorySummary {
   isDefault: boolean;
 }
 
+export interface ReviewFeedbackSummary {
+  id: string;
+  actorId?: string;
+  baseCommitSha?: string;
+  baseRunId?: string;
+  branchName?: string;
+  createdAt: Date;
+  desiredRuntime?: DesiredAgentRuntime;
+  feedback: string;
+  pullRequestArtifactId?: string;
+  remotePrUrl?: string;
+}
+
 export class AgenticRepository {
   readonly collections: AgenticCollections;
 
@@ -1266,6 +1279,47 @@ export class AgenticRepository {
       .toArray();
   }
 
+  async listReviewFeedback(
+    workItemId: string,
+    limit = 20,
+  ): Promise<ReviewFeedbackSummary[]> {
+    const safeLimit = Math.min(Math.max(limit, 1), 100);
+    const actions = await this.collections.operatorActions
+      .find({
+        workItemId,
+        action: "request_changes",
+      })
+      .sort({ createdAt: -1 })
+      .limit(safeLimit)
+      .toArray();
+
+    const feedbackSummaries: ReviewFeedbackSummary[] = [];
+    for (const action of actions) {
+      const feedback = readMetadataString(action.payload, "feedback");
+      if (!feedback) {
+        continue;
+      }
+
+      feedbackSummaries.push({
+        id: action.id,
+        actorId: action.actorId,
+        baseCommitSha: readMetadataString(action.payload, "baseCommitSha"),
+        baseRunId: action.runId,
+        branchName: readMetadataString(action.payload, "branchName"),
+        createdAt: action.createdAt,
+        desiredRuntime: readDesiredRuntimeMetadata(action.payload),
+        feedback,
+        pullRequestArtifactId: readMetadataString(
+          action.payload,
+          "pullRequestArtifactId",
+        ),
+        remotePrUrl: readMetadataString(action.payload, "remotePrUrl"),
+      });
+    }
+
+    return feedbackSummaries;
+  }
+
   async registerArtifact(artifact: Artifact): Promise<Artifact> {
     await this.collections.artifacts.insertOne(artifact);
     return artifact;
@@ -1746,4 +1800,16 @@ function readMetadataString(
 ): string | undefined {
   const value = metadata?.[key];
   return isNonEmptyString(value) ? value.trim() : undefined;
+}
+
+function readDesiredRuntimeMetadata(
+  metadata: Record<string, unknown> | undefined,
+): DesiredAgentRuntime | undefined {
+  const value = readMetadataString(metadata, "desiredRuntime");
+  return value === "fake" ||
+    value === "codex" ||
+    value === "cursor" ||
+    value === "generic"
+    ? value
+    : undefined;
 }

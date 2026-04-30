@@ -18,6 +18,7 @@ Covered:
 - Link a manually created GitHub PR URL back to a local PR artifact.
 - Request PR changes from the dashboard and rerun Codex/Cursor on the existing PR branch.
 - Capture and push review follow-ups even when the runtime self-commits and leaves no working-tree diff.
+- Persist and display review feedback history for multi-turn PR review loops.
 - Keep merge manual by policy.
 - Surface local PR drafts or remote PR URLs from the dashboard run detail panel.
 - Let an operator mark a `waiting_for_review` work item as `completed` after external review/merge.
@@ -97,6 +98,7 @@ The selected run artifact list exposes PR review evidence:
 - Local-only PR artifacts open `GET /artifacts/:artifactId/content`.
 - GitHub draft PR artifacts with `metadata.remotePrUrl` open the remote pull request.
 - Local PR artifacts without `metadata.remotePrUrl` expose a compact PR URL link form in the dashboard.
+- Review-state work items show a Feedback history section above artifacts. It lists persisted reviewer feedback turns with runtime, actor, branch, base commit, and submitted feedback text.
 
 Manual PR linking uses:
 
@@ -151,6 +153,14 @@ with:
 9. Symphony records `github.pr.updated`, captures refreshed patch/PR/review artifacts, and comments back to Linear.
 
 This is intentionally separate from the initial PR creation path. Initial PR creation owns branch creation and `gh pr create`; review-change reruns own explicit branch reuse, feedback capture, and artifact refresh semantics.
+
+Review feedback history is stored as `operator_actions` rows with `action: "request_changes"` and is exposed through:
+
+```http
+GET /work-items/:workItemId/review-feedback?limit=20
+```
+
+The endpoint returns newest-first feedback summaries. The dashboard uses it to show the full multi-turn review history even when the latest run log is dominated by agent/runtime events.
 
 ## 7. Configuration
 

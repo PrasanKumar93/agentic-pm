@@ -294,6 +294,32 @@ type RunArtifactsData = {
   error?: string;
 };
 
+type ReviewFeedbackSummary = {
+  id: string;
+  actorId?: string;
+  baseCommitSha?: string;
+  baseRunId?: string;
+  branchName?: string;
+  createdAt: string;
+  desiredRuntime?: DesiredAgentRuntime;
+  feedback: string;
+  pullRequestArtifactId?: string;
+  remotePrUrl?: string;
+};
+
+type ReviewFeedbackResponse = {
+  data: ReviewFeedbackSummary[];
+  meta?: {
+    limit: number;
+    generatedAt: string;
+  };
+};
+
+type ReviewFeedbackData = {
+  feedback: ReviewFeedbackSummary[];
+  error?: string;
+};
+
 type WebhookAuditData = {
   deliveries: WebhookDeliverySummary[];
   generatedAt?: string;
@@ -373,13 +399,14 @@ export default async function DashboardPage({
     view === "audit"
       ? await fetchWebhookDeliveries(dashboard.selectedProjectId)
       : { deliveries: [] };
-  const [runEvents, runArtifacts] =
+  const [runEvents, runArtifacts, reviewFeedback] =
     view === "work" && selected?.latestRun
       ? await Promise.all([
           fetchRunEvents(selected.latestRun.id),
           fetchRunArtifacts(selected.latestRun.id),
+          fetchReviewFeedback(selected.id),
         ])
-      : [{ events: [] }, { artifacts: [] }];
+      : [{ events: [] }, { artifacts: [] }, { feedback: [] }];
   const timelineEvents = getTimelineEvents(runEvents.events);
   const timelineListClassName = [
     "timelineList",
@@ -1005,6 +1032,54 @@ export default async function DashboardPage({
                       </form>
                     ) : null}
 
+                    <div className="feedbackHistory">
+                      <div className="eventTimelineHeader">
+                        <span>Feedback history</span>
+                        <strong>{reviewFeedback.feedback.length} turns</strong>
+                      </div>
+
+                      {reviewFeedback.error ? (
+                        <div className="timelineNotice">
+                          {reviewFeedback.error}
+                        </div>
+                      ) : reviewFeedback.feedback.length > 0 ? (
+                        <div className="feedbackStack" role="list">
+                          {reviewFeedback.feedback.map((feedback) => (
+                            <div
+                              className="feedbackItem"
+                              key={feedback.id}
+                              role="listitem"
+                            >
+                              <div className="feedbackItemHeader">
+                                <strong>
+                                  {feedback.desiredRuntime
+                                    ? formatRuntime(feedback.desiredRuntime)
+                                    : "Default runtime"}
+                                </strong>
+                                <span>
+                                  {formatRelativeTime(feedback.createdAt)}
+                                </span>
+                              </div>
+                              <p>{feedback.feedback}</p>
+                              <span>
+                                {feedback.actorId ?? "operator"}
+                                {feedback.branchName
+                                  ? ` · ${formatBranchName(feedback.branchName)}`
+                                  : ""}
+                                {feedback.baseCommitSha
+                                  ? ` · ${feedback.baseCommitSha.slice(0, 7)}`
+                                  : ""}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="timelineNotice">
+                          No review feedback recorded yet.
+                        </div>
+                      )}
+                    </div>
+
                     <div className="artifactList">
                       <div className="eventTimelineHeader">
                         <span>Artifacts</span>
@@ -1374,6 +1449,35 @@ async function fetchRunArtifacts(runId: string): Promise<RunArtifactsData> {
     return {
       artifacts: [],
       error: `Could not load artifacts: ${message}`,
+    };
+  }
+}
+
+async function fetchReviewFeedback(
+  workItemId: string,
+): Promise<ReviewFeedbackData> {
+  try {
+    const response = await fetch(
+      `${apiUrl}/work-items/${workItemId}/review-feedback?limit=20`,
+      {
+        cache: "no-store",
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error(`API returned ${response.status}`);
+    }
+
+    const payload = (await response.json()) as ReviewFeedbackResponse;
+    return {
+      feedback: payload.data,
+    };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unknown API error";
+    return {
+      feedback: [],
+      error: `Could not load review feedback: ${message}`,
     };
   }
 }
@@ -2240,6 +2344,21 @@ function formatPullRequestMode(mode: string | undefined): string {
 
 function formatArtifactType(type: string): string {
   return type.replaceAll("_", " ");
+}
+
+function formatRuntime(runtime: DesiredAgentRuntime): string {
+  const labels: Record<DesiredAgentRuntime, string> = {
+    codex: "Codex",
+    cursor: "Cursor",
+    fake: "Fake",
+    generic: "Generic",
+  };
+  return labels[runtime];
+}
+
+function formatBranchName(branchName: string): string {
+  const compact = branchName.replace(/^agent\//, "");
+  return compact.length > 34 ? `${compact.slice(0, 31)}...` : compact;
 }
 
 function normalizeRuntimePreference(

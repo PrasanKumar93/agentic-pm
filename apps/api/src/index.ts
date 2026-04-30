@@ -641,6 +641,23 @@ app.get("/runs/:runId/artifacts", async (request) => {
   };
 });
 
+app.get("/work-items/:workItemId/review-feedback", async (request) => {
+  const { workItemId } = request.params as { workItemId: string };
+  const query = request.query as { limit?: string };
+  const requestedLimit = Number(query.limit ?? 20);
+  const limit = Number.isFinite(requestedLimit)
+    ? Math.min(Math.max(requestedLimit, 1), 100)
+    : 20;
+
+  return {
+    data: await repository.listReviewFeedback(workItemId, limit),
+    meta: {
+      limit,
+      generatedAt: new Date().toISOString(),
+    },
+  };
+});
+
 app.get("/webhook-deliveries", async (request) => {
   const query = request.query as { limit?: string; projectId?: string };
   const requestedLimit = Number(query.limit ?? 50);

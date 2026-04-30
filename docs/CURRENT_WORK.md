@@ -71,10 +71,11 @@ Date: 2026-04-30
 - Review-loop clean-commit handling: if Codex/Cursor self-commits a follow-up and leaves the workspace clean, Symphony now compares the current HEAD with the previous PR artifact commit, captures a committed-range PR artifact, and pushes the existing HEAD to the same PR branch. `request_changes` also falls back to the newest usable prior PR artifact when the latest run lacks one.
 - Worker dispatch now continues after a transient tracker polling failure: `tracker.reconcile_failed` is recorded as a warning, but already-queued work can still run.
 - Live same-PR review loop smoke on `PRA-7` / `test-linear-app` PR #3: Codex pushed a follow-up commit, Cursor produced a self-committed follow-up, and the patched worker recovered by pushing the advanced branch HEAD to the same PR branch and capturing PR artifact `art_075210837a58434e` with `changeSource: committed_range`.
+- Review feedback visibility: reviewer change requests are now queryable through `GET /work-items/:workItemId/review-feedback` from persisted `operator_actions`, and the run detail panel shows a Feedback history section with runtime, actor, branch, base commit, and feedback text for each review turn. Verified on `PRA-7` with three same-PR feedback turns.
 
 ## In Progress
 
-- Continue hardening the review loop after the successful same-PR live smoke.
+- Continue hardening review-loop observability after the successful same-PR live smoke.
 
 ## Next Queue
 
@@ -100,4 +101,5 @@ Date: 2026-04-30
 11. Fresh live Linear auto-PR smoke: done on `PRA-7`; Symphony created draft PR #3 for `test-linear-app` from repository PR settings.
 12. Implement the review change-request loop: done in API, DB, worker, dashboard, and git helper tests.
 13. Live-smoke review change request on `PRA-7`: done. PR #3 stayed on branch `agent/pra-7-symphony-auto-pr-smoke-add-health-report-cli-202604292143-57ea47b9`; latest captured update commit is `8056b0a0fd72d7ac9217509b97be62936e3802b1`.
-14. Real Linear inbound webhook smoke once `LINEAR_WEBHOOK_SECRET` and a public tunnel are configured.
+14. Surface review feedback history in the dashboard: done. `PRA-7` shows the JSON feedback, help feedback, and artifact-refresh feedback as three visible turns.
+15. Real Linear inbound webhook smoke once `LINEAR_WEBHOOK_SECRET` and a public tunnel are configured.

@@ -1258,9 +1258,49 @@ h2 {
 }
 
 .eventTimeline,
+.feedbackHistory,
 .artifactList {
   display: grid;
   gap: 10px;
+}
+
+.feedbackStack {
+  display: grid;
+  gap: 8px;
+}
+
+.feedbackItem {
+  background: #f7f9f7;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 5px;
+  padding: 9px 10px;
+}
+
+.feedbackItemHeader {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.feedbackItemHeader strong {
+  font-size: 12px;
+}
+
+.feedbackItemHeader span,
+.feedbackItem > span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.feedbackItem p {
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 .eventTimelineHeader,

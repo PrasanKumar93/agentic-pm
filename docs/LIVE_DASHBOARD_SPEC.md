@@ -15,6 +15,7 @@ This spec covers the first live data slice:
 - UI renders empty, error, and live-data states.
 - Operator actions are submitted through server actions.
 - Run artifacts include PR draft or remote PR affordances when available.
+- Review-state work items expose persisted review feedback history from prior change requests.
 - Work board status filters are URL-backed and preserve operator context after actions.
 - The Audit nav exposes recent webhook delivery attempts and replay outcomes.
 - Project selection scopes work items, dispatch controls, and webhook audit rows.
@@ -35,6 +36,8 @@ This spec covers the first live data slice:
 `GET /webhook-deliveries?limit=50`
 
 `GET /webhook-deliveries?projectId=project_local&limit=50`
+
+`GET /work-items/:workItemId/review-feedback?limit=20`
 
 ### Response
 
@@ -241,6 +244,7 @@ It shows:
 - Manual merge gate policy
 - Last event message
 - Event count
+- Review feedback history, newest-first, with runtime, actor, branch, base commit, and feedback text
 - Latest run artifacts, scrollable when many proof files are captured
 - Latest run event timeline, newest-first and scrollable for long runs
 
