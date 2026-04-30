@@ -29,6 +29,7 @@ import {
   type Issue,
   type PullRequestMode,
   type RepositoryRef,
+  type ReviewChangeRequest,
   type Run,
   type WorkItem,
 } from "@agentic-pm/core";
@@ -42,8 +43,9 @@ import {
 } from "@agentic-pm/db";
 import {
   buildPullRequestDraft,
+  checkoutPullRequestBranch,
   createGitHubPullRequest,
-  type GitHubPullRequestResult,
+  updateGitHubPullRequestBranch,
 } from "@agentic-pm/git";
 import { ConsoleEventSink } from "@agentic-pm/observability";
 import {
@@ -128,6 +130,16 @@ interface ResolvedPullRequestSettings {
   mode: PullRequestMode;
   remoteName?: string;
   source: "env" | "repository";
+}
+
+interface PullRequestRemoteOutcome {
+  baseBranch?: string;
+  branchName: string;
+  commitSha: string;
+  draft?: boolean;
+  remoteName: string;
+  remotePrUrl?: string;
+  stdout: string;
 }
 
 const runtimePreflight = await runRuntimePreflight(runtime);
@@ -244,6 +256,12 @@ async function dispatchOne(): Promise<void> {
       agentRuntime: runtime.name,
     });
 
+    await prepareReviewRequestWorkspace({
+      run,
+      workItem,
+      workspacePath,
+    });
+
     await repository.setRunStatus(run.id, "running");
     await repository.appendEvent({
       projectId,
@@ -280,7 +298,7 @@ async function dispatchOne(): Promise<void> {
       body: buildRunStartedComment(issue, run),
     });
 
-    const prompt = await renderWorkflowPrompt(workflow, {
+    const basePrompt = await renderWorkflowPrompt(workflow, {
       issue,
       repository: {
         name: workRepository?.name ?? projectSlug,
@@ -289,6 +307,7 @@ async function dispatchOne(): Promise<void> {
       },
       run,
     });
+    const prompt = appendReviewRequestPrompt(basePrompt, workItem.reviewRequest);
 
     const session = await runtime.start({
       workspacePath,
@@ -476,6 +495,68 @@ async function dispatchOne(): Promise<void> {
   }
 }
 
+async function prepareReviewRequestWorkspace(input: {
+  run: Run;
+  workItem: WorkItem;
+  workspacePath: string;
+}): Promise<void> {
+  const reviewRequest = input.workItem.reviewRequest;
+  if (!reviewRequest?.branchName) {
+    return;
+  }
+
+  await checkoutPullRequestBranch({
+    workspacePath: input.workspacePath,
+    branchName: reviewRequest.branchName,
+    remoteName: reviewRequest.remoteName,
+  });
+
+  await repository.appendEvent({
+    projectId: input.workItem.projectId,
+    workItemId: input.workItem.id,
+    runId: input.run.id,
+    type: "github.pr.branch_checked_out",
+    level: "info",
+    message: `Checked out PR branch ${reviewRequest.branchName}`,
+    payload: {
+      branchName: reviewRequest.branchName,
+      remoteName: reviewRequest.remoteName,
+      remotePrUrl: reviewRequest.remotePrUrl,
+      workspacePath: input.workspacePath,
+    },
+  });
+}
+
+function appendReviewRequestPrompt(
+  prompt: string,
+  reviewRequest: ReviewChangeRequest | undefined,
+): string {
+  if (!reviewRequest) {
+    return prompt;
+  }
+
+  const branchLine = reviewRequest.branchName
+    ? `Existing PR branch: ${reviewRequest.branchName}`
+    : "Existing PR branch: not recorded";
+  const prLine = reviewRequest.remotePrUrl
+    ? `Existing PR URL: ${reviewRequest.remotePrUrl}`
+    : "Existing PR URL: not recorded";
+
+  return `${prompt}
+
+## Review Change Request
+
+The previous run produced a PR and a human reviewer requested changes. Work on the existing PR branch and make the smallest follow-up change that satisfies this feedback.
+
+${branchLine}
+${prLine}
+
+Reviewer feedback:
+${reviewRequest.feedback}
+
+Keep the manual merge gate in place. Do not merge the PR.`;
+}
+
 async function resolveWorkItemRepository(
   workItem: WorkItem,
   issue: Issue,
@@ -604,9 +685,14 @@ function isKnownWarningStderr(message: string): boolean {
   );
 }
 
+type ReviewArtifactWorkItem = Pick<
+  WorkItem,
+  "id" | "projectId" | "reviewRequest"
+>;
+
 async function captureReviewArtifacts(input: {
   run: Run;
-  workItem: { id: string; projectId: string };
+  workItem: ReviewArtifactWorkItem;
   issue: Issue;
   capturedAgentEvents: CapturedAgentEvent[];
   repository?: RepositoryRef;
@@ -872,7 +958,10 @@ async function recordArtifactWarning(
 async function recordGitHubPullRequestWarning(
   run: Run,
   workItem: { id: string; projectId: string },
-  type: "github.pr.create_skipped" | "github.pr.create_failed",
+  type:
+    | "github.pr.create_skipped"
+    | "github.pr.create_failed"
+    | "github.pr.update_failed",
   message: string,
   error: unknown,
 ): Promise<void> {
@@ -893,7 +982,7 @@ async function recordGitHubPullRequestWarning(
 async function capturePullRequestArtifact(
   input: {
     run: Run;
-    workItem: { id: string; projectId: string };
+    workItem: ReviewArtifactWorkItem;
     issue: Issue;
     repository?: RepositoryRef;
   },
@@ -906,13 +995,15 @@ async function capturePullRequestArtifact(
   }
 
   try {
-    const remoteName = prSettings.remoteName;
+    const reviewRequest = input.workItem.reviewRequest;
+    const remoteName = reviewRequest?.remoteName ?? prSettings.remoteName;
     const draft = await buildPullRequestDraft({
       issueIdentifier: input.issue.identifier,
       issueTitle: input.issue.title,
       runId: input.run.id,
       workspacePath: input.run.workspacePath,
-      baseBranch: prSettings.baseBranch,
+      baseBranch: reviewRequest?.baseBranch ?? prSettings.baseBranch,
+      branchName: reviewRequest?.branchName,
       remoteName,
       artifacts,
     });
@@ -925,8 +1016,9 @@ async function capturePullRequestArtifact(
       | "not_requested"
       | "missing_config"
       | "created"
+      | "updated"
       | "failed" = "not_requested";
-    let remoteResult: GitHubPullRequestResult | undefined;
+    let remoteResult: PullRequestRemoteOutcome | undefined;
 
     if (prMode === "github_draft") {
       if (!remoteName) {
@@ -942,21 +1034,43 @@ async function capturePullRequestArtifact(
         );
       } else {
         try {
-          remoteResult = await createGitHubPullRequest({
-            workspacePath: input.run.workspacePath,
-            draft,
-            remoteName,
-            ghCommand: prSettings.ghCommand,
-            draftPr: prSettings.draft,
-          });
-          remoteStatus = "created";
+          if (reviewRequest?.branchName) {
+            const updateResult = await updateGitHubPullRequestBranch({
+              workspacePath: input.run.workspacePath,
+              branchName: reviewRequest.branchName,
+              commitMessage: `${input.issue.identifier}: Address review feedback`,
+              remoteName,
+            });
+            remoteResult = {
+              ...updateResult,
+              baseBranch: draft.baseBranch,
+              draft: prSettings.draft,
+              remotePrUrl: reviewRequest.remotePrUrl,
+            };
+            remoteStatus = "updated";
+          } else {
+            remoteResult = await createGitHubPullRequest({
+              workspacePath: input.run.workspacePath,
+              draft,
+              remoteName,
+              ghCommand: prSettings.ghCommand,
+              draftPr: prSettings.draft,
+            });
+            remoteStatus = "created";
+          }
           await repository.appendEvent({
             projectId: input.workItem.projectId,
             workItemId: input.workItem.id,
             runId: input.run.id,
-            type: "github.pr.created",
+            type:
+              remoteStatus === "updated"
+                ? "github.pr.updated"
+                : "github.pr.created",
             level: "info",
-            message: `Created GitHub pull request for ${input.issue.identifier}`,
+            message:
+              remoteStatus === "updated"
+                ? `Updated GitHub pull request for ${input.issue.identifier}`
+                : `Created GitHub pull request for ${input.issue.identifier}`,
             payload: {
               baseBranch: remoteResult.baseBranch,
               branchName: remoteResult.branchName,
@@ -971,8 +1085,12 @@ async function capturePullRequestArtifact(
           await recordGitHubPullRequestWarning(
             input.run,
             input.workItem,
-            "github.pr.create_failed",
-            "GitHub PR creation failed",
+            reviewRequest?.branchName
+              ? "github.pr.update_failed"
+              : "github.pr.create_failed",
+            reviewRequest?.branchName
+              ? "GitHub PR update failed"
+              : "GitHub PR creation failed",
             error,
           );
         }
@@ -1002,7 +1120,9 @@ async function capturePullRequestArtifact(
         mode: prMode,
         pullRequestConfigSource: prSettings.source,
         remoteName,
-        remotePrUrl: remoteResult?.remotePrUrl,
+        remotePrUrl: remoteResult?.remotePrUrl ?? reviewRequest?.remotePrUrl,
+        reviewChangeRequest: Boolean(reviewRequest),
+        reviewFeedback: reviewRequest?.feedback,
         remoteStatus,
         remoteUrl: draft.remoteUrl,
         title: draft.title,
@@ -1021,7 +1141,7 @@ async function capturePullRequestArtifact(
 
 function buildPullRequestArtifactContent(
   draftMarkdown: string,
-  remoteResult: GitHubPullRequestResult | undefined,
+  remoteResult: PullRequestRemoteOutcome | undefined,
   remoteStatus: string,
 ): string {
   if (!remoteResult) {
@@ -1040,7 +1160,7 @@ ${remoteUrlLine}
 Remote: ${remoteResult.remoteName}
 Branch: ${remoteResult.branchName}
 Commit: ${remoteResult.commitSha}
-Draft: ${remoteResult.draft ? "yes" : "no"}
+Draft: ${remoteResult.draft === false ? "no" : "yes"}
 `;
 }
 

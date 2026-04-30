@@ -16,7 +16,7 @@
     "cleanup:smoke": "node scripts/cleanup-local-smoke-data.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src --ext .ts",
-    "test": "vitest run"
+    "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
     "@agentic-pm/core": "workspace:*",

@@ -77,6 +77,7 @@ const app = Fastify({
 const allowedOperatorActions = new Set<OperatorActionName>([
   "start",
   "retry",
+  "request_changes",
   "pause",
   "resume",
   "cancel",
@@ -113,7 +114,10 @@ type LinearVerificationStatus =
   | "verified"
   | "missing_states"
   | "failed";
-type OperatorTrackerSyncReason = "operator_cancel" | "operator_complete";
+type OperatorTrackerSyncReason =
+  | "operator_cancel"
+  | "operator_complete"
+  | "operator_request_changes";
 
 type LinearVerificationHealth = {
   status: LinearVerificationStatus;
@@ -500,16 +504,35 @@ app.post("/work-items/:workItemId/actions/:action", async (request, reply) => {
 
   const body = (request.body ?? {}) as {
     actorId?: string;
+    desiredRuntime?: string | null;
+    feedback?: string;
     reason?: string;
   };
 
   try {
-    const result = await repository.performWorkItemAction({
-      workItemId,
-      action: action as OperatorActionName,
-      actorId: body.actorId,
-      reason: body.reason,
-    });
+    if (
+      action === "request_changes" &&
+      !isRuntimePreferenceInput(body.desiredRuntime)
+    ) {
+      return reply.code(400).send({
+        error: `Unknown runtime preference: ${String(body.desiredRuntime)}`,
+      });
+    }
+
+    const result =
+      action === "request_changes"
+        ? await repository.requestWorkItemChanges({
+            workItemId,
+            actorId: body.actorId,
+            desiredRuntime: readDesiredRuntime(body.desiredRuntime),
+            feedback: readRequiredText(body.feedback, 4_000) ?? "",
+          })
+        : await repository.performWorkItemAction({
+            workItemId,
+            action: action as OperatorActionName,
+            actorId: body.actorId,
+            reason: body.reason,
+          });
     const trackerSync = await syncOperatorActionTrackerState({
       action: action as OperatorActionName,
       actorId: body.actorId,
@@ -1214,13 +1237,25 @@ function readOperatorActionTrackerState(
     return linearConfig.states.done;
   }
 
+  if (action === "request_changes") {
+    return linearConfig.activeStates[0];
+  }
+
   return undefined;
 }
 
 function readOperatorActionTrackerReason(
   action: OperatorActionName,
 ): OperatorTrackerSyncReason {
-  return action === "cancel" ? "operator_cancel" : "operator_complete";
+  if (action === "cancel") {
+    return "operator_cancel";
+  }
+
+  if (action === "request_changes") {
+    return "operator_request_changes";
+  }
+
+  return "operator_complete";
 }
 
 async function appendTrackerSyncEvent(input: {

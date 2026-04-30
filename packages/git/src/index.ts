@@ -13,6 +13,7 @@ export interface PullRequestDraftInput {
   runId: string;
   workspacePath: string;
   baseBranch?: string;
+  branchName?: string;
   remoteName?: string;
   artifacts: Array<{
     id: string;
@@ -51,6 +52,20 @@ export interface GitHubPullRequestResult {
   stdout: string;
 }
 
+export interface GitHubPullRequestUpdateInput {
+  workspacePath: string;
+  branchName: string;
+  commitMessage: string;
+  remoteName: string;
+}
+
+export interface GitHubPullRequestUpdateResult {
+  branchName: string;
+  commitSha: string;
+  remoteName: string;
+  stdout: string;
+}
+
 export function buildAgentBranchName(issueIdentifier: string, title: string, suffix?: string): string {
   const slug = slugify(title);
   const suffixPart = suffix ? `-${slugify(suffix)}` : "";
@@ -73,7 +88,7 @@ export async function buildPullRequestDraft(input: PullRequestDraftInput): Promi
   }
 
   const baseBranch = input.baseBranch ?? (await readCurrentBranch(input.workspacePath));
-  const branchName = buildAgentBranchName(input.issueIdentifier, input.issueTitle, input.runId.slice(-8));
+  const branchName = input.branchName ?? buildAgentBranchName(input.issueIdentifier, input.issueTitle, input.runId.slice(-8));
   const title = `${input.issueIdentifier}: ${input.issueTitle}`;
   const commitMessage = `${input.issueIdentifier}: ${input.issueTitle}`;
   const remoteUrl = await readRemoteUrl(input.workspacePath, input.remoteName);
@@ -151,6 +166,66 @@ export async function createGitHubPullRequest(input: GitHubPullRequestInput): Pr
   } finally {
     await rm(bodyDir, { recursive: true, force: true });
   }
+}
+
+export async function checkoutPullRequestBranch(input: {
+  workspacePath: string;
+  branchName: string;
+  remoteName?: string;
+}): Promise<void> {
+  const gitRoot = await readGitRoot(input.workspacePath);
+  if (!gitRoot || (await normalizePath(gitRoot)) !== (await normalizePath(input.workspacePath))) {
+    throw new Error("PR branch checkout requires the workspace path to be a git repository root");
+  }
+
+  const branchName = input.branchName.trim();
+  if (!branchName || isProtectedBranch(branchName)) {
+    throw new Error(`Refusing to checkout unsafe PR branch: ${input.branchName}`);
+  }
+
+  const remoteName = input.remoteName?.trim();
+  if (remoteName) {
+    await runGit(input.workspacePath, ["fetch", remoteName, branchName]);
+    try {
+      await runGit(input.workspacePath, ["switch", branchName]);
+    } catch {
+      await runGit(input.workspacePath, ["switch", "-c", branchName, "FETCH_HEAD"]);
+    }
+    await runGit(input.workspacePath, ["pull", "--ff-only", remoteName, branchName]);
+    return;
+  }
+
+  await runGit(input.workspacePath, ["switch", branchName]);
+}
+
+export async function updateGitHubPullRequestBranch(
+  input: GitHubPullRequestUpdateInput,
+): Promise<GitHubPullRequestUpdateResult> {
+  const gitRoot = await readGitRoot(input.workspacePath);
+  if (!gitRoot || (await normalizePath(gitRoot)) !== (await normalizePath(input.workspacePath))) {
+    throw new Error("GitHub PR update requires the workspace path to be a git repository root");
+  }
+
+  if (!input.remoteName.trim()) {
+    throw new Error("GitHub PR update requires an explicit remote name");
+  }
+
+  if (!input.branchName.trim() || isProtectedBranch(input.branchName)) {
+    throw new Error(`Refusing to update unsafe PR branch: ${input.branchName}`);
+  }
+
+  await runGit(input.workspacePath, ["switch", input.branchName]);
+  await runGit(input.workspacePath, ["add", "-A"]);
+  await runGit(input.workspacePath, ["commit", "-m", input.commitMessage]);
+  const commitSha = (await runGit(input.workspacePath, ["rev-parse", "HEAD"])).trim();
+  const stdout = await runGit(input.workspacePath, ["push", input.remoteName, input.branchName]);
+
+  return {
+    branchName: input.branchName,
+    commitSha,
+    remoteName: input.remoteName,
+    stdout: stdout.trim(),
+  };
 }
 
 async function normalizePath(path: string): Promise<string> {

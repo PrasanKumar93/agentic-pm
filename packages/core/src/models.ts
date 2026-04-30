@@ -38,6 +38,7 @@ export type EventLevel = "debug" | "info" | "warn" | "error";
 export type OperatorActionName =
   | "start"
   | "retry"
+  | "request_changes"
   | "pause"
   | "resume"
   | "cancel"
@@ -112,12 +113,25 @@ export interface WorkItem {
   status: WorkItemStatus;
   desiredState?: string;
   desiredRuntime?: DesiredAgentRuntime;
+  reviewRequest?: ReviewChangeRequest;
   claimedBy?: string;
   lastRunId?: string;
   retryCount: number;
   nextAttemptAt?: Date;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface ReviewChangeRequest {
+  feedback: string;
+  requestedAt: Date;
+  requestedBy?: string;
+  baseRunId?: string;
+  branchName?: string;
+  baseBranch?: string;
+  remoteName?: string;
+  remotePrUrl?: string;
+  preferredRuntime?: DesiredAgentRuntime;
 }
 
 export interface DispatchControl {

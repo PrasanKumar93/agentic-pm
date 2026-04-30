@@ -13,6 +13,7 @@ import {
   type Project,
   type RepositoryRef,
   type RepositorySummary,
+  type ReviewChangeRequest,
   type Run,
   type RunEvent,
   type TrackerKind,
@@ -782,6 +783,12 @@ export class AgenticRepository {
     workItemId: string,
     status: WorkItem["status"],
   ): Promise<void> {
+    const shouldClearReviewRequest =
+      status === "waiting_for_review" ||
+      status === "failed" ||
+      status === "completed" ||
+      status === "cancelled";
+
     await this.collections.workItems.updateOne(
       { id: workItemId },
       {
@@ -791,6 +798,7 @@ export class AgenticRepository {
         },
         $unset: {
           claimedBy: "",
+          ...(shouldClearReviewRequest ? { reviewRequest: "" as const } : {}),
         },
       },
     );
@@ -956,6 +964,149 @@ export class AgenticRepository {
       fromStatus,
       toStatus: updated.status,
       message: transition.message,
+    };
+  }
+
+  async requestWorkItemChanges(input: {
+    workItemId: string;
+    feedback: string;
+    actorId?: string;
+    desiredRuntime?: DesiredAgentRuntime;
+  }): Promise<OperatorActionResult> {
+    const workItem = await this.collections.workItems.findOne({
+      id: input.workItemId,
+    });
+    if (!workItem) {
+      throw new WorkItemNotFoundError(input.workItemId);
+    }
+
+    if (workItem.status !== "waiting_for_review") {
+      throw new InvalidWorkItemActionError(
+        `Cannot request changes for a ${workItem.status} work item`,
+      );
+    }
+
+    const feedback = input.feedback.trim();
+    if (!feedback) {
+      throw new InvalidWorkItemActionError(
+        "Review change requests require feedback",
+      );
+    }
+
+    const latestRun = workItem.lastRunId
+      ? await this.collections.runs.findOne({ id: workItem.lastRunId })
+      : await this.collections.runs.findOne(
+          { workItemId: workItem.id },
+          { sort: { startedAt: -1 } },
+        );
+    const pullRequestArtifact = latestRun
+      ? await this.collections.artifacts.findOne(
+          { runId: latestRun.id, type: "pr" },
+          { sort: { createdAt: -1 } },
+        )
+      : null;
+    const branchName =
+      readMetadataString(pullRequestArtifact?.metadata, "branchName") ??
+      readMetadataString(pullRequestArtifact?.metadata, "remoteBranchName");
+
+    if (!latestRun || !pullRequestArtifact || !branchName) {
+      throw new InvalidWorkItemActionError(
+        "Review changes require a latest run with a PR artifact and branch metadata",
+      );
+    }
+
+    const actorId = input.actorId || "local-operator";
+    const now = new Date();
+    const fromStatus = workItem.status;
+    const desiredRuntime = input.desiredRuntime ?? workItem.desiredRuntime;
+    const reviewRequest: ReviewChangeRequest = {
+      feedback,
+      requestedAt: now,
+      requestedBy: actorId,
+      baseRunId: latestRun.id,
+      branchName,
+      baseBranch:
+        readMetadataString(pullRequestArtifact.metadata, "baseBranch") ??
+        readMetadataString(pullRequestArtifact.metadata, "remoteBaseBranch"),
+      remoteName: readMetadataString(pullRequestArtifact.metadata, "remoteName"),
+      remotePrUrl: readMetadataString(
+        pullRequestArtifact.metadata,
+        "remotePrUrl",
+      ),
+      preferredRuntime: desiredRuntime,
+    };
+
+    await this.collections.workItems.updateOne(
+      { id: workItem.id },
+      {
+        $set: {
+          status: "queued",
+          retryCount: workItem.retryCount + 1,
+          reviewRequest,
+          updatedAt: now,
+          ...(input.desiredRuntime
+            ? { desiredRuntime: input.desiredRuntime }
+            : {}),
+        },
+        $unset: {
+          claimedBy: "" as const,
+          nextAttemptAt: "" as const,
+        },
+      },
+    );
+
+    await this.collections.operatorActions.insertOne({
+      id: createId("act"),
+      projectId: workItem.projectId,
+      workItemId: workItem.id,
+      runId: latestRun.id,
+      actorId,
+      action: "request_changes",
+      payload: {
+        branchName,
+        feedback,
+        fromStatus,
+        toStatus: "queued",
+        desiredRuntime,
+        pullRequestArtifactId: pullRequestArtifact.id,
+        remotePrUrl: reviewRequest.remotePrUrl,
+      },
+      createdAt: now,
+    });
+
+    await this.appendEvent({
+      projectId: workItem.projectId,
+      workItemId: workItem.id,
+      runId: latestRun.id,
+      type: "operator.request_changes",
+      level: "info",
+      message: `${actorId} requested PR changes`,
+      payload: {
+        actorId,
+        branchName,
+        feedback,
+        fromStatus,
+        toStatus: "queued",
+        desiredRuntime,
+        pullRequestArtifactId: pullRequestArtifact.id,
+        remotePrUrl: reviewRequest.remotePrUrl,
+      },
+      createdAt: now,
+    });
+
+    const updated = await this.collections.workItems.findOne({
+      id: workItem.id,
+    });
+    if (!updated) {
+      throw new WorkItemNotFoundError(workItem.id);
+    }
+
+    return {
+      action: "request_changes",
+      workItem: updated,
+      fromStatus,
+      toStatus: updated.status,
+      message: "Work item queued for PR changes",
     };
   }
 
@@ -1367,6 +1518,17 @@ export class AgenticRepository {
         }
         return { toStatus: "queued", message: "Work item queued for retry" };
 
+      case "request_changes":
+        if (status !== "waiting_for_review") {
+          throw new InvalidWorkItemActionError(
+            `Cannot request changes for a ${status} work item`,
+          );
+        }
+        return {
+          toStatus: "queued",
+          message: "Work item queued for PR changes",
+        };
+
       case "pause":
         if (status === "cancelled") {
           throw new InvalidWorkItemActionError(
@@ -1423,6 +1585,10 @@ export class AgenticRepository {
   }) {
     const retryIncrement =
       input.action === "retry" && input.workItem.status !== "queued" ? 1 : 0;
+    const shouldClearReviewRequest =
+      input.action === "retry" ||
+      input.action === "cancel" ||
+      input.action === "complete";
 
     return {
       $set: {
@@ -1433,6 +1599,7 @@ export class AgenticRepository {
       $unset: {
         claimedBy: "" as const,
         nextAttemptAt: "" as const,
+        ...(shouldClearReviewRequest ? { reviewRequest: "" as const } : {}),
       },
     };
   }
@@ -1538,4 +1705,12 @@ function toRepositorySummary(
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+function readMetadataString(
+  metadata: Record<string, unknown> | undefined,
+  key: string,
+): string | undefined {
+  const value = metadata?.[key];
+  return isNonEmptyString(value) ? value.trim() : undefined;
 }

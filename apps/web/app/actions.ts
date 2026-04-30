@@ -7,6 +7,7 @@ const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 const allowedActions = new Set<WorkItemAction>([
   "start",
   "retry",
+  "request_changes",
   "pause",
   "resume",
   "cancel",
@@ -44,6 +45,7 @@ const allowedStatusFilters = new Set([
 type WorkItemAction =
   | "start"
   | "retry"
+  | "request_changes"
   | "pause"
   | "resume"
   | "cancel"
@@ -261,6 +263,69 @@ export async function submitWorkItemAction(formData: FormData): Promise<void> {
       redirectUrl = createFeedbackUrl(
         "error",
         formatRequestError("Work item action failed", error),
+        returnState,
+      );
+    }
+  }
+
+  revalidatePath("/");
+  redirect(redirectUrl);
+}
+
+export async function submitReviewChangeRequest(
+  formData: FormData,
+): Promise<void> {
+  const workItemId = String(formData.get("workItemId") ?? "");
+  const desiredRuntime = String(
+    formData.get("desiredRuntime") ?? "default",
+  ).trim();
+  const feedback = String(formData.get("feedback") ?? "").trim();
+  const returnState = readReturnState(formData);
+  let redirectUrl = createFeedbackUrl(
+    "error",
+    "Add review feedback before requesting changes.",
+    returnState,
+  );
+
+  if (
+    workItemId &&
+    feedback.length > 0 &&
+    isDesiredRuntimePreference(desiredRuntime)
+  ) {
+    try {
+      const response = await fetch(
+        `${apiUrl}/work-items/${workItemId}/actions/request_changes`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            actorId: "dashboard",
+            desiredRuntime,
+            feedback,
+          }),
+          cache: "no-store",
+        },
+      );
+
+      const payload = await readActionResponse(response);
+      redirectUrl = response.ok
+        ? createFeedbackUrl(
+            "success",
+            formatWorkItemSuccess("request_changes", payload),
+            returnState,
+          )
+        : createFeedbackUrl(
+            "error",
+            payload.error ??
+              `Change request failed with HTTP ${response.status}.`,
+            returnState,
+          );
+    } catch (error) {
+      redirectUrl = createFeedbackUrl(
+        "error",
+        formatRequestError("Change request failed", error),
         returnState,
       );
     }
@@ -528,6 +593,8 @@ function formatWorkItemSuccess(
       return `Started ${identifier}${status}.`;
     case "retry":
       return `Queued retry for ${identifier}${status}.`;
+    case "request_changes":
+      return `Queued PR changes for ${identifier}${status}.`;
     case "pause":
       return `Paused ${identifier}${status}.`;
     case "resume":

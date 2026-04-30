@@ -24,6 +24,7 @@ import {
   submitDispatchAction,
   submitPullRequestLink,
   submitRepositoryRegistration,
+  submitReviewChangeRequest,
   submitRuntimePreference,
   submitWorkItemAction,
 } from "./actions";
@@ -392,6 +393,18 @@ export default async function DashboardPage({
   ]
     .filter(Boolean)
     .join(" ");
+  const selectedPullRequestArtifact = runArtifacts.artifacts
+    .filter((artifact) => artifact.type === "pr")
+    .at(-1);
+  const canRequestReviewChanges =
+    selected?.status === "waiting_for_review" &&
+    Boolean(
+      readMetadataString(selectedPullRequestArtifact?.metadata, "branchName") ??
+        readMetadataString(
+          selectedPullRequestArtifact?.metadata,
+          "remoteBranchName",
+        ),
+    );
 
   return (
     <main className="shell">
@@ -928,6 +941,69 @@ export default async function DashboardPage({
                         retries: {selected.retryCount}
                       </p>
                     </div>
+
+                    {canRequestReviewChanges ? (
+                      <form
+                        action={submitReviewChangeRequest}
+                        className="reviewRequestForm"
+                      >
+                        <input
+                          name="projectId"
+                          type="hidden"
+                          value={dashboard.selectedProjectId}
+                        />
+                        <input
+                          name="status"
+                          type="hidden"
+                          value={statusFilter}
+                        />
+                        <input
+                          name="workItemId"
+                          type="hidden"
+                          value={selected.id}
+                        />
+                        <div className="reviewRequestHeader">
+                          <div>
+                            <span>Review loop</span>
+                            <strong>Request changes</strong>
+                          </div>
+                          <select
+                            aria-label="Runtime for change request"
+                            defaultValue={
+                              selected.desiredRuntime ??
+                              normalizeRuntimePreference(
+                                selected.latestRun?.agentRuntime,
+                              ) ??
+                              "codex"
+                            }
+                            name="desiredRuntime"
+                            title="Runtime for change request"
+                          >
+                            {runtimeOptions
+                              .filter((option) => option.value !== "default")
+                              .map((option) => (
+                                <option
+                                  key={option.value}
+                                  value={option.value}
+                                >
+                                  {option.label}
+                                </option>
+                              ))}
+                          </select>
+                        </div>
+                        <textarea
+                          maxLength={4000}
+                          name="feedback"
+                          placeholder="Describe the follow-up change needed on this PR"
+                          rows={3}
+                          required
+                        />
+                        <button type="submit">
+                          <RotateCcw size={14} />
+                          <span>Fix with agent</span>
+                        </button>
+                      </form>
+                    ) : null}
 
                     <div className="artifactList">
                       <div className="eventTimelineHeader">
@@ -2164,6 +2240,30 @@ function formatPullRequestMode(mode: string | undefined): string {
 
 function formatArtifactType(type: string): string {
   return type.replaceAll("_", " ");
+}
+
+function normalizeRuntimePreference(
+  runtime: string | undefined,
+): DesiredAgentRuntime | undefined {
+  if (!runtime) {
+    return undefined;
+  }
+
+  const normalized = runtime.toLowerCase();
+  if (normalized.includes("codex")) {
+    return "codex";
+  }
+  if (normalized.includes("cursor")) {
+    return "cursor";
+  }
+  if (normalized.includes("fake")) {
+    return "fake";
+  }
+  if (normalized.includes("generic")) {
+    return "generic";
+  }
+
+  return undefined;
 }
 
 function formatArtifactUri(uri: string): string {
