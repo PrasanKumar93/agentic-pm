@@ -173,7 +173,7 @@ process.on("SIGTERM", () => {
 });
 
 while (!stopping) {
-  await reconcileTracker();
+  await safeReconcileTracker();
   await dispatchOne();
   if (runOnce) {
     break;
@@ -182,6 +182,34 @@ while (!stopping) {
 }
 
 await mongo.client.close();
+
+async function safeReconcileTracker(): Promise<void> {
+  try {
+    await reconcileTracker();
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    await eventSink.emit({
+      type: "tracker.reconcile_failed",
+      level: "warn",
+      message: "Tracker reconciliation failed",
+      payload: {
+        detail,
+        projectId,
+        tracker: tracker.kind,
+      },
+    });
+    await repository.appendEvent({
+      projectId,
+      type: "tracker.reconcile_failed",
+      level: "warn",
+      message: "Tracker reconciliation failed",
+      payload: {
+        detail,
+        tracker: tracker.kind,
+      },
+    });
+  }
+}
 
 async function reconcileTracker(): Promise<void> {
   const issues = await tracker.listActiveIssues({
