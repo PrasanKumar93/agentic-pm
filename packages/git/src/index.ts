@@ -12,6 +12,7 @@ export interface PullRequestDraftInput {
   issueTitle: string;
   runId: string;
   workspacePath: string;
+  baseCommitSha?: string;
   baseBranch?: string;
   branchName?: string;
   remoteName?: string;
@@ -27,6 +28,7 @@ export interface PullRequestDraft {
   baseBranch: string;
   branchName: string;
   changedFiles: string[];
+  changeSource: "committed_range" | "working_tree";
   commitMessage: string;
   markdown: string;
   remoteUrl?: string;
@@ -57,6 +59,7 @@ export interface GitHubPullRequestUpdateInput {
   branchName: string;
   commitMessage: string;
   remoteName: string;
+  allowExistingHead?: boolean;
 }
 
 export interface GitHubPullRequestUpdateResult {
@@ -82,10 +85,23 @@ export async function buildPullRequestDraft(input: PullRequestDraftInput): Promi
     return undefined;
   }
 
-  const changedFiles = await readChangedFiles(input.workspacePath);
+  const workingTreeFiles = await readChangedFiles(input.workspacePath);
+  const committedRangeFiles =
+    workingTreeFiles.length === 0 && input.baseCommitSha
+      ? await readChangedFilesSinceCommit(
+          input.workspacePath,
+          input.baseCommitSha,
+        )
+      : [];
+  const changedFiles = workingTreeFiles.length
+    ? workingTreeFiles
+    : committedRangeFiles;
   if (changedFiles.length === 0) {
     return undefined;
   }
+  const changeSource = workingTreeFiles.length
+    ? "working_tree"
+    : "committed_range";
 
   const baseBranch = input.baseBranch ?? (await readCurrentBranch(input.workspacePath));
   const branchName = input.branchName ?? buildAgentBranchName(input.issueIdentifier, input.issueTitle, input.runId.slice(-8));
@@ -97,6 +113,7 @@ export async function buildPullRequestDraft(input: PullRequestDraftInput): Promi
     baseBranch,
     branchName,
     changedFiles,
+    changeSource,
     commitMessage,
     remoteUrl,
     title
@@ -106,6 +123,7 @@ export async function buildPullRequestDraft(input: PullRequestDraftInput): Promi
     baseBranch,
     branchName,
     changedFiles,
+    changeSource,
     commitMessage,
     markdown,
     remoteUrl,
@@ -216,7 +234,12 @@ export async function updateGitHubPullRequestBranch(
 
   await runGit(input.workspacePath, ["switch", input.branchName]);
   await runGit(input.workspacePath, ["add", "-A"]);
-  await runGit(input.workspacePath, ["commit", "-m", input.commitMessage]);
+  const changedFiles = await readChangedFiles(input.workspacePath);
+  if (changedFiles.length > 0) {
+    await runGit(input.workspacePath, ["commit", "-m", input.commitMessage]);
+  } else if (!input.allowExistingHead) {
+    throw new Error("No workspace changes to commit for PR update");
+  }
   const commitSha = (await runGit(input.workspacePath, ["rev-parse", "HEAD"])).trim();
   const stdout = await runGit(input.workspacePath, ["push", input.remoteName, input.branchName]);
 
@@ -226,6 +249,17 @@ export async function updateGitHubPullRequestBranch(
     remoteName: input.remoteName,
     stdout: stdout.trim(),
   };
+}
+
+async function readHeadSha(workspacePath: string): Promise<string | undefined> {
+  try {
+    const { stdout } = await execFileAsync("git", ["rev-parse", "HEAD"], {
+      cwd: workspacePath
+    });
+    return stdout.trim() || undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 async function normalizePath(path: string): Promise<string> {
@@ -280,6 +314,41 @@ async function readChangedFiles(workspacePath: string): Promise<string[]> {
     .filter(Boolean)
     .map((line) => line.slice(3).split(" -> ").pop()?.trim())
     .filter((file): file is string => Boolean(file));
+}
+
+async function readChangedFilesSinceCommit(
+  workspacePath: string,
+  baseCommitSha: string,
+): Promise<string[]> {
+  const baseCommit = baseCommitSha.trim();
+  if (!baseCommit) {
+    return [];
+  }
+
+  const headCommit = await readHeadSha(workspacePath);
+  if (!headCommit || headCommit === baseCommit) {
+    return [];
+  }
+
+  try {
+    const { stdout } = await execFileAsync(
+      "git",
+      ["diff", "--name-only", baseCommit, "HEAD"],
+      {
+        cwd: workspacePath,
+      },
+    );
+    return [
+      ...new Set(
+        stdout
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean),
+      ),
+    ];
+  } catch {
+    return [];
+  }
 }
 
 async function runGit(workspacePath: string, args: string[]): Promise<string> {

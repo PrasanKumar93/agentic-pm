@@ -541,6 +541,9 @@ function appendReviewRequestPrompt(
   const prLine = reviewRequest.remotePrUrl
     ? `Existing PR URL: ${reviewRequest.remotePrUrl}`
     : "Existing PR URL: not recorded";
+  const commitLine = reviewRequest.baseCommitSha
+    ? `Previous PR commit: ${reviewRequest.baseCommitSha}`
+    : "Previous PR commit: not recorded";
 
   return `${prompt}
 
@@ -550,6 +553,7 @@ The previous run produced a PR and a human reviewer requested changes. Work on t
 
 ${branchLine}
 ${prLine}
+${commitLine}
 
 Reviewer feedback:
 ${reviewRequest.feedback}
@@ -1002,6 +1006,7 @@ async function capturePullRequestArtifact(
       issueTitle: input.issue.title,
       runId: input.run.id,
       workspacePath: input.run.workspacePath,
+      baseCommitSha: reviewRequest?.baseCommitSha,
       baseBranch: reviewRequest?.baseBranch ?? prSettings.baseBranch,
       branchName: reviewRequest?.branchName,
       remoteName,
@@ -1040,6 +1045,7 @@ async function capturePullRequestArtifact(
               branchName: reviewRequest.branchName,
               commitMessage: `${input.issue.identifier}: Address review feedback`,
               remoteName,
+              allowExistingHead: true,
             });
             remoteResult = {
               ...updateResult,
@@ -1113,7 +1119,9 @@ async function capturePullRequestArtifact(
         branchName: draft.branchName,
         changedFileCount: draft.changedFiles.length,
         changedFiles: draft.changedFiles,
+        changeSource: draft.changeSource,
         commitSha: remoteResult?.commitSha,
+        baseCommitSha: reviewRequest?.baseCommitSha,
         issueId: input.issue.id,
         issueIdentifier: input.issue.identifier,
         mergeGate: "manual",

@@ -1,6 +1,6 @@
 # PR Manual Gate Spec
 
-Status: Draft v0.6
+Status: Draft v0.7
 Date: 2026-04-30
 
 ## 1. Purpose
@@ -17,6 +17,7 @@ Covered:
 - Optionally create a remote GitHub draft PR after explicit project configuration.
 - Link a manually created GitHub PR URL back to a local PR artifact.
 - Request PR changes from the dashboard and rerun Codex/Cursor on the existing PR branch.
+- Capture and push review follow-ups even when the runtime self-commits and leaves no working-tree diff.
 - Keep merge manual by policy.
 - Surface local PR drafts or remote PR URLs from the dashboard run detail panel.
 - Let an operator mark a `waiting_for_review` work item as `completed` after external review/merge.
@@ -33,7 +34,7 @@ When a run succeeds, artifact capture order is:
 
 1. `agent-events.log`
 2. `workspace.patch`, when the workspace is a git root with a diff
-3. `pull-request.md`, when the workspace is a git root with changed files and `AGENTIC_PM_PR_MODE` is not `disabled`
+3. `pull-request.md`, when the workspace is a git root with changed files, or when a review-change run has advanced HEAD beyond the previous PR artifact commit, and `AGENTIC_PM_PR_MODE` is not `disabled`
 4. `review-packet.md`
 
 The `pr` artifact metadata includes:
@@ -46,6 +47,8 @@ The `pr` artifact metadata includes:
 - `remoteUrl`, when present
 - `remoteStatus`, when GitHub PR creation is requested
 - `remotePrUrl`, when GitHub PR creation succeeds and `gh` returns a URL
+- `baseCommitSha`, for review-change runs that compare against a previous PR artifact commit
+- `changeSource: "working_tree"` or `"committed_range"`
 - `reviewChangeRequest: true`, when the artifact came from a follow-up review run
 
 ## 4. GitHub Draft PR Mode
@@ -140,11 +143,11 @@ with:
 }
 ```
 
-4. The API requires a `waiting_for_review` work item with a latest `pr` artifact containing branch metadata.
-5. Symphony stores `workItem.reviewRequest` with reviewer feedback, base run id, branch name, remote name, remote PR URL, and preferred runtime.
+4. The API requires a `waiting_for_review` work item with a prior `pr` artifact containing branch metadata. It prefers the newest run, but falls back to the newest usable earlier PR artifact if the latest run did not capture one.
+5. Symphony stores `workItem.reviewRequest` with reviewer feedback, base run id, previous PR artifact commit, branch name, remote name, remote PR URL, and preferred runtime.
 6. The work item is queued again and, for Linear, the operator action syncs the issue back to the active state.
 7. Worker checks out the existing PR branch, reruns the selected runtime with review feedback appended to the prompt, and keeps the same manual merge gate.
-8. In `github_draft` mode, the worker commits and pushes a follow-up commit to the same PR branch instead of creating a new PR.
+8. In `github_draft` mode, the worker commits and pushes a follow-up commit to the same PR branch instead of creating a new PR. If the runtime already committed the follow-up, Symphony detects that HEAD advanced from `baseCommitSha` and pushes that existing commit.
 9. Symphony records `github.pr.updated`, captures refreshed patch/PR/review artifacts, and comments back to Linear.
 
 This is intentionally separate from the initial PR creation path. Initial PR creation owns branch creation and `gh pr create`; review-change reruns own explicit branch reuse, feedback capture, and artifact refresh semantics.

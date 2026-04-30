@@ -81,3 +81,4 @@
 - [x] Show full run timelines and long artifact lists in explicit scroll regions.
 - [x] Prioritize run artifacts above compact event timeline rows in the detail panel.
 - [x] Add a review change-request action that reruns Codex/Cursor on the existing PR branch and pushes a follow-up commit.
+- [x] Handle Cursor/Codex self-committed clean workspaces by pushing the advanced HEAD to the same PR branch.

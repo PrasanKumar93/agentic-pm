@@ -127,6 +127,7 @@ export interface ReviewChangeRequest {
   requestedAt: Date;
   requestedBy?: string;
   baseRunId?: string;
+  baseCommitSha?: string;
   branchName?: string;
   baseBranch?: string;
   remoteName?: string;

@@ -993,27 +993,18 @@ export class AgenticRepository {
       );
     }
 
-    const latestRun = workItem.lastRunId
-      ? await this.collections.runs.findOne({ id: workItem.lastRunId })
-      : await this.collections.runs.findOne(
-          { workItemId: workItem.id },
-          { sort: { startedAt: -1 } },
-        );
-    const pullRequestArtifact = latestRun
-      ? await this.collections.artifacts.findOne(
-          { runId: latestRun.id, type: "pr" },
-          { sort: { createdAt: -1 } },
-        )
-      : null;
-    const branchName =
-      readMetadataString(pullRequestArtifact?.metadata, "branchName") ??
-      readMetadataString(pullRequestArtifact?.metadata, "remoteBranchName");
-
-    if (!latestRun || !pullRequestArtifact || !branchName) {
+    const latestPullRequest =
+      await this.findLatestPullRequestArtifactForWorkItem(workItem);
+    if (!latestPullRequest) {
       throw new InvalidWorkItemActionError(
-        "Review changes require a latest run with a PR artifact and branch metadata",
+        "Review changes require a prior run with a PR artifact and branch metadata",
       );
     }
+    const {
+      artifact: pullRequestArtifact,
+      branchName,
+      run: baseRun,
+    } = latestPullRequest;
 
     const actorId = input.actorId || "local-operator";
     const now = new Date();
@@ -1023,7 +1014,11 @@ export class AgenticRepository {
       feedback,
       requestedAt: now,
       requestedBy: actorId,
-      baseRunId: latestRun.id,
+      baseRunId: baseRun.id,
+      baseCommitSha: readMetadataString(
+        pullRequestArtifact.metadata,
+        "commitSha",
+      ),
       branchName,
       baseBranch:
         readMetadataString(pullRequestArtifact.metadata, "baseBranch") ??
@@ -1059,11 +1054,12 @@ export class AgenticRepository {
       id: createId("act"),
       projectId: workItem.projectId,
       workItemId: workItem.id,
-      runId: latestRun.id,
+      runId: baseRun.id,
       actorId,
       action: "request_changes",
       payload: {
         branchName,
+        baseCommitSha: reviewRequest.baseCommitSha,
         feedback,
         fromStatus,
         toStatus: "queued",
@@ -1077,13 +1073,14 @@ export class AgenticRepository {
     await this.appendEvent({
       projectId: workItem.projectId,
       workItemId: workItem.id,
-      runId: latestRun.id,
+      runId: baseRun.id,
       type: "operator.request_changes",
       level: "info",
       message: `${actorId} requested PR changes`,
       payload: {
         actorId,
         branchName,
+        baseCommitSha: reviewRequest.baseCommitSha,
         feedback,
         fromStatus,
         toStatus: "queued",
@@ -1108,6 +1105,42 @@ export class AgenticRepository {
       toStatus: updated.status,
       message: "Work item queued for PR changes",
     };
+  }
+
+  private async findLatestPullRequestArtifactForWorkItem(
+    workItem: WorkItem,
+  ): Promise<
+    | {
+        artifact: Artifact;
+        branchName: string;
+        run: Run;
+      }
+    | undefined
+  > {
+    const runs = await this.collections.runs
+      .find({ workItemId: workItem.id })
+      .sort({ startedAt: -1 })
+      .limit(25)
+      .toArray();
+
+    for (const run of runs) {
+      const artifact = await this.collections.artifacts.findOne(
+        { runId: run.id, type: "pr" },
+        { sort: { createdAt: -1 } },
+      );
+      const branchName =
+        readMetadataString(artifact?.metadata, "branchName") ??
+        readMetadataString(artifact?.metadata, "remoteBranchName");
+      if (artifact && branchName) {
+        return {
+          artifact,
+          branchName,
+          run,
+        };
+      }
+    }
+
+    return undefined;
   }
 
   async performDispatchAction(input: {
