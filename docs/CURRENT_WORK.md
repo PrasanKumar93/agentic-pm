@@ -69,10 +69,12 @@ Date: 2026-04-30
 - Live repository-scoped GitHub draft PR smoke: created Linear issue `PRA-7`, reconciled it into Symphony, routed it to `test-linear-app`, ran Codex against an isolated git worktree, and had the worker create GitHub draft PR #3 from repository PR settings. A first Codex attempt exposed missing writable sandbox args; the retry succeeded with patch, PR, and review artifacts. Manual reviewer verification then found and fixed a restricted-OS-metric test failure on the PR branch.
 - Review change-request loop: review-state work items with PR artifacts now expose a dashboard feedback form, persist `reviewRequest` branch/runtime context, queue `operator.request_changes`, sync Linear back to the active state, rerun Codex/Cursor with reviewer feedback, check out the existing PR branch, push a follow-up commit in `github_draft` mode, and record refreshed PR artifacts with `github.pr.updated`.
 - Review-loop clean-commit handling: if Codex/Cursor self-commits a follow-up and leaves the workspace clean, Symphony now compares the current HEAD with the previous PR artifact commit, captures a committed-range PR artifact, and pushes the existing HEAD to the same PR branch. `request_changes` also falls back to the newest usable prior PR artifact when the latest run lacks one.
+- Worker dispatch now continues after a transient tracker polling failure: `tracker.reconcile_failed` is recorded as a warning, but already-queued work can still run.
+- Live same-PR review loop smoke on `PRA-7` / `test-linear-app` PR #3: Codex pushed a follow-up commit, Cursor produced a self-committed follow-up, and the patched worker recovered by pushing the advanced branch HEAD to the same PR branch and capturing PR artifact `art_075210837a58434e` with `changeSource: committed_range`.
 
 ## In Progress
 
-- Live smoke multiple review change requests on the same `test-linear-app` PR. Codex already pushed one follow-up commit to PRA-7/PR #3. Cursor produced a second local follow-up commit and exposed the clean self-commit gap above; next step is to rerun the worker with the fix and confirm the same PR branch is updated.
+- Continue hardening the review loop after the successful same-PR live smoke.
 
 ## Next Queue
 
@@ -97,5 +99,5 @@ Date: 2026-04-30
 10. Repository-scoped PR settings: done in API/UI/worker.
 11. Fresh live Linear auto-PR smoke: done on `PRA-7`; Symphony created draft PR #3 for `test-linear-app` from repository PR settings.
 12. Implement the review change-request loop: done in API, DB, worker, dashboard, and git helper tests.
-13. Live-smoke review change request on `PRA-7`: Codex follow-up push done; Cursor self-commit handling fixed and awaiting the recovery run against the same PR branch.
+13. Live-smoke review change request on `PRA-7`: done. PR #3 stayed on branch `agent/pra-7-symphony-auto-pr-smoke-add-health-report-cli-202604292143-57ea47b9`; latest captured update commit is `8056b0a0fd72d7ac9217509b97be62936e3802b1`.
 14. Real Linear inbound webhook smoke once `LINEAR_WEBHOOK_SECRET` and a public tunnel are configured.
