@@ -138,6 +138,28 @@ describe("GitHub PR status helpers", () => {
 
     expect(computePullRequestReadiness(summary).status).toBe("ready");
   });
+
+  it("treats already merged PRs as ready for Symphony completion", () => {
+    const summary = basePullRequestStatus({
+      checks: summarizeGithubChecks(
+        [{ conclusion: "success", name: "test", status: "completed" }],
+        [],
+      ),
+      merged: true,
+      review: {
+        approvals: 1,
+        changesRequested: 0,
+        comments: 0,
+        status: "approved",
+      },
+      state: "closed",
+    });
+
+    expect(computePullRequestReadiness(summary)).toEqual({
+      reasons: ["Pull request is already merged."],
+      status: "ready",
+    });
+  });
 });
 
 function basePullRequestStatus(

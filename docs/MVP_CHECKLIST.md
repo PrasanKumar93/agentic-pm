@@ -85,3 +85,4 @@
 - [x] Let queued dispatch proceed when tracker polling has a transient failure.
 - [x] Show persisted review feedback history in the run detail panel.
 - [x] Show GitHub PR readiness, review state, and checks in the run detail panel.
+- [x] Gate manual completion in the run detail panel with PR readiness evidence.

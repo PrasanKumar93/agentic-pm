@@ -248,6 +248,7 @@ It shows:
 - Last event message
 - Event count
 - Linked GitHub PR readiness, with PR state, review summary, check summary, mergeability, and readiness reasons
+- Manual completion gate, enabled only when PR readiness is clear/already merged or when the review evidence is local-only
 - Review feedback history, newest-first, with runtime, actor, branch, base commit, and feedback text
 - Latest run artifacts, scrollable when many proof files are captured
 - Latest run event timeline, newest-first and scrollable for long runs

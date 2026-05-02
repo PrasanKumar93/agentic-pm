@@ -73,10 +73,11 @@ Date: 2026-04-30
 - Live same-PR review loop smoke on `PRA-7` / `test-linear-app` PR #3: Codex pushed a follow-up commit, Cursor produced a self-committed follow-up, and the patched worker recovered by pushing the advanced branch HEAD to the same PR branch and capturing PR artifact `art_075210837a58434e` with `changeSource: committed_range`.
 - Review feedback visibility: reviewer change requests are now queryable through `GET /work-items/:workItemId/review-feedback` from persisted `operator_actions`, and the run detail panel shows a Feedback history section with runtime, actor, branch, base commit, and feedback text for each review turn. Verified on `PRA-7` with three same-PR feedback turns.
 - GitHub PR readiness: PR artifacts with remote GitHub URLs now expose `GET /artifacts/:artifactId/pr-status`, and the run detail panel shows PR state, draft/mergeability, review summary, check summary, and readiness reasons. Verified on `PRA-7` / `test-linear-app` PR #3, which currently reports blocked because it is draft and merge-conflicted.
+- Manual completion gate observability: review-state work items now show a PR-aware Manual completion card in run detail, remove `complete` from icon-only table quick actions, disable completion for blocked/pending/unknown linked GitHub PRs, allow local-only artifacts with a manual warning, and treat already merged GitHub PRs as ready for Symphony completion.
 
 ## In Progress
 
-- Continue hardening PR review readiness and merge-gate observability.
+- Continue toward real inbound Linear webhook smoke and repository configuration polish.
 
 ## Next Queue
 
@@ -103,4 +104,5 @@ Date: 2026-04-30
 13. Live-smoke review change request on `PRA-7`: done. PR #3 stayed on branch `agent/pra-7-symphony-auto-pr-smoke-add-health-report-cli-202604292143-57ea47b9`; latest captured update commit is `8056b0a0fd72d7ac9217509b97be62936e3802b1`.
 14. Surface review feedback history in the dashboard: done. `PRA-7` shows the JSON feedback, help feedback, and artifact-refresh feedback as three visible turns.
 15. Surface GitHub PR readiness in the dashboard: done. `PRA-7` PR #3 shows draft/conflict blockers, review state, and check count from GitHub.
-16. Real Linear inbound webhook smoke once `LINEAR_WEBHOOK_SECRET` and a public tunnel are configured.
+16. Gate visible manual completion with PR readiness evidence: done. The run detail panel owns completion with blocker reasons, and row quick actions no longer expose icon-only completion.
+17. Real Linear inbound webhook smoke once `LINEAR_WEBHOOK_SECRET` and a public tunnel are configured.

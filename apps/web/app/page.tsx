@@ -378,6 +378,16 @@ type PullRequestStatusData = {
   error?: string;
 };
 
+type ReviewCompletionGate = {
+  canComplete: boolean;
+  tone: PullRequestReadinessStatus;
+  label: string;
+  title: string;
+  detail: string;
+  reasons: string[];
+  buttonTitle: string;
+};
+
 type ReviewFeedbackSummary = {
   id: string;
   actorId?: string;
@@ -521,6 +531,11 @@ export default async function DashboardPage({
           "remoteBranchName",
         ),
     );
+  const completionGate = buildReviewCompletionGate(
+    selected,
+    selectedPullRequestArtifact,
+    pullRequestStatus,
+  );
 
   return (
     <main className="shell">
@@ -1170,6 +1185,58 @@ export default async function DashboardPage({
                               "No PR readiness available."}
                           </div>
                         )}
+                      </div>
+                    ) : null}
+
+                    {completionGate ? (
+                      <div className={`completionGate ${completionGate.tone}`}>
+                        <div className="completionGateHeader">
+                          <div>
+                            <span>Manual completion</span>
+                            <strong>{completionGate.title}</strong>
+                          </div>
+                          <span
+                            className={`readinessBadge ${completionGate.tone}`}
+                          >
+                            {completionGate.label}
+                          </span>
+                        </div>
+                        <p>{completionGate.detail}</p>
+                        {completionGate.reasons.length > 0 ? (
+                          <div className="completionGateReasons" role="list">
+                            {completionGate.reasons.map((reason) => (
+                              <span key={reason} role="listitem">
+                                {reason}
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
+                        <form action={submitWorkItemAction}>
+                          <input
+                            name="projectId"
+                            type="hidden"
+                            value={dashboard.selectedProjectId}
+                          />
+                          <input
+                            name="status"
+                            type="hidden"
+                            value={statusFilter}
+                          />
+                          <input
+                            name="workItemId"
+                            type="hidden"
+                            value={selected.id}
+                          />
+                          <input name="action" type="hidden" value="complete" />
+                          <button
+                            disabled={!completionGate.canComplete}
+                            title={completionGate.buttonTitle}
+                            type="submit"
+                          >
+                            <CheckCircle2 size={14} />
+                            <span>Mark complete</span>
+                          </button>
+                        </form>
                       </div>
                     ) : null}
 
@@ -2017,7 +2084,6 @@ function getAvailableActions(status: WorkItemStatus): Array<{
       ];
     case "waiting_for_review":
       return [
-        { name: "complete", label: "Mark complete" },
         { name: "retry", label: "Retry" },
         { name: "cancel", label: "Cancel" },
       ];
@@ -2040,6 +2106,109 @@ function getAvailableActions(status: WorkItemStatus): Array<{
     case "completed":
       return [];
   }
+}
+
+function buildReviewCompletionGate(
+  selected: WorkItemSummary | undefined,
+  pullRequestArtifact: ArtifactSummary | undefined,
+  pullRequestStatus: PullRequestStatusData,
+): ReviewCompletionGate | undefined {
+  if (selected?.status !== "waiting_for_review") {
+    return undefined;
+  }
+
+  if (!pullRequestArtifact) {
+    return {
+      buttonTitle: "A PR or review artifact is required before completion.",
+      canComplete: false,
+      detail:
+        "No pull request artifact was captured for this review-state run.",
+      label: "Blocked",
+      reasons: ["Capture or link review evidence before completing the work."],
+      title: "Review evidence missing",
+      tone: "blocked",
+    };
+  }
+
+  if (pullRequestStatus.error) {
+    return {
+      buttonTitle: "Resolve the PR readiness error before completion.",
+      canComplete: false,
+      detail:
+        "Symphony could not verify the linked GitHub PR, so completion is paused.",
+      label: "Unknown",
+      reasons: [pullRequestStatus.error],
+      title: "PR readiness unavailable",
+      tone: "unknown",
+    };
+  }
+
+  const pullRequest = pullRequestStatus.pullRequest;
+  if (!pullRequest) {
+    return {
+      buttonTitle:
+        "Complete only after manually reviewing the local PR artifact.",
+      canComplete: true,
+      detail:
+        pullRequestStatus.skippedReason ??
+        "No remote PR is linked, so this gate relies on manual local review.",
+      label: "Manual",
+      reasons: ["Link a GitHub PR URL to enable live readiness checks."],
+      title: "Local review gate",
+      tone: "unknown",
+    };
+  }
+
+  if (pullRequest.readiness.status === "ready") {
+    return {
+      buttonTitle:
+        "Mark complete after the PR has been reviewed and merged externally.",
+      canComplete: true,
+      detail:
+        "GitHub readiness is clear. Completion still records only the human merge gate result.",
+      label: "Ready",
+      reasons: pullRequest.readiness.reasons,
+      title: "Ready for human completion",
+      tone: "ready",
+    };
+  }
+
+  if (pullRequest.readiness.status === "pending") {
+    return {
+      buttonTitle: "Wait for pending PR checks or reviews before completion.",
+      canComplete: false,
+      detail:
+        "The linked PR still has pending review or check signals.",
+      label: "Pending",
+      reasons: pullRequest.readiness.reasons,
+      title: "Waiting on PR readiness",
+      tone: "pending",
+    };
+  }
+
+  if (pullRequest.readiness.status === "blocked") {
+    return {
+      buttonTitle: "Resolve PR blockers before marking this work complete.",
+      canComplete: false,
+      detail:
+        "The linked PR has blockers that should be fixed through the review loop.",
+      label: "Blocked",
+      reasons: pullRequest.readiness.reasons,
+      title: "Completion blocked",
+      tone: "blocked",
+    };
+  }
+
+  return {
+    buttonTitle: "Resolve unknown PR readiness before completion.",
+    canComplete: false,
+    detail:
+      "The linked PR state is unknown, so Symphony is holding the manual completion action.",
+    label: "Unknown",
+    reasons: pullRequest.readiness.reasons,
+    title: "PR readiness unknown",
+    tone: "unknown",
+  };
 }
 
 function ProjectMenu({

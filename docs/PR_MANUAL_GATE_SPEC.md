@@ -20,6 +20,7 @@ Covered:
 - Capture and push review follow-ups even when the runtime self-commits and leaves no working-tree diff.
 - Persist and display review feedback history for multi-turn PR review loops.
 - Fetch and display remote GitHub PR readiness for linked PR artifacts.
+- Gate visible dashboard completion with PR readiness evidence.
 - Keep merge manual by policy.
 - Surface local PR drafts or remote PR URLs from the dashboard run detail panel.
 - Let an operator mark a `waiting_for_review` work item as `completed` after external review/merge.
@@ -27,7 +28,6 @@ Covered:
 
 Not covered:
 
-- Reading CI status.
 - Auto-merging.
 
 ## 3. Worker Behavior
@@ -101,6 +101,8 @@ The selected run artifact list exposes PR review evidence:
 - Local PR artifacts without `metadata.remotePrUrl` expose a compact PR URL link form in the dashboard.
 - Review-state work items show a Feedback history section above artifacts. It lists persisted reviewer feedback turns with runtime, actor, branch, base commit, and submitted feedback text.
 - Linked GitHub PR artifacts show a read-only readiness card with PR state, draft/mergeability, review summary, check summary, and blocker/pending reasons.
+- The review-state `complete` action is exposed from a Manual completion card in run detail, not as an icon-only work-board quick action.
+- Linked GitHub PRs enable `Mark complete` only when readiness is `ready`, including already merged PRs. Blocked, pending, unknown, or missing PR evidence keeps visible completion disabled. Local-only PR artifacts can still be completed after explicit manual review because no remote readiness exists.
 
 Manual PR linking uses:
 

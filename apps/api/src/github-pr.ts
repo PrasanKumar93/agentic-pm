@@ -480,10 +480,10 @@ export function computePullRequestReadiness(
     unknown.push(summary.error);
   }
 
-  if (summary.state !== "open") {
-    blockers.push(
-      summary.merged ? "Pull request is already merged." : "Pull request is not open.",
-    );
+  if (summary.merged) {
+    informational.push("Pull request is already merged.");
+  } else if (summary.state !== "open") {
+    blockers.push("Pull request is not open.");
   }
 
   if (summary.draft) {
