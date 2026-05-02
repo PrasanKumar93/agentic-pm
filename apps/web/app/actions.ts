@@ -153,6 +153,83 @@ export async function submitRepositoryRegistration(
   redirect(redirectUrl);
 }
 
+export async function submitRepositoryUpdate(
+  formData: FormData,
+): Promise<void> {
+  const repositoryId = String(formData.get("repositoryId") ?? "").trim();
+  const name = String(formData.get("name") ?? "").trim();
+  const url = String(formData.get("url") ?? "").trim();
+  const defaultBranch = String(formData.get("defaultBranch") ?? "").trim();
+  const localPath = String(formData.get("localPath") ?? "").trim();
+  const prMode = String(formData.get("prMode") ?? "local_draft").trim();
+  const prRemoteName = String(formData.get("prRemoteName") ?? "").trim();
+  const prBaseBranch = String(formData.get("prBaseBranch") ?? "").trim();
+  const prDraft = formData.get("prDraft") === "on";
+  const returnState = {
+    ...readReturnState(formData),
+    view: "config",
+  };
+  let redirectUrl = createFeedbackUrl(
+    "error",
+    "Choose a valid repository to update.",
+    returnState,
+  );
+
+  if (
+    isSafeQueryValue(repositoryId) &&
+    name &&
+    url &&
+    isPullRequestMode(prMode)
+  ) {
+    try {
+      const response = await fetch(`${apiUrl}/repositories/${repositoryId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorId: "dashboard",
+          defaultBranch,
+          localPath,
+          name,
+          projectId: returnState.projectId,
+          pullRequest: {
+            baseBranch: prBaseBranch,
+            draft: prDraft,
+            mode: prMode,
+            remoteName: prRemoteName,
+          },
+          url,
+        }),
+        cache: "no-store",
+      });
+
+      const payload = await readActionResponse(response);
+      redirectUrl = response.ok
+        ? createFeedbackUrl(
+            "success",
+            formatRepositoryUpdateSuccess(payload),
+            returnState,
+          )
+        : createFeedbackUrl(
+            "error",
+            payload.error ??
+              `Repository update failed with HTTP ${response.status}.`,
+            returnState,
+          );
+    } catch (error) {
+      redirectUrl = createFeedbackUrl(
+        "error",
+        formatRequestError("Repository update failed", error),
+        returnState,
+      );
+    }
+  }
+
+  revalidatePath("/");
+  redirect(redirectUrl);
+}
+
 export async function submitCreateWorkItem(formData: FormData): Promise<void> {
   const title = String(formData.get("title") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim();
@@ -640,6 +717,11 @@ function formatCreateWorkItemSuccess(payload: ActionResponse): string {
 function formatRepositorySuccess(payload: ActionResponse): string {
   const name = payload.data?.name ?? "repository";
   return `Registered ${name}.`;
+}
+
+function formatRepositoryUpdateSuccess(payload: ActionResponse): string {
+  const name = payload.data?.name ?? "repository";
+  return `Updated ${name}.`;
 }
 
 function formatRequestError(prefix: string, error: unknown): string {

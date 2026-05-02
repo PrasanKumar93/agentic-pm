@@ -24,6 +24,7 @@ import {
   submitDispatchAction,
   submitPullRequestLink,
   submitRepositoryRegistration,
+  submitRepositoryUpdate,
   submitReviewChangeRequest,
   submitRuntimePreference,
   submitWorkItemAction,
@@ -2520,6 +2521,97 @@ function ConfigView({
                       <dd>{repository.workItemCount}</dd>
                     </div>
                   </dl>
+                  <details className="repoEditDetails">
+                    <summary>Edit repository</summary>
+                    <form action={submitRepositoryUpdate} className="repoEditForm">
+                      <input
+                        name="projectId"
+                        type="hidden"
+                        value={selectedProjectId}
+                      />
+                      <input name="view" type="hidden" value="config" />
+                      <input
+                        name="repositoryId"
+                        type="hidden"
+                        value={repository.id}
+                      />
+                      <label>
+                        <span>Name</span>
+                        <input
+                          defaultValue={repository.name}
+                          maxLength={120}
+                          name="name"
+                          required
+                        />
+                      </label>
+                      <label className="fullLine">
+                        <span>Repository URL</span>
+                        <input
+                          defaultValue={repository.url}
+                          maxLength={2000}
+                          name="url"
+                          required
+                        />
+                      </label>
+                      <label>
+                        <span>Default branch</span>
+                        <input
+                          defaultValue={repository.defaultBranch}
+                          maxLength={120}
+                          name="defaultBranch"
+                        />
+                      </label>
+                      <label className="fullLine">
+                        <span>Local path</span>
+                        <input
+                          defaultValue={repository.localPath ?? ""}
+                          maxLength={2000}
+                          name="localPath"
+                        />
+                      </label>
+                      <label>
+                        <span>PR mode</span>
+                        <select
+                          defaultValue={
+                            repository.pullRequest?.mode ?? "local_draft"
+                          }
+                          name="prMode"
+                        >
+                          <option value="local_draft">Local draft</option>
+                          <option value="github_draft">GitHub draft</option>
+                          <option value="disabled">Disabled</option>
+                        </select>
+                      </label>
+                      <label>
+                        <span>PR remote</span>
+                        <input
+                          defaultValue={repository.pullRequest?.remoteName ?? ""}
+                          maxLength={120}
+                          name="prRemoteName"
+                        />
+                      </label>
+                      <label>
+                        <span>PR base branch</span>
+                        <input
+                          defaultValue={repository.pullRequest?.baseBranch ?? ""}
+                          maxLength={120}
+                          name="prBaseBranch"
+                        />
+                      </label>
+                      <label className="checkboxLine">
+                        <input
+                          defaultChecked={repository.pullRequest?.draft ?? true}
+                          name="prDraft"
+                          type="checkbox"
+                        />
+                        <span>Create as draft</span>
+                      </label>
+                      <button title="Save repository changes" type="submit">
+                        <Save size={14} />
+                        Save changes
+                      </button>
+                    </form>
+                  </details>
                 </article>
               ))}
             </div>

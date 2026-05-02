@@ -11,7 +11,7 @@ Operators can register managed repositories from the dashboard without editing e
 
 ### `POST /repositories`
 
-Registers or updates a repository for a project.
+Registers a repository for a project.
 
 Request:
 
@@ -41,6 +41,18 @@ Behavior:
 - Appends a `repository.configured` event.
 - Returns the repository option used by `GET /repositories`.
 
+### `PATCH /repositories/:repositoryId`
+
+Updates an existing repository for a project.
+
+Request body matches `POST /repositories`, except the repository id is taken from the URL. The endpoint:
+
+- Requires the repository to already exist in the selected project.
+- Preserves the original `id` and `createdAt`.
+- Updates name, URL, default branch, local path, and PR settings.
+- Appends a `repository.configured` event with an update message.
+- Returns the refreshed repository option used by `GET /repositories`.
+
 Validation:
 
 - `name` is required and capped at 120 characters.
@@ -61,6 +73,7 @@ The Config view contains:
 - repository count metrics
 - a registration form for name, URL, default branch, local path, and PR settings
 - managed repository cards showing id, URL, local path, default branch, PR mode, PR target, and routed work item count
+- inline edit forms on each managed repository card for updating name, URL, default branch, local path, and PR settings without re-registering the repository
 
 The form posts through a server action and returns an action banner on success or failure.
 
@@ -69,11 +82,10 @@ The form posts through a server action and returns an action banner on success o
 - `pnpm typecheck` passes.
 - `pnpm build` passes.
 - `POST /repositories` creates a repository option for a temporary project.
+- `PATCH /repositories/:repositoryId` updates an existing repository option.
 - The Config view renders in full-width dashboard QA.
 
 ## Follow-Up
 
-- Edit existing repositories inline.
 - Add explicit delete/archive with confirmation.
 - Add validation that can test local path and remote clone access before saving.
-- Add inline editing so PR settings can be changed without re-registering the repository name.

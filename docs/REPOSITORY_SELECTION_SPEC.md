@@ -131,6 +131,8 @@ Validation:
 - `repositoryId` must match a repository in the selected project.
 - `desiredRuntime` may be `default`, `codex`, `cursor`, `fake`, or `generic`.
 
+Repository metadata and PR settings can be edited from the Config view through `PATCH /repositories/:repositoryId`; existing work items keep their `repositoryId` binding while future workspace materialization reads the latest repository settings.
+
 ## Dashboard
 
 - The work view includes a compact `New work item` panel above the board.

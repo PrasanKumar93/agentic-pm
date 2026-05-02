@@ -56,6 +56,23 @@ const linearWebhookToleranceMs = readPositiveNumber(
   60_000,
 );
 
+type RepositoryConfigurationBody = {
+  actorId?: string;
+  defaultBranch?: string;
+  id?: string;
+  localPath?: string;
+  name?: string;
+  projectId?: string;
+  pullRequest?: {
+    baseBranch?: string;
+    draft?: boolean;
+    ghCommand?: string;
+    mode?: string;
+    remoteName?: string;
+  };
+  url?: string;
+};
+
 const mongo = await connectMongo(readMongoConfig());
 const collections = getCollections(mongo.db);
 await ensureIndexes(collections);
@@ -285,22 +302,7 @@ app.get("/repositories", async (request) => {
 });
 
 app.post("/repositories", async (request, reply) => {
-  const body = (request.body ?? {}) as {
-    actorId?: string;
-    defaultBranch?: string;
-    id?: string;
-    localPath?: string;
-    name?: string;
-    projectId?: string;
-    pullRequest?: {
-      baseBranch?: string;
-      draft?: boolean;
-      ghCommand?: string;
-      mode?: string;
-      remoteName?: string;
-    };
-    url?: string;
-  };
+  const body = (request.body ?? {}) as RepositoryConfigurationBody;
   const requestedProjectId = readProjectId(body.projectId) ?? projectId;
   await ensureDefaultRepositoryForProject(requestedProjectId);
 
@@ -354,6 +356,78 @@ app.post("/repositories", async (request, reply) => {
       generatedAt: new Date().toISOString(),
     },
   });
+});
+
+app.patch("/repositories/:repositoryId", async (request, reply) => {
+  const { repositoryId } = request.params as { repositoryId: string };
+  const body = (request.body ?? {}) as RepositoryConfigurationBody;
+  const requestedProjectId = readProjectId(body.projectId) ?? projectId;
+  const safeRepositoryId = readRepositoryId(repositoryId);
+  await ensureDefaultRepositoryForProject(requestedProjectId);
+
+  if (!safeRepositoryId) {
+    return reply.code(400).send({
+      error: "A valid repository id is required.",
+    });
+  }
+
+  const existing = await repository.getRepository(
+    safeRepositoryId,
+    requestedProjectId,
+  );
+  if (!existing) {
+    return reply.code(404).send({
+      error: `Repository not found: ${safeRepositoryId}`,
+    });
+  }
+
+  const name = readRequiredText(body.name, 120);
+  const url = readRequiredText(body.url, 2_000);
+  if (!name || !url) {
+    return reply.code(400).send({
+      error: "Repository name and URL are required.",
+    });
+  }
+
+  const repositoryRef = await repository.ensureRepository({
+    id: existing.id,
+    projectId: requestedProjectId,
+    name,
+    url,
+    defaultBranch: readRequiredText(body.defaultBranch, 120) ?? "main",
+    localPath: readOptionalText(body.localPath, 2_000),
+    pullRequest: readPullRequestSettings(body.pullRequest),
+    createdAt: existing.createdAt,
+    updatedAt: new Date(),
+  });
+
+  await repository.appendEvent({
+    projectId: requestedProjectId,
+    type: "repository.configured",
+    level: "info",
+    message: `${body.actorId || "local-operator"} updated ${repositoryRef.name}`,
+    payload: {
+      actorId: body.actorId,
+      repositoryId: repositoryRef.id,
+      repositoryName: repositoryRef.name,
+      url: repositoryRef.url,
+      defaultBranch: repositoryRef.defaultBranch,
+      hasLocalPath: Boolean(repositoryRef.localPath),
+      pullRequestMode: repositoryRef.pullRequest?.mode,
+    },
+  });
+
+  const options = await repository.listRepositoryOptions(requestedProjectId);
+  const data = options.find((option) => option.id === repositoryRef.id);
+
+  return {
+    data: data ?? repositoryRef,
+    meta: {
+      action: "repository.update",
+      projectId: requestedProjectId,
+      generatedAt: new Date().toISOString(),
+    },
+  };
 });
 
 app.get("/work-items", async (request) => {

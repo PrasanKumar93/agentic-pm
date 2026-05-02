@@ -74,6 +74,7 @@ Date: 2026-04-30
 - Review feedback visibility: reviewer change requests are now queryable through `GET /work-items/:workItemId/review-feedback` from persisted `operator_actions`, and the run detail panel shows a Feedback history section with runtime, actor, branch, base commit, and feedback text for each review turn. Verified on `PRA-7` with three same-PR feedback turns.
 - GitHub PR readiness: PR artifacts with remote GitHub URLs now expose `GET /artifacts/:artifactId/pr-status`, and the run detail panel shows PR state, draft/mergeability, review summary, check summary, and readiness reasons. Verified on `PRA-7` / `test-linear-app` PR #3, which currently reports blocked because it is draft and merge-conflicted.
 - Manual completion gate observability: review-state work items now show a PR-aware Manual completion card in run detail, remove `complete` from icon-only table quick actions, disable completion for blocked/pending/unknown linked GitHub PRs, allow local-only artifacts with a manual warning, and treat already merged GitHub PRs as ready for Symphony completion.
+- Inline repository editing: Config view managed repository cards now expose edit forms backed by `PATCH /repositories/:repositoryId`, so name, URL, default branch, local path, and PR settings can be updated without re-registering the repository or editing MongoDB directly.
 
 ## In Progress
 
@@ -84,7 +85,7 @@ Date: 2026-04-30
 - Configure `LINEAR_WEBHOOK_SECRET` and run a real inbound webhook smoke through a public tunnel.
 - Repository edit/archive controls with explicit confirmation.
 - Optional outer folder rename after the active tool sandbox/workspace path is refreshed.
-- Inline repository editing so PR settings can be adjusted without re-registering the repository name.
+- Repository archive controls with explicit confirmation.
 - Bake writable Codex CLI sandbox config into runtime settings for smoke-safe repository worktrees.
 
 ## Immediate Execution Order
@@ -105,4 +106,5 @@ Date: 2026-04-30
 14. Surface review feedback history in the dashboard: done. `PRA-7` shows the JSON feedback, help feedback, and artifact-refresh feedback as three visible turns.
 15. Surface GitHub PR readiness in the dashboard: done. `PRA-7` PR #3 shows draft/conflict blockers, review state, and check count from GitHub.
 16. Gate visible manual completion with PR readiness evidence: done. The run detail panel owns completion with blocker reasons, and row quick actions no longer expose icon-only completion.
-17. Real Linear inbound webhook smoke once `LINEAR_WEBHOOK_SECRET` and a public tunnel are configured.
+17. Inline repository editing: done. Config cards use `PATCH /repositories/:repositoryId` and server actions to update repository and PR settings in place.
+18. Real Linear inbound webhook smoke once `LINEAR_WEBHOOK_SECRET` and a public tunnel are configured.

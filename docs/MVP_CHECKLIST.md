@@ -32,6 +32,7 @@
 - [x] Select a repository while creating local work items.
 - [x] Create local tracker-backed work items from the dashboard.
 - [x] Register managed repositories from the dashboard.
+- [x] Edit managed repository and PR settings from the dashboard.
 
 ## Milestone 3: Linear Loop
 
