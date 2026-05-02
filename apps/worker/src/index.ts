@@ -1598,8 +1598,21 @@ function createRuntime(requestedRuntime: DesiredAgentRuntime): AgentRuntime {
         ? { CODEX_API_KEY: codexApiKey.value }
         : undefined,
       apiKeySource: codexApiKey.source,
+      approvalPolicy: readOptionalText(
+        process.env.CODEX_APPROVAL_POLICY ??
+          process.env.CODEX_ASK_FOR_APPROVAL,
+        workflow.config.codex.approval_policy,
+      ),
       model: process.env.CODEX_MODEL,
       reasoningEffort: process.env.CODEX_REASONING_EFFORT,
+      sandboxMode: readOptionalText(
+        process.env.CODEX_SANDBOX ?? process.env.CODEX_SANDBOX_MODE,
+        workflow.config.codex.sandbox,
+      ),
+      skipGitRepoCheck: readBoolean(
+        process.env.CODEX_SKIP_GIT_REPO_CHECK,
+        workflow.config.codex.skip_git_repo_check,
+      ),
       turnTimeoutMs,
       stallTimeoutMs,
       cancelGraceMs,
@@ -1783,6 +1796,14 @@ function readBoolean(value: string | undefined, fallback: boolean): boolean {
   }
 
   return ["1", "true", "yes", "on"].includes(value.toLowerCase());
+}
+
+function readOptionalText(
+  value: string | undefined,
+  fallback: string | undefined,
+): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed || fallback;
 }
 
 function readPositiveNumber(

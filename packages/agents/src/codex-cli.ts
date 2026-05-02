@@ -7,8 +7,11 @@ export interface CodexCliRuntimeConfig {
   apiKeyConfigured?: boolean;
   apiKeyEnv?: NodeJS.ProcessEnv;
   apiKeySource?: string;
+  approvalPolicy?: string;
   model?: string;
   reasoningEffort?: string;
+  sandboxMode?: string;
+  skipGitRepoCheck?: boolean;
   turnTimeoutMs: number;
   stallTimeoutMs?: number;
   cancelGraceMs?: number;
@@ -49,7 +52,10 @@ export class CodexCliRuntime extends ProcessCliRuntime {
   }
 }
 
-function ensureCodexWorkspaceArg(args: string[], workspacePath: string): string[] {
+export function ensureCodexWorkspaceArg(
+  args: string[],
+  workspacePath: string,
+): string[] {
   if (hasCdArg(args)) {
     return args;
   }
@@ -57,10 +63,37 @@ function ensureCodexWorkspaceArg(args: string[], workspacePath: string): string[
   return insertBeforeExec(args, ["--cd", workspacePath]);
 }
 
-function buildCodexArgs(config: CodexCliRuntimeConfig): string[] {
+export function buildCodexArgs(config: CodexCliRuntimeConfig): string[] {
   let normalizedArgs = normalizeCodexArgs(config.args);
 
-  if (config.reasoningEffort && !hasConfigOverrideArg(normalizedArgs, "model_reasoning_effort")) {
+  if (
+    config.approvalPolicy &&
+    !hasOptionArg(normalizedArgs, ["--ask-for-approval", "-a"])
+  ) {
+    normalizedArgs = insertBeforeExec(normalizedArgs, [
+      "--ask-for-approval",
+      config.approvalPolicy
+    ]);
+  }
+
+  if (config.sandboxMode && !hasOptionArg(normalizedArgs, ["--sandbox"])) {
+    normalizedArgs = insertBeforeExec(normalizedArgs, [
+      "--sandbox",
+      config.sandboxMode
+    ]);
+  }
+
+  if (
+    config.skipGitRepoCheck &&
+    !hasFlagArg(normalizedArgs, "--skip-git-repo-check")
+  ) {
+    normalizedArgs = insertAfterExec(normalizedArgs, ["--skip-git-repo-check"]);
+  }
+
+  if (
+    config.reasoningEffort &&
+    !hasConfigOverrideArg(normalizedArgs, "model_reasoning_effort")
+  ) {
     normalizedArgs = insertBeforeExec(normalizedArgs, [
       "-c",
       `model_reasoning_effort="${config.reasoningEffort}"`
@@ -86,6 +119,19 @@ function insertBeforeExec(args: string[], inserted: string[]): string[] {
   }
 
   return [...args.slice(0, execIndex), ...inserted, ...args.slice(execIndex)];
+}
+
+function insertAfterExec(args: string[], inserted: string[]): string[] {
+  const execIndex = args.indexOf("exec");
+  if (execIndex < 0) {
+    return [...args, ...inserted];
+  }
+
+  return [
+    ...args.slice(0, execIndex + 1),
+    ...inserted,
+    ...args.slice(execIndex + 1)
+  ];
 }
 
 function normalizeCodexArgs(args: string[]): string[] {
@@ -118,18 +164,59 @@ function normalizeCodexArgs(args: string[]): string[] {
 }
 
 function hasModelArg(args: string[]): boolean {
-  return args.some((arg) => arg === "-m" || arg === "--model");
+  return hasOptionArg(args, ["-m", "--model"]);
 }
 
 function hasCdArg(args: string[]): boolean {
-  return args.some((arg) => arg === "-C" || arg === "--cd");
+  return hasOptionArg(args, ["-C", "--cd"]);
 }
 
 function hasConfigOverrideArg(args: string[], key: string): boolean {
-  return args.some((arg) => arg.startsWith(`${key}=`));
+  return args.some((arg, index) => {
+    if (arg.startsWith(`${key}=`)) {
+      return true;
+    }
+
+    const previousArg = args[index - 1];
+    return (
+      (previousArg === "-c" || previousArg === "--config") &&
+      arg.startsWith(`${key}=`)
+    );
+  });
+}
+
+function hasOptionArg(args: string[], names: string[]): boolean {
+  return args.some((arg) =>
+    names.some((name) => arg === name || arg.startsWith(`${name}=`)),
+  );
+}
+
+function hasFlagArg(args: string[], name: string): boolean {
+  return args.includes(name);
+}
+
+function readOptionValue(
+  args: string[],
+  names: string[],
+): string | undefined {
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    for (const name of names) {
+      if (arg === name) {
+        return args[index + 1];
+      }
+
+      if (arg.startsWith(`${name}=`)) {
+        return arg.slice(name.length + 1);
+      }
+    }
+  }
+
+  return undefined;
 }
 
 function buildCodexPreflightChecks(config: CodexCliRuntimeConfig): ProcessCliPreflightCheck[] {
+  const args = buildCodexArgs(config);
   const checks: ProcessCliPreflightCheck[] = [
     {
       name: "codex executable",
@@ -143,6 +230,17 @@ function buildCodexPreflightChecks(config: CodexCliRuntimeConfig): ProcessCliPre
       includeOutput: false,
       timeoutMs: 5000,
       failureMessage: "Codex CLI does not expose the noninteractive exec command required by Symphony."
+    },
+    {
+      kind: "static" as const,
+      name: "codex execution policy",
+      status: "passed" as const,
+      message: "Codex CLI run policy is configured for headless workspace execution.",
+      payload: {
+        approvalPolicy: readOptionValue(args, ["--ask-for-approval", "-a"]),
+        sandboxMode: readOptionValue(args, ["--sandbox"]),
+        skipGitRepoCheck: hasFlagArg(args, "--skip-git-repo-check")
+      }
     }
   ];
 

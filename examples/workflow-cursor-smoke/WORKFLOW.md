@@ -15,7 +15,10 @@ agent:
   max_retry_backoff_ms: 300000
 codex:
   command: "codex"
-  args: ["--ask-for-approval", "never", "--sandbox", "workspace-write", "exec", "--json", "--skip-git-repo-check", "-"]
+  args: ["exec", "--json", "-"]
+  approval_policy: "never"
+  sandbox: "workspace-write"
+  skip_git_repo_check: true
   turn_timeout_ms: 300000
   stall_timeout_ms: 120000
 hooks: {}

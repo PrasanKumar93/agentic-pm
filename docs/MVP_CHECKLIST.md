@@ -61,6 +61,7 @@
 - [x] Add process runtime heartbeat, stall timeout, and cancellation hardening.
 - [x] Parse Cursor `stream-json` output into sanitized runtime events.
 - [x] Parse Codex `exec --json` output into sanitized runtime events.
+- [x] Configure Codex approval, sandbox, and smoke git-repo policy through typed runtime settings.
 - [x] Run a real Codex runtime adapter from the worker.
 - [x] Verify Cursor Agent CLI noninteractive mode locally.
 - [x] Persist parsed runtime events through the worker event stream.

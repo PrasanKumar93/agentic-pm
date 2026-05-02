@@ -96,7 +96,10 @@ CODEX_API_KEY=
 CODEX_COMMAND=codex
 CODEX_MODEL=gpt-5.1-codex
 CODEX_REASONING_EFFORT=medium
-CODEX_ARGS=--ask-for-approval never --sandbox workspace-write exec --json -
+CODEX_APPROVAL_POLICY=never
+CODEX_SANDBOX=workspace-write
+CODEX_SKIP_GIT_REPO_CHECK=false
+CODEX_ARGS=exec --json -
 ```
 
 Codex inherits the hardened process behavior:
@@ -105,6 +108,9 @@ Codex inherits the hardened process behavior:
 - Startup preflight checks `codex exec --help`.
 - Startup preflight checks `codex login status` when neither `CODEX_API_KEY` nor `OPENAI_API_KEY` is set.
 - `CODEX_API_KEY` is passed to `codex exec` for automation. If only `OPENAI_API_KEY` is set, Symphony maps it to `CODEX_API_KEY` for the child process without changing the user's global Codex login.
+- `CODEX_APPROVAL_POLICY` defaults to `never` and is injected as `--ask-for-approval <value>` unless `CODEX_ARGS` already includes `--ask-for-approval` or `-a`.
+- `CODEX_SANDBOX` defaults to `workspace-write` and is injected as `--sandbox <value>` unless `CODEX_ARGS` already includes `--sandbox`.
+- `CODEX_SKIP_GIT_REPO_CHECK=true` injects `--skip-git-repo-check` as a Codex `exec` option for generated smoke workspaces.
 - Optional `CODEX_MODEL` inserts `-m <model>` into the `exec` command unless `CODEX_ARGS` already includes `-m` or `--model`.
 - Optional `CODEX_REASONING_EFFORT` inserts `-c model_reasoning_effort="<effort>"` before `exec` unless `CODEX_ARGS` already sets `model_reasoning_effort`.
 - `--cd <workspacePath>` is injected for each run unless `CODEX_ARGS` already includes `--cd` or `-C`. This makes generated git worktrees the explicit Codex workspace root and avoids read-only fallback behavior.
@@ -119,7 +125,7 @@ Codex inherits the hardened process behavior:
 Codex uses the CLI's noninteractive exec mode. The runtime sends the rendered Symphony prompt to stdin:
 
 ```txt
-codex --ask-for-approval never --sandbox workspace-write exec --json -
+codex --ask-for-approval never --sandbox workspace-write --cd <workspacePath> exec --json -
 ```
 
 Model availability depends on the installed Codex CLI, account, and auth method. For API-key automation, the current local smoke path is validated with `CODEX_MODEL=gpt-5.1-codex` and `CODEX_REASONING_EFFORT=medium`. Keep `CODEX_MODEL` empty to inherit the CLI default, or set both model and reasoning effort explicitly to avoid incompatible user-level Codex config.
@@ -213,13 +219,23 @@ AGENT_RUNTIME_CANCEL_GRACE_MS=5000
 Argument values can be whitespace-separated:
 
 ```env
-CODEX_ARGS=--ask-for-approval never --sandbox workspace-write exec --json -
+CODEX_ARGS=exec --json -
 ```
 
 Or JSON for quoted arguments:
 
 ```env
 AGENT_RUNTIME_ARGS=["run","--profile","agent mode"]
+```
+
+Codex policy can also be set in `WORKFLOW.md` front matter:
+
+```yaml
+codex:
+  args: ["exec", "--json", "-"]
+  approval_policy: "never"
+  sandbox: "workspace-write"
+  skip_git_repo_check: false
 ```
 
 ## 7. Tool Policy
