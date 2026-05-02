@@ -36,6 +36,10 @@ import {
   normalizeLinearIssue,
   type LinearIssueNode,
 } from "@agentic-pm/trackers";
+import {
+  fetchGithubPullRequestStatus,
+  parseGithubPullRequestUrl,
+} from "./github-pr.js";
 
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 loadDotenv({ path: fileURLToPath(new URL("../../../.env", import.meta.url)) });
@@ -709,6 +713,47 @@ app.get("/artifacts/:artifactId/content", async (request, reply) => {
   }
 });
 
+app.get("/artifacts/:artifactId/pr-status", async (request, reply) => {
+  const { artifactId } = request.params as { artifactId: string };
+  const artifact = await repository.getArtifact(artifactId);
+
+  if (!artifact) {
+    return reply.code(404).send({
+      error: `Artifact not found: ${artifactId}`,
+    });
+  }
+
+  if (artifact.type !== "pr") {
+    return reply.code(409).send({
+      error: "Only pull request artifacts expose PR status.",
+    });
+  }
+
+  const remotePrUrl = readMetadataString(artifact.metadata, "remotePrUrl");
+  if (!remotePrUrl) {
+    return reply.code(409).send({
+      error: "Pull request artifact is not linked to a remote PR.",
+    });
+  }
+
+  const coordinates = parseGithubPullRequestUrl(remotePrUrl);
+  if (!coordinates) {
+    return reply.code(422).send({
+      error: "Only github.com pull request URLs can be checked.",
+    });
+  }
+
+  return {
+    data: await fetchGithubPullRequestStatus(coordinates, {
+      token: readGithubApiToken(),
+    }),
+    meta: {
+      artifactId,
+      generatedAt: new Date().toISOString(),
+    },
+  };
+});
+
 app.post("/artifacts/:artifactId/link-pr", async (request, reply) => {
   const { artifactId } = request.params as { artifactId: string };
   const body = (request.body ?? {}) as {
@@ -1020,6 +1065,25 @@ function readRemotePrUrl(value: unknown): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+function readMetadataString(
+  metadata: Record<string, unknown> | undefined,
+  key: string,
+): string | undefined {
+  const value = metadata?.[key];
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : undefined;
+}
+
+function readGithubApiToken(): string | undefined {
+  return (
+    readOptionalText(process.env.AGENTIC_PM_GITHUB_TOKEN, 4_000) ??
+    readOptionalText(process.env.AGENTIC_PM_GITHUB_API_TOKEN, 4_000) ??
+    readOptionalText(process.env.GITHUB_TOKEN, 4_000) ??
+    readOptionalText(process.env.GH_TOKEN, 4_000)
+  );
 }
 
 function isRuntimePreferenceInput(value: string | null | undefined): boolean {

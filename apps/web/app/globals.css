@@ -1259,9 +1259,142 @@ h2 {
 
 .eventTimeline,
 .feedbackHistory,
+.pullRequestReadiness,
 .artifactList {
   display: grid;
   gap: 10px;
+}
+
+.pullRequestReadiness {
+  background: #fbfcfb;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.readinessBadge {
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 11px;
+  min-width: 72px;
+  padding: 4px 8px;
+  text-align: center;
+}
+
+.readinessBadge.ready {
+  background: #e5f6ee;
+  border-color: #b6e2cd;
+  color: #20734c;
+}
+
+.readinessBadge.blocked {
+  background: #fdebed;
+  border-color: #f3b9c0;
+  color: #b53943;
+}
+
+.readinessBadge.pending {
+  background: #fff5da;
+  border-color: #efd084;
+  color: #9b6a00;
+}
+
+.readinessBadge.unknown {
+  background: #eef2ef;
+  color: var(--muted);
+}
+
+.pullRequestSummary {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.pullRequestSummary a {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 800;
+  overflow: hidden;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pullRequestSummary span {
+  color: var(--muted);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.pullRequestReadinessGrid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.pullRequestReadinessGrid div {
+  background: #f7f9f7;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px;
+}
+
+.pullRequestReadinessGrid span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.pullRequestReadinessGrid strong {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.pullRequestReadinessReasons {
+  display: grid;
+  gap: 5px;
+}
+
+.pullRequestReadinessReasons p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.pullRequestCheckList {
+  display: grid;
+  gap: 5px;
+}
+
+.pullRequestCheckList a {
+  align-items: center;
+  background: #f7f9f7;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--text);
+  display: flex;
+  font-size: 12px;
+  gap: 8px;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 7px 8px;
+  text-decoration: none;
+}
+
+.pullRequestCheckList span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pullRequestCheckList strong {
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 .feedbackStack {

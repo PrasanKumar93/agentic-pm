@@ -84,3 +84,4 @@
 - [x] Handle Cursor/Codex self-committed clean workspaces by pushing the advanced HEAD to the same PR branch.
 - [x] Let queued dispatch proceed when tracker polling has a transient failure.
 - [x] Show persisted review feedback history in the run detail panel.
+- [x] Show GitHub PR readiness, review state, and checks in the run detail panel.

@@ -19,6 +19,7 @@ Covered:
 - Request PR changes from the dashboard and rerun Codex/Cursor on the existing PR branch.
 - Capture and push review follow-ups even when the runtime self-commits and leaves no working-tree diff.
 - Persist and display review feedback history for multi-turn PR review loops.
+- Fetch and display remote GitHub PR readiness for linked PR artifacts.
 - Keep merge manual by policy.
 - Surface local PR drafts or remote PR URLs from the dashboard run detail panel.
 - Let an operator mark a `waiting_for_review` work item as `completed` after external review/merge.
@@ -99,6 +100,7 @@ The selected run artifact list exposes PR review evidence:
 - GitHub draft PR artifacts with `metadata.remotePrUrl` open the remote pull request.
 - Local PR artifacts without `metadata.remotePrUrl` expose a compact PR URL link form in the dashboard.
 - Review-state work items show a Feedback history section above artifacts. It lists persisted reviewer feedback turns with runtime, actor, branch, base commit, and submitted feedback text.
+- Linked GitHub PR artifacts show a read-only readiness card with PR state, draft/mergeability, review summary, check summary, and blocker/pending reasons.
 
 Manual PR linking uses:
 
@@ -124,6 +126,14 @@ The action:
 - Marks the latest review-state run `completed`.
 - Writes an `operator.complete` event.
 - Does not merge code.
+
+GitHub readiness uses:
+
+```http
+GET /artifacts/:artifactId/pr-status
+```
+
+The endpoint is intentionally read-only. It can use `AGENTIC_PM_GITHUB_TOKEN`, `AGENTIC_PM_GITHUB_API_TOKEN`, `GITHUB_TOKEN`, or `GH_TOKEN` for private repositories or higher rate limits, but token values are never returned to the dashboard.
 
 ## 6. Review Change Requests
 

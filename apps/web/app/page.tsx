@@ -243,6 +243,84 @@ type ArtifactsResponse = {
   data: ArtifactSummary[];
 };
 
+type PullRequestReadinessStatus =
+  | "ready"
+  | "blocked"
+  | "pending"
+  | "unknown";
+
+type PullRequestReviewStatus =
+  | "approved"
+  | "changes_requested"
+  | "commented"
+  | "review_required"
+  | "unknown";
+
+type PullRequestChecksStatus =
+  | "success"
+  | "failure"
+  | "pending"
+  | "none"
+  | "unknown";
+
+type PullRequestCheckSummary = {
+  name: string;
+  status: string;
+  conclusion?: string;
+  url?: string;
+  completedAt?: string;
+};
+
+type PullRequestStatusSummary = {
+  provider: "github";
+  owner: string;
+  repo: string;
+  number: number;
+  url: string;
+  title?: string;
+  state: string;
+  draft?: boolean;
+  merged?: boolean;
+  mergeable?: boolean | null;
+  mergeableState?: string;
+  headRef?: string;
+  headSha?: string;
+  baseRef?: string;
+  review: {
+    status: PullRequestReviewStatus;
+    approvals: number;
+    changesRequested: number;
+    comments: number;
+    latestReviewedAt?: string;
+  };
+  checks: {
+    status: PullRequestChecksStatus;
+    total: number;
+    passed: number;
+    failed: number;
+    pending: number;
+    skipped: number;
+    checkRuns: PullRequestCheckSummary[];
+    errors: string[];
+  };
+  readiness: {
+    status: PullRequestReadinessStatus;
+    reasons: string[];
+  };
+  fetchedAt: string;
+  authenticated: boolean;
+  error?: string;
+  rateLimited?: boolean;
+};
+
+type PullRequestStatusResponse = {
+  data: PullRequestStatusSummary;
+  meta?: {
+    artifactId: string;
+    generatedAt: string;
+  };
+};
+
 type WebhookDeliveryStatus = "processing" | "processed" | "ignored" | "failed";
 
 type WebhookDeliverySummary = {
@@ -291,6 +369,12 @@ type RunEventsData = {
 
 type RunArtifactsData = {
   artifacts: ArtifactSummary[];
+  error?: string;
+};
+
+type PullRequestStatusData = {
+  pullRequest?: PullRequestStatusSummary;
+  skippedReason?: string;
   error?: string;
 };
 
@@ -423,6 +507,11 @@ export default async function DashboardPage({
   const selectedPullRequestArtifact = runArtifacts.artifacts
     .filter((artifact) => artifact.type === "pr")
     .at(-1);
+  const pullRequestStatus =
+    view === "work" && selectedPullRequestArtifact
+      ? await fetchPullRequestStatus(selectedPullRequestArtifact)
+      : { skippedReason: "No pull request artifact selected." };
+  const selectedPullRequest = pullRequestStatus.pullRequest;
   const canRequestReviewChanges =
     selected?.status === "waiting_for_review" &&
     Boolean(
@@ -969,6 +1058,121 @@ export default async function DashboardPage({
                       </p>
                     </div>
 
+                    {selectedPullRequestArtifact ? (
+                      <div className="pullRequestReadiness">
+                        <div className="eventTimelineHeader">
+                          <span>PR readiness</span>
+                          <strong
+                            className={`readinessBadge ${
+                              selectedPullRequest?.readiness.status ?? "unknown"
+                            }`}
+                          >
+                            {formatReadinessStatus(
+                              selectedPullRequest?.readiness.status ??
+                                "unknown",
+                            )}
+                          </strong>
+                        </div>
+
+                        {pullRequestStatus.error ? (
+                          <div className="timelineNotice">
+                            {pullRequestStatus.error}
+                          </div>
+                        ) : selectedPullRequest ? (
+                          <>
+                            <div className="pullRequestSummary">
+                              <a
+                                href={selectedPullRequest.url}
+                                rel="noreferrer"
+                                target="_blank"
+                              >
+                                #{selectedPullRequest.number}{" "}
+                                {selectedPullRequest.title ??
+                                  `${selectedPullRequest.owner}/${selectedPullRequest.repo}`}
+                              </a>
+                              <span>
+                                {formatPullRequestBranchPair(
+                                  selectedPullRequest,
+                                )}
+                              </span>
+                            </div>
+                            <div className="pullRequestReadinessGrid">
+                              <div>
+                                <span>State</span>
+                                <strong>
+                                  {formatPullRequestState(
+                                    selectedPullRequest,
+                                  )}
+                                </strong>
+                              </div>
+                              <div>
+                                <span>Review</span>
+                                <strong>
+                                  {formatReviewStatus(
+                                    selectedPullRequest.review,
+                                  )}
+                                </strong>
+                              </div>
+                              <div>
+                                <span>Checks</span>
+                                <strong>
+                                  {formatChecksStatus(
+                                    selectedPullRequest.checks,
+                                  )}
+                                </strong>
+                              </div>
+                              <div>
+                                <span>Mergeability</span>
+                                <strong>
+                                  {formatMergeability(selectedPullRequest)}
+                                </strong>
+                              </div>
+                            </div>
+                            <div
+                              className="pullRequestReadinessReasons"
+                              role="list"
+                            >
+                              {selectedPullRequest.readiness.reasons.map(
+                                (reason) => (
+                                  <p key={reason} role="listitem">
+                                    {reason}
+                                  </p>
+                                ),
+                              )}
+                            </div>
+                            {selectedPullRequest.checks.checkRuns.length > 0 ? (
+                              <div
+                                className="pullRequestCheckList"
+                                role="list"
+                              >
+                                {selectedPullRequest.checks.checkRuns
+                                  .slice(0, 4)
+                                  .map((check) => (
+                                    <a
+                                      href={check.url}
+                                      key={`${check.name}-${check.status}-${check.conclusion}`}
+                                      rel="noreferrer"
+                                      role="listitem"
+                                      target="_blank"
+                                    >
+                                      <span>{check.name}</span>
+                                      <strong>
+                                        {formatCheckStatus(check)}
+                                      </strong>
+                                    </a>
+                                  ))}
+                              </div>
+                            ) : null}
+                          </>
+                        ) : (
+                          <div className="timelineNotice">
+                            {pullRequestStatus.skippedReason ??
+                              "No PR readiness available."}
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
+
                     {canRequestReviewChanges ? (
                       <form
                         action={submitReviewChangeRequest}
@@ -1449,6 +1653,44 @@ async function fetchRunArtifacts(runId: string): Promise<RunArtifactsData> {
     return {
       artifacts: [],
       error: `Could not load artifacts: ${message}`,
+    };
+  }
+}
+
+async function fetchPullRequestStatus(
+  artifact: ArtifactSummary,
+): Promise<PullRequestStatusData> {
+  const remotePrUrl = readMetadataString(artifact.metadata, "remotePrUrl");
+  if (!remotePrUrl) {
+    return {
+      skippedReason: "Link a remote PR to track readiness.",
+    };
+  }
+
+  try {
+    const response = await fetch(
+      `${apiUrl}/artifacts/${artifact.id}/pr-status`,
+      {
+        cache: "no-store",
+      },
+    );
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string;
+      };
+      throw new Error(payload.error ?? `API returned ${response.status}`);
+    }
+
+    const payload = (await response.json()) as PullRequestStatusResponse;
+    return {
+      pullRequest: payload.data,
+    };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unknown API error";
+    return {
+      error: `Could not load PR readiness: ${message}`,
     };
   }
 }
@@ -2359,6 +2601,90 @@ function formatRuntime(runtime: DesiredAgentRuntime): string {
 function formatBranchName(branchName: string): string {
   const compact = branchName.replace(/^agent\//, "");
   return compact.length > 34 ? `${compact.slice(0, 31)}...` : compact;
+}
+
+function formatReadinessStatus(status: PullRequestReadinessStatus): string {
+  const labels: Record<PullRequestReadinessStatus, string> = {
+    blocked: "Blocked",
+    pending: "Pending",
+    ready: "Ready",
+    unknown: "Unknown",
+  };
+  return labels[status];
+}
+
+function formatPullRequestState(
+  pullRequest: PullRequestStatusSummary,
+): string {
+  if (pullRequest.merged) {
+    return "merged";
+  }
+
+  return [pullRequest.state, pullRequest.draft ? "draft" : undefined]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function formatPullRequestBranchPair(
+  pullRequest: PullRequestStatusSummary,
+): string {
+  return [pullRequest.headRef, pullRequest.baseRef]
+    .filter(Boolean)
+    .join(" -> ");
+}
+
+function formatReviewStatus(
+  review: PullRequestStatusSummary["review"],
+): string {
+  if (review.status === "approved") {
+    return `${review.approvals} approved`;
+  }
+  if (review.status === "changes_requested") {
+    return `${review.changesRequested} changes requested`;
+  }
+  if (review.status === "commented") {
+    return `${review.comments} commented`;
+  }
+  if (review.status === "review_required") {
+    return "review required";
+  }
+  return "unknown";
+}
+
+function formatChecksStatus(
+  checks: PullRequestStatusSummary["checks"],
+): string {
+  if (checks.status === "none") {
+    return "none reported";
+  }
+  if (checks.status === "unknown") {
+    return "unknown";
+  }
+
+  return [
+    checks.passed > 0 ? `${checks.passed} passing` : undefined,
+    checks.failed > 0 ? `${checks.failed} failed` : undefined,
+    checks.pending > 0 ? `${checks.pending} pending` : undefined,
+    checks.skipped > 0 ? `${checks.skipped} skipped` : undefined,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function formatMergeability(pullRequest: PullRequestStatusSummary): string {
+  if (pullRequest.mergeable === true) {
+    return pullRequest.mergeableState ?? "mergeable";
+  }
+
+  if (pullRequest.mergeable === false) {
+    return pullRequest.mergeableState ?? "conflict";
+  }
+
+  return pullRequest.mergeableState ?? "calculating";
+}
+
+function formatCheckStatus(check: PullRequestCheckSummary): string {
+  return check.conclusion ?? check.status;
 }
 
 function normalizeRuntimePreference(
