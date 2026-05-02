@@ -160,6 +160,27 @@ type RepositoryOption = {
   isDefault: boolean;
 };
 
+type RepositoryConnectivityStatus = "ok" | "warn" | "error";
+
+type RepositoryConnectivityCheck = {
+  name: string;
+  status: RepositoryConnectivityStatus;
+  message: string;
+};
+
+type RepositoryConnectivityCheckResult = {
+  id: string;
+  projectId?: string;
+  repositoryName: string;
+  status: RepositoryConnectivityStatus;
+  checks: RepositoryConnectivityCheck[];
+  actorId?: string;
+  hasLocalPath?: boolean;
+  pullRequestMode?: string;
+  message: string;
+  createdAt: string;
+};
+
 type ProjectsResponse = {
   data: ProjectOption[];
   meta?: {
@@ -173,6 +194,15 @@ type RepositoriesResponse = {
   meta?: {
     projectId: string;
     defaultRepositoryId?: string;
+    generatedAt: string;
+  };
+};
+
+type RepositoryConnectivityChecksResponse = {
+  data: RepositoryConnectivityCheckResult[];
+  meta?: {
+    limit: number;
+    projectId: string;
     generatedAt: string;
   };
 };
@@ -397,6 +427,7 @@ type DashboardData = {
   integrations: IntegrationHealth;
   projects: ProjectOption[];
   repositories: RepositoryOption[];
+  repositoryConnectivityChecks: RepositoryConnectivityCheckResult[];
   defaultProjectId: string;
   selectedProjectId: string;
   generatedAt?: string;
@@ -1570,6 +1601,9 @@ export default async function DashboardPage({
         ) : (
           <ConfigView
             integrations={dashboard.integrations}
+            repositoryConnectivityChecks={
+              dashboard.repositoryConnectivityChecks
+            }
             repositories={dashboard.repositories}
             selectedProjectId={dashboard.selectedProjectId}
           />
@@ -1590,13 +1624,20 @@ async function fetchDashboardData(
       projectState.defaultProjectId,
     );
     const projectQuery = `projectId=${encodeURIComponent(selectedProjectId)}`;
-    const [response, dispatch, integrations, repositories] = await Promise.all([
+    const [
+      response,
+      dispatch,
+      integrations,
+      repositories,
+      repositoryConnectivityChecks,
+    ] = await Promise.all([
       fetch(`${apiUrl}/work-items?limit=50&${projectQuery}`, {
         cache: "no-store",
       }),
       fetchDispatchControl(selectedProjectId),
       fetchIntegrationHealth(),
       fetchRepositories(selectedProjectId),
+      fetchRepositoryConnectivityChecks(selectedProjectId),
     ]);
 
     if (!response.ok) {
@@ -1610,6 +1651,7 @@ async function fetchDashboardData(
       integrations,
       projects: projectState.projects,
       repositories,
+      repositoryConnectivityChecks,
       defaultProjectId: projectState.defaultProjectId,
       selectedProjectId,
       generatedAt: payload.meta?.generatedAt,
@@ -1624,6 +1666,7 @@ async function fetchDashboardData(
       integrations: createUnavailableIntegrationHealth(),
       projects: [createDefaultProjectOption(fallbackProjectId)],
       repositories: [],
+      repositoryConnectivityChecks: [],
       defaultProjectId: fallbackProjectId,
       selectedProjectId: fallbackProjectId,
       error: `API unavailable at ${apiUrl}: ${message}`,
@@ -1672,6 +1715,29 @@ async function fetchRepositories(
     }
 
     const payload = (await response.json()) as RepositoriesResponse;
+    return payload.data;
+  } catch {
+    return [];
+  }
+}
+
+async function fetchRepositoryConnectivityChecks(
+  projectId: string,
+): Promise<RepositoryConnectivityCheckResult[]> {
+  try {
+    const response = await fetch(
+      `${apiUrl}/repositories/connectivity-checks?projectId=${encodeURIComponent(projectId)}&limit=5`,
+      {
+        cache: "no-store",
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error(`Repository check API returned ${response.status}`);
+    }
+
+    const payload =
+      (await response.json()) as RepositoryConnectivityChecksResponse;
     return payload.data;
   } catch {
     return [];
@@ -2334,10 +2400,12 @@ function ProjectMenu({
 
 function ConfigView({
   integrations,
+  repositoryConnectivityChecks,
   repositories,
   selectedProjectId,
 }: {
   integrations: IntegrationHealth;
+  repositoryConnectivityChecks: RepositoryConnectivityCheckResult[];
   repositories: RepositoryOption[];
   selectedProjectId: string;
 }) {
@@ -2585,6 +2653,8 @@ function ConfigView({
           </div>
         </div>
       </section>
+
+      <RepositoryConnectivityPanel results={repositoryConnectivityChecks} />
 
       <section className="configGrid">
         <div className="panel configPanel">
@@ -2907,6 +2977,92 @@ function ConfigView({
   );
 }
 
+function RepositoryConnectivityPanel({
+  results,
+}: {
+  results: RepositoryConnectivityCheckResult[];
+}) {
+  const latest = results[0];
+
+  return (
+    <section className="panel repositoryCheckPanel">
+      <div className="panelHeader compact">
+        <div>
+          <h2>Repository access checks</h2>
+          <p>
+            {latest
+              ? `${latest.repositoryName} checked ${formatRelativeTime(latest.createdAt)}`
+              : "No checks captured yet"}
+          </p>
+        </div>
+        {latest ? (
+          getRepositoryConnectivityIcon(latest.status, 17)
+        ) : (
+          <ShieldCheck size={17} />
+        )}
+      </div>
+
+      {results.length > 0 ? (
+        <div className="repositoryCheckStack" role="list">
+          {results.map((result) => (
+            <article
+              className={`repositoryCheckItem ${result.status}`}
+              key={result.id}
+              role="listitem"
+            >
+              <div className="repositoryCheckSummary">
+                <div>
+                  <strong>{result.repositoryName}</strong>
+                  <span>
+                    {[
+                      formatRelativeTime(result.createdAt),
+                      result.actorId,
+                      result.pullRequestMode
+                        ? formatPullRequestMode(result.pullRequestMode)
+                        : undefined,
+                      result.hasLocalPath ? "local path" : undefined,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </span>
+                </div>
+                <span className={`eventLevel ${result.status}`}>
+                  {formatRepositoryConnectivityStatus(result.status)}
+                </span>
+              </div>
+
+              {result.checks.length > 0 ? (
+                <div className="repositoryCheckGrid">
+                  {result.checks.map((check) => (
+                    <div
+                      className={`repositoryCheckRow ${check.status}`}
+                      key={`${result.id}-${check.name}`}
+                    >
+                      {getRepositoryConnectivityIcon(check.status, 14)}
+                      <div>
+                        <strong>{formatRepositoryConnectivityCheckName(check.name)}</strong>
+                        <span>{check.message}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="repositoryCheckEmpty">{result.message}</p>
+              )}
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="emptyState compactEmpty">
+          <ShieldCheck size={18} />
+          <strong>No repository checks yet</strong>
+          <span>Use Check access on a repository form to capture a probe.</span>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function WebhookAuditView({
   audit,
   selectedProjectId,
@@ -3142,6 +3298,46 @@ function formatStatus(status: string): string {
 
 function formatPullRequestMode(mode: string | undefined): string {
   return mode ? formatStatus(mode) : "local draft";
+}
+
+function formatRepositoryConnectivityStatus(
+  status: RepositoryConnectivityStatus,
+): string {
+  switch (status) {
+    case "ok":
+      return "ok";
+    case "warn":
+      return "warning";
+    case "error":
+      return "error";
+  }
+}
+
+function formatRepositoryConnectivityCheckName(name: string): string {
+  switch (name) {
+    case "local_path":
+      return "Local path";
+    case "repository_url":
+      return "Repository URL";
+    case "pr_remote":
+      return "PR remote";
+    default:
+      return formatStatus(name);
+  }
+}
+
+function getRepositoryConnectivityIcon(
+  status: RepositoryConnectivityStatus,
+  size: number,
+) {
+  switch (status) {
+    case "ok":
+      return <CheckCircle2 size={size} />;
+    case "warn":
+      return <AlertTriangle size={size} />;
+    case "error":
+      return <XCircle size={size} />;
+  }
 }
 
 function formatArtifactType(type: string): string {

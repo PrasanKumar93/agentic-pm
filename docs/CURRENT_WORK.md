@@ -79,6 +79,7 @@ Date: 2026-04-30
 - Runtime health visibility: `/integrations/health` now reports selected runtime, workflow load status, Codex policy/auth/timeout settings, and Cursor policy/auth settings. Config view shows the active/standby runtime cards and the top health badge includes runtime readiness.
 - Repository archive controls: Config view managed repository cards now expose typed archive confirmation backed by `POST /repositories/:repositoryId/archive`. Archived repos are removed from future routing/default selection and intake lists, while historical work items remain readable and explicit reruns can still resolve their repo metadata.
 - Repository connectivity checks: Config registration/edit forms now include a non-mutating Check access action backed by `POST /repositories/connectivity-check`, validating local path git status, repository URL reachability, default branch visibility, and `github_draft` PR remote/base readiness.
+- Repository connectivity visibility: Config view now reads recent `repository.connectivity_checked` events through `GET /repositories/connectivity-checks` and renders the last per-check local path, repository URL, and PR remote results inline.
 
 ## In Progress
 
@@ -88,7 +89,7 @@ Date: 2026-04-30
 
 - Configure `LINEAR_WEBHOOK_SECRET` and run a real inbound webhook smoke through a public tunnel.
 - Optional outer folder rename after the active tool sandbox/workspace path is refreshed.
-- Inline per-check repository connectivity result rendering beyond the feedback banner summary.
+- Add repository connectivity result filtering per repository once Config has heavier repository fleets.
 
 ## Immediate Execution Order
 
@@ -113,4 +114,5 @@ Date: 2026-04-30
 19. Surface runtime policy settings in Config view health/readiness: done. API health now includes workflow/runtime settings, and the dashboard shows Codex/Cursor policy cards.
 20. Archive managed repositories safely: done. Config cards use typed confirmation, archived repos leave future routing/default selection, and audit events preserve who/why.
 21. Validate repository connectivity before save: done. Check access probes local path, clone/default branch visibility, and GitHub draft PR remote/base readiness without saving config.
-22. Real Linear inbound webhook smoke once `LINEAR_WEBHOOK_SECRET` and a public tunnel are configured.
+22. Render connectivity check details inline: done. Config shows the recent event-backed check results after `Check access`.
+23. Real Linear inbound webhook smoke once `LINEAR_WEBHOOK_SECRET` and a public tunnel are configured.

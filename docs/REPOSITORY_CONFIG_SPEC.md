@@ -105,6 +105,21 @@ Validation:
 - `pullRequest.baseBranch` falls back to the repository default branch.
 - `pullRequest.draft` defaults to `true`.
 
+### `GET /repositories/connectivity-checks`
+
+Returns recent repository connectivity check summaries for the selected project.
+
+Query parameters:
+
+- `projectId`: optional project scope; defaults to the API default project.
+- `limit`: optional count, capped at 25.
+
+Behavior:
+
+- Reads `repository.connectivity_checked` events from the project event stream.
+- Returns newest checks first with repository name, aggregate status, actor, PR mode, local-path presence, and per-check messages.
+- Does not expose secrets or mutate repository configuration.
+
 ## Dashboard
 
 The sidebar `Config` item now opens `?view=config`.
@@ -128,8 +143,9 @@ The form posts through a server action and returns an action banner on success o
 - `PATCH /repositories/:repositoryId` updates an existing repository option.
 - `POST /repositories/:repositoryId/archive` hides an active repository from repository options and records an audit event.
 - `POST /repositories/connectivity-check` reports local path, repository URL, and PR remote readiness without saving.
+- The Config view renders recent `GET /repositories/connectivity-checks` results inline after access checks.
 - The Config view renders in full-width dashboard QA.
 
 ## Follow-Up
 
-- Add optional inline rendering for the full per-check connectivity result instead of only the feedback banner summary.
+- Add optional per-repository filtering or collapse controls if a project accumulates many access checks.

@@ -35,6 +35,7 @@
 - [x] Edit managed repository and PR settings from the dashboard.
 - [x] Archive managed repositories with typed confirmation while preserving history.
 - [x] Check repository local path, clone access, and PR remote readiness from the dashboard.
+- [x] Show recent repository connectivity check details inline in Config.
 
 ## Milestone 3: Linear Loop
 

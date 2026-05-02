@@ -92,6 +92,14 @@ type RepositoryConnectivityBody = RepositoryConfigurationBody & {
   timeoutMs?: number;
 };
 
+type RepositoryConnectivityStatus = "ok" | "warn" | "error";
+
+type RepositoryConnectivityCheckSummary = {
+  name: string;
+  status: RepositoryConnectivityStatus;
+  message: string;
+};
+
 const mongo = await connectMongo(readMongoConfig());
 const collections = getCollections(mongo.db);
 await ensureIndexes(collections);
@@ -524,6 +532,26 @@ app.post("/repositories/connectivity-check", async (request, reply) => {
     },
     meta: {
       action: "repository.connectivity_check",
+      generatedAt: new Date().toISOString(),
+    },
+  };
+});
+
+app.get("/repositories/connectivity-checks", async (request) => {
+  const query = request.query as { limit?: string; projectId?: string };
+  const requestedProjectId = readProjectId(query.projectId) ?? projectId;
+  const limit = Math.min(readPositiveNumber(query.limit, 5), 25);
+  const events = await repository.listProjectEvents({
+    projectId: requestedProjectId,
+    type: "repository.connectivity_checked",
+    limit,
+  });
+
+  return {
+    data: events.map(toRepositoryConnectivityCheckSummary),
+    meta: {
+      limit,
+      projectId: requestedProjectId,
       generatedAt: new Date().toISOString(),
     },
   };
@@ -1344,6 +1372,84 @@ function readPullRequestMode(value: unknown): PullRequestMode | undefined {
   const mode = typeof value === "string" ? value.trim() : undefined;
   return allowedPullRequestModes.has(mode as PullRequestMode)
     ? (mode as PullRequestMode)
+    : undefined;
+}
+
+function toRepositoryConnectivityCheckSummary(event: RunEvent): {
+  id: string;
+  projectId?: string;
+  repositoryName: string;
+  status: RepositoryConnectivityStatus;
+  checks: RepositoryConnectivityCheckSummary[];
+  actorId?: string;
+  hasLocalPath?: boolean;
+  pullRequestMode?: string;
+  message: string;
+  createdAt: Date;
+} {
+  const payload = event.payload ?? {};
+
+  return {
+    id: event.id,
+    projectId: event.projectId,
+    repositoryName:
+      readPayloadText(payload.repositoryName) ?? "Unknown repository",
+    status:
+      readConnectivityStatus(payload.status) ??
+      (event.level === "error"
+        ? "error"
+        : event.level === "warn"
+          ? "warn"
+          : "ok"),
+    checks: Array.isArray(payload.checks)
+      ? payload.checks.flatMap((check) => {
+          const parsed = readConnectivityCheckSummary(check);
+          return parsed ? [parsed] : [];
+        })
+      : [],
+    actorId: readPayloadText(payload.actorId),
+    hasLocalPath:
+      typeof payload.hasLocalPath === "boolean"
+        ? payload.hasLocalPath
+        : undefined,
+    pullRequestMode: readPayloadText(payload.pullRequestMode),
+    message: event.message,
+    createdAt: event.createdAt,
+  };
+}
+
+function readConnectivityCheckSummary(
+  value: unknown,
+): RepositoryConnectivityCheckSummary | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  const name = readPayloadText(record.name);
+  const status = readConnectivityStatus(record.status);
+  const message = readPayloadText(record.message);
+
+  return name && status && message
+    ? {
+        name,
+        status,
+        message,
+      }
+    : undefined;
+}
+
+function readConnectivityStatus(
+  value: unknown,
+): RepositoryConnectivityStatus | undefined {
+  return value === "ok" || value === "warn" || value === "error"
+    ? value
+    : undefined;
+}
+
+function readPayloadText(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
     : undefined;
 }
 

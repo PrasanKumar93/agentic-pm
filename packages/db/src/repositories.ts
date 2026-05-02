@@ -1426,6 +1426,27 @@ export class AgenticRepository {
       .toArray();
   }
 
+  async listProjectEvents(input: {
+    projectId: string;
+    type?: string;
+    limit?: number;
+  }): Promise<RunEvent[]> {
+    const safeLimit = Math.min(Math.max(input.limit ?? 20, 1), 100);
+    const filter: Filter<RunEvent> = {
+      projectId: input.projectId,
+    };
+
+    if (input.type) {
+      filter.type = input.type;
+    }
+
+    return this.collections.runEvents
+      .find(filter)
+      .sort({ createdAt: -1 })
+      .limit(safeLimit)
+      .toArray();
+  }
+
   async listReviewFeedback(
     workItemId: string,
     limit = 20,

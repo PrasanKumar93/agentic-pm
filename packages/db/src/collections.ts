@@ -134,6 +134,7 @@ export async function ensureIndexes(
     collections.runs.createIndex({ workItemId: 1, attempt: -1 }),
     collections.runs.createIndex({ status: 1, lastHeartbeatAt: 1 }),
     collections.runEvents.createIndex({ runId: 1, createdAt: 1 }),
+    collections.runEvents.createIndex({ projectId: 1, type: 1, createdAt: -1 }),
     collections.artifacts.createIndex({ runId: 1, createdAt: 1 }),
     collections.operatorActions.createIndex({ workItemId: 1, createdAt: -1 }),
     collections.dispatchControls.createIndex({ projectId: 1 }, { unique: true }),

@@ -740,6 +740,118 @@ h2 {
   overflow-wrap: anywhere;
 }
 
+.repositoryCheckPanel {
+  display: grid;
+  gap: 14px;
+}
+
+.repositoryCheckStack {
+  display: grid;
+  gap: 10px;
+}
+
+.repositoryCheckItem {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.repositoryCheckItem.ok {
+  border-color: #b8ddcf;
+}
+
+.repositoryCheckItem.warn {
+  border-color: #ecd19d;
+}
+
+.repositoryCheckItem.error {
+  border-color: #efc1c1;
+}
+
+.repositoryCheckSummary {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.repositoryCheckSummary > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.repositoryCheckSummary strong {
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.repositoryCheckSummary span:not(.eventLevel) {
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.repositoryCheckGrid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.repositoryCheckRow {
+  align-items: start;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: auto minmax(0, 1fr);
+  padding: 10px;
+}
+
+.repositoryCheckRow.ok {
+  color: var(--green);
+}
+
+.repositoryCheckRow.warn {
+  color: var(--amber);
+}
+
+.repositoryCheckRow.error {
+  color: var(--red);
+}
+
+.repositoryCheckRow div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.repositoryCheckRow strong {
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.repositoryCheckRow span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.repositoryCheckEmpty {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 0;
+}
+
+.compactEmpty {
+  min-height: 130px;
+}
+
 .repoForm {
   display: grid;
   gap: 10px;
@@ -1979,7 +2091,8 @@ h2 {
 }
 
 .eventLevel.info,
-.eventLevel.debug {
+.eventLevel.debug,
+.eventLevel.ok {
   color: var(--teal);
 }
 
@@ -2025,6 +2138,7 @@ h2 {
   .auditMetrics,
   .configGrid,
   .linearStatusGrid,
+  .repositoryCheckGrid,
   .runtimePolicyGrid,
   .runtimeStatusGrid,
   .contentGrid,
