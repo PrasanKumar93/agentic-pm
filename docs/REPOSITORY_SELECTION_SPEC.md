@@ -18,11 +18,12 @@ Operators can create a local work item against a specific managed repository. Th
   - `defaultBranch`
   - `localPath`
   - `pullRequest`
+  - `archivedAt`, `archivedBy`, and `archiveReason` when soft-archived
 - `issues.repoRefs` stores the selected repository id for local intake issues.
 - `work_items.repositoryId` stores the repository selected for dispatch.
 - `WorkItemSummary.repository` exposes repository name, URL, default branch, and local path to the dashboard.
 
-At API startup, the default project and repository are registered from environment variables:
+At API startup, the default project is ensured and a default repository is registered from environment variables only when the project has no repository records yet:
 
 ```bash
 AGENTIC_PM_PROJECT_ID=project_local
@@ -35,13 +36,13 @@ AGENTIC_PM_REPOSITORY_DEFAULT_BRANCH=main
 AGENTIC_PM_REPOSITORY_LOCAL_PATH=/path/to/repo
 ```
 
-If repository environment variables are omitted, the API registers the current monorepo as a local `file://` repository.
+If repository environment variables are omitted and no repository records exist, the API registers the current monorepo as a local `file://` repository.
 
 ## API
 
 ### `GET /repositories?projectId=<id>`
 
-Returns repository options for the project.
+Returns active repository options for the project. Archived repositories stay in MongoDB for history and explicit reruns, but they are hidden from this response and cannot be selected for new local work items.
 
 ```json
 {
@@ -131,7 +132,7 @@ Validation:
 - `repositoryId` must match a repository in the selected project.
 - `desiredRuntime` may be `default`, `codex`, `cursor`, `fake`, or `generic`.
 
-Repository metadata and PR settings can be edited from the Config view through `PATCH /repositories/:repositoryId`; existing work items keep their `repositoryId` binding while future workspace materialization reads the latest repository settings.
+Repository metadata and PR settings can be edited from the Config view through `PATCH /repositories/:repositoryId`; existing work items keep their `repositoryId` binding while future workspace materialization reads the latest repository settings. Repositories can also be soft-archived from the Config view with typed confirmation; archived repositories are removed from future routing/default selection but remain readable on historical work item summaries.
 
 ## Dashboard
 

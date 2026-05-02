@@ -598,6 +598,7 @@ async function resolveWorkItemRepository(
     const explicitRepository = await repository.getRepository(
       repositoryId,
       workItem.projectId,
+      { includeArchived: true },
     );
     if (explicitRepository) {
       return explicitRepository;

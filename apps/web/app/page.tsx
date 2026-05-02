@@ -1,5 +1,6 @@
 import {
   AlertTriangle,
+  Archive,
   CheckCircle2,
   ChevronDown,
   CirclePause,
@@ -23,6 +24,7 @@ import {
   submitCreateWorkItem,
   submitDispatchAction,
   submitPullRequestLink,
+  submitRepositoryArchive,
   submitRepositoryRegistration,
   submitRepositoryUpdate,
   submitReviewChangeRequest,
@@ -2805,6 +2807,59 @@ function ConfigView({
                       <button title="Save repository changes" type="submit">
                         <Save size={14} />
                         Save changes
+                      </button>
+                    </form>
+                  </details>
+                  <details className="repoArchiveDetails">
+                    <summary>Archive repository</summary>
+                    <form
+                      action={submitRepositoryArchive}
+                      className="repoArchiveForm"
+                    >
+                      <input
+                        name="projectId"
+                        type="hidden"
+                        value={selectedProjectId}
+                      />
+                      <input name="view" type="hidden" value="config" />
+                      <input
+                        name="repositoryId"
+                        type="hidden"
+                        value={repository.id}
+                      />
+                      <input
+                        name="repositoryName"
+                        type="hidden"
+                        value={repository.name}
+                      />
+                      <p className="repoArchiveHint">
+                        Existing work items stay readable; future routing ignores
+                        this repo.
+                      </p>
+                      <label>
+                        <span>Confirm name</span>
+                        <input
+                          maxLength={120}
+                          name="confirmationName"
+                          placeholder={repository.name}
+                          required
+                        />
+                      </label>
+                      <label>
+                        <span>Reason</span>
+                        <input
+                          maxLength={500}
+                          name="archiveReason"
+                          placeholder="optional"
+                        />
+                      </label>
+                      <button
+                        className="dangerButton"
+                        title="Archive repository"
+                        type="submit"
+                      >
+                        <Archive size={14} />
+                        Archive
                       </button>
                     </form>
                   </details>

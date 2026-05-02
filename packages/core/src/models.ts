@@ -64,6 +64,9 @@ export interface RepositoryRef {
   defaultBranch: string;
   localPath?: string;
   pullRequest?: PullRequestSettings;
+  archivedAt?: Date;
+  archivedBy?: string;
+  archiveReason?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -76,6 +79,9 @@ export interface RepositorySummary {
   defaultBranch: string;
   localPath?: string;
   pullRequest?: PullRequestSettings;
+  archivedAt?: Date;
+  archivedBy?: string;
+  archiveReason?: string;
 }
 
 export interface PullRequestSettings {

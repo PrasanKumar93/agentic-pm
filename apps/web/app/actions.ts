@@ -230,6 +230,74 @@ export async function submitRepositoryUpdate(
   redirect(redirectUrl);
 }
 
+export async function submitRepositoryArchive(
+  formData: FormData,
+): Promise<void> {
+  const repositoryId = String(formData.get("repositoryId") ?? "").trim();
+  const repositoryName = String(formData.get("repositoryName") ?? "").trim();
+  const confirmationName = String(
+    formData.get("confirmationName") ?? "",
+  ).trim();
+  const reason = String(formData.get("archiveReason") ?? "").trim();
+  const returnState = {
+    ...readReturnState(formData),
+    view: "config",
+  };
+  let redirectUrl = createFeedbackUrl(
+    "error",
+    `Type ${repositoryName || "the repository name"} to archive this repository.`,
+    returnState,
+  );
+
+  if (
+    isSafeQueryValue(repositoryId) &&
+    repositoryName &&
+    confirmationName === repositoryName
+  ) {
+    try {
+      const response = await fetch(
+        `${apiUrl}/repositories/${repositoryId}/archive`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            actorId: "dashboard",
+            confirmationName,
+            projectId: returnState.projectId,
+            reason,
+          }),
+          cache: "no-store",
+        },
+      );
+
+      const payload = await readActionResponse(response);
+      redirectUrl = response.ok
+        ? createFeedbackUrl(
+            "success",
+            formatRepositoryArchiveSuccess(payload),
+            returnState,
+          )
+        : createFeedbackUrl(
+            "error",
+            payload.error ??
+              `Repository archive failed with HTTP ${response.status}.`,
+            returnState,
+          );
+    } catch (error) {
+      redirectUrl = createFeedbackUrl(
+        "error",
+        formatRequestError("Repository archive failed", error),
+        returnState,
+      );
+    }
+  }
+
+  revalidatePath("/");
+  redirect(redirectUrl);
+}
+
 export async function submitCreateWorkItem(formData: FormData): Promise<void> {
   const title = String(formData.get("title") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim();
@@ -722,6 +790,11 @@ function formatRepositorySuccess(payload: ActionResponse): string {
 function formatRepositoryUpdateSuccess(payload: ActionResponse): string {
   const name = payload.data?.name ?? "repository";
   return `Updated ${name}.`;
+}
+
+function formatRepositoryArchiveSuccess(payload: ActionResponse): string {
+  const name = payload.data?.name ?? "repository";
+  return `Archived ${name}.`;
 }
 
 function formatRequestError(prefix: string, error: unknown): string {

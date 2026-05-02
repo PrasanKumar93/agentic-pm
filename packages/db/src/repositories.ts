@@ -166,13 +166,25 @@ export class AgenticRepository {
       updatedAt: now,
       createdAt: repository.createdAt ?? now,
     };
-    const { id, createdAt, ...mutableRepository } = nextRepository;
+    const {
+      id,
+      createdAt,
+      archivedAt: _archivedAt,
+      archivedBy: _archivedBy,
+      archiveReason: _archiveReason,
+      ...mutableRepository
+    } = nextRepository;
 
     await this.collections.repositories.updateOne(
       { id },
       {
         $set: mutableRepository,
         $setOnInsert: { id, createdAt },
+        $unset: {
+          archivedAt: "",
+          archivedBy: "",
+          archiveReason: "",
+        },
       },
       { upsert: true },
     );
@@ -192,6 +204,103 @@ export class AgenticRepository {
     const stored = await this.collections.repositories.findOne({ id });
     if (!stored) {
       throw new Error(`Repository ${repository.name} was not found after upsert`);
+    }
+
+    return stored;
+  }
+
+  async hasRepository(projectId: string): Promise<boolean> {
+    const storedRepository = await this.collections.repositories.findOne(
+      { projectId },
+      { projection: { _id: 0, id: 1 } },
+    );
+    return Boolean(storedRepository);
+  }
+
+  async archiveRepository(input: {
+    projectId: string;
+    repositoryId: string;
+    actorId?: string;
+    reason?: string;
+  }): Promise<RepositoryRef> {
+    const existing = await this.getRepository(input.repositoryId, input.projectId, {
+      includeArchived: true,
+    });
+    if (!existing) {
+      throw new RepositoryNotFoundError(input.repositoryId);
+    }
+
+    const now = new Date();
+    const actorId = input.actorId || "local-operator";
+
+    await this.collections.projects.updateOne(
+      { id: input.projectId },
+      {
+        $pull: {
+          repositoryIds: existing.id,
+        },
+        $set: {
+          updatedAt: now,
+        },
+      },
+    );
+
+    if (!existing.archivedAt) {
+      const archivePatch: {
+        archivedAt: Date;
+        archivedBy: string;
+        archiveReason?: string;
+        updatedAt: Date;
+      } = {
+        archivedAt: now,
+        archivedBy: actorId,
+        updatedAt: now,
+      };
+      if (input.reason) {
+        archivePatch.archiveReason = input.reason;
+      }
+
+      await this.collections.repositories.updateOne(
+        { id: existing.id, projectId: input.projectId },
+        {
+          $set: archivePatch,
+        },
+      );
+
+      await this.collections.operatorActions.insertOne({
+        id: createId("act"),
+        projectId: input.projectId,
+        actorId,
+        action: "repository.archive",
+        payload: {
+          repositoryId: existing.id,
+          repositoryName: existing.name,
+          reason: input.reason,
+        },
+        createdAt: now,
+      });
+
+      await this.appendEvent({
+        projectId: input.projectId,
+        type: "repository.archived",
+        level: "info",
+        message: `${actorId} archived ${existing.name}`,
+        payload: {
+          actorId,
+          repositoryId: existing.id,
+          repositoryName: existing.name,
+          reason: input.reason,
+        },
+        createdAt: now,
+      });
+    }
+
+    const stored = await this.collections.repositories.findOne({
+      id: existing.id,
+      projectId: input.projectId,
+    });
+    if (!stored) {
+      throw new RepositoryNotFoundError(input.repositoryId);
     }
 
     return stored;
@@ -278,11 +387,17 @@ export class AgenticRepository {
   ): Promise<string | undefined> {
     const explicitRepositoryId = issue.repoRefs[0];
     if (explicitRepositoryId) {
-      return explicitRepositoryId;
+      const explicitRepository = await this.getRepository(
+        explicitRepositoryId,
+        projectId,
+      );
+      if (explicitRepository) {
+        return explicitRepository.id;
+      }
     }
 
-    const project = await this.collections.projects.findOne({ id: projectId });
-    return project?.repositoryIds[0];
+    const defaultRepository = await this.getDefaultRepository(projectId);
+    return defaultRepository?.id;
   }
 
   async getIssue(issueId: string): Promise<Issue | null> {
@@ -354,11 +469,21 @@ export class AgenticRepository {
   async listRepositoryOptions(
     projectId: string,
   ): Promise<RepositoryOption[]> {
-    const repositories = await this.collections.repositories
-      .find({ projectId }, { projection: { _id: 0 } })
-      .sort({ name: 1 })
-      .toArray();
-    const defaultRepositoryId = repositories[0]?.id;
+    const [project, repositories] = await Promise.all([
+      this.collections.projects.findOne({ id: projectId }),
+      this.collections.repositories
+        .find(
+          { projectId, archivedAt: { $exists: false } },
+          { projection: { _id: 0 } },
+        )
+        .sort({ name: 1 })
+        .toArray(),
+    ]);
+    const repositoryIds = new Set(repositories.map((repo) => repo.id));
+    const defaultRepositoryId =
+      project?.repositoryIds.find((repositoryId) =>
+        repositoryIds.has(repositoryId),
+      ) ?? repositories[0]?.id;
 
     const options = await Promise.all(
       repositories.map(async (repository) => ({
@@ -383,19 +508,41 @@ export class AgenticRepository {
   async getRepository(
     repositoryId: string,
     projectId?: string,
+    options: { includeArchived?: boolean } = {},
   ): Promise<RepositoryRef | null> {
-    return this.collections.repositories.findOne(
-      projectId ? { id: repositoryId, projectId } : { id: repositoryId },
-    );
+    const filter: Filter<RepositoryRef> = projectId
+      ? { id: repositoryId, projectId }
+      : { id: repositoryId };
+    if (!options.includeArchived) {
+      filter.archivedAt = { $exists: false };
+    }
+    return this.collections.repositories.findOne(filter);
   }
 
   async getDefaultRepository(
     projectId: string,
   ): Promise<RepositoryRef | null> {
-    return this.collections.repositories.findOne(
-      { projectId },
-      { sort: { name: 1 } },
+    const [project, repositories] = await Promise.all([
+      this.collections.projects.findOne({ id: projectId }),
+      this.collections.repositories
+        .find({ projectId, archivedAt: { $exists: false } })
+        .sort({ name: 1 })
+        .toArray(),
+    ]);
+    if (repositories.length === 0) {
+      return null;
+    }
+
+    const repositoriesById = new Map(
+      repositories.map((repository) => [repository.id, repository]),
     );
+    const preferredRepositoryId = project?.repositoryIds.find((repositoryId) =>
+      repositoriesById.has(repositoryId),
+    );
+
+    return preferredRepositoryId
+      ? repositoriesById.get(preferredRepositoryId) ?? repositories[0]
+      : repositories[0];
   }
 
   async createLocalWorkItem(input: {
@@ -1787,6 +1934,9 @@ function toRepositorySummary(
     defaultBranch: repositoryRef.defaultBranch,
     localPath: repositoryRef.localPath,
     pullRequest: repositoryRef.pullRequest,
+    archivedAt: repositoryRef.archivedAt,
+    archivedBy: repositoryRef.archivedBy,
+    archiveReason: repositoryRef.archiveReason,
   };
 }
 

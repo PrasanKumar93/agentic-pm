@@ -844,26 +844,34 @@ h2 {
   overflow-wrap: anywhere;
 }
 
-.repoEditDetails {
+.repoEditDetails,
+.repoArchiveDetails {
   border-top: 1px solid var(--border);
   padding-top: 10px;
 }
 
-.repoEditDetails summary {
+.repoEditDetails summary,
+.repoArchiveDetails summary {
   color: var(--teal);
   cursor: pointer;
   font-size: 12px;
   font-weight: 800;
 }
 
-.repoEditForm {
+.repoArchiveDetails summary {
+  color: var(--red);
+}
+
+.repoEditForm,
+.repoArchiveForm {
   display: grid;
   gap: 9px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   margin-top: 10px;
 }
 
-.repoEditForm label {
+.repoEditForm label,
+.repoArchiveForm label {
   display: grid;
   gap: 5px;
   min-width: 0;
@@ -873,7 +881,8 @@ h2 {
   grid-column: 1 / -1;
 }
 
-.repoEditForm span {
+.repoEditForm span,
+.repoArchiveForm span {
   color: var(--muted);
   font-size: 11px;
   font-weight: 700;
@@ -881,7 +890,8 @@ h2 {
 }
 
 .repoEditForm input,
-.repoEditForm select {
+.repoEditForm select,
+.repoArchiveForm input {
   background: #fff;
   border: 1px solid var(--border);
   border-radius: 7px;
@@ -905,7 +915,8 @@ h2 {
   width: 16px;
 }
 
-.repoEditForm button {
+.repoEditForm button,
+.repoArchiveForm button {
   align-items: center;
   background: var(--teal);
   border: 1px solid var(--teal);
@@ -919,6 +930,18 @@ h2 {
   height: 32px;
   justify-content: center;
   padding: 0 10px;
+}
+
+.repoArchiveHint {
+  color: var(--muted);
+  font-size: 12px;
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.repoArchiveForm button.dangerButton {
+  background: #b4232c;
+  border-color: #b4232c;
 }
 
 .auditMetrics {

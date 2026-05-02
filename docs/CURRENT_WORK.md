@@ -77,17 +77,17 @@ Date: 2026-04-30
 - Inline repository editing: Config view managed repository cards now expose edit forms backed by `PATCH /repositories/:repositoryId`, so name, URL, default branch, local path, and PR settings can be updated without re-registering the repository or editing MongoDB directly.
 - Codex runtime policy hardening: Codex approval policy, sandbox mode, and skip-git-repo-check are now typed workflow/env settings that inject into CLI args safely, while respecting explicit `CODEX_ARGS`. Added argument-builder tests so workspace, model, reasoning, sandbox, and approval flags do not duplicate or land on the wrong side of `exec`.
 - Runtime health visibility: `/integrations/health` now reports selected runtime, workflow load status, Codex policy/auth/timeout settings, and Cursor policy/auth settings. Config view shows the active/standby runtime cards and the top health badge includes runtime readiness.
+- Repository archive controls: Config view managed repository cards now expose typed archive confirmation backed by `POST /repositories/:repositoryId/archive`. Archived repos are removed from future routing/default selection and intake lists, while historical work items remain readable and explicit reruns can still resolve their repo metadata.
 
 ## In Progress
 
-- Continue toward real inbound Linear webhook smoke and repository configuration polish.
+- Continue toward real inbound Linear webhook smoke and repository connectivity polish.
 
 ## Next Queue
 
 - Configure `LINEAR_WEBHOOK_SECRET` and run a real inbound webhook smoke through a public tunnel.
-- Repository edit/archive controls with explicit confirmation.
 - Optional outer folder rename after the active tool sandbox/workspace path is refreshed.
-- Repository archive controls with explicit confirmation.
+- Repository connectivity validation for local paths, clone access, and PR remote readiness.
 
 ## Immediate Execution Order
 
@@ -110,4 +110,5 @@ Date: 2026-04-30
 17. Inline repository editing: done. Config cards use `PATCH /repositories/:repositoryId` and server actions to update repository and PR settings in place.
 18. Bake writable Codex CLI sandbox config into runtime settings: done. Codex now injects approval/sandbox/skip-git settings from workflow/env with tests.
 19. Surface runtime policy settings in Config view health/readiness: done. API health now includes workflow/runtime settings, and the dashboard shows Codex/Cursor policy cards.
-20. Real Linear inbound webhook smoke once `LINEAR_WEBHOOK_SECRET` and a public tunnel are configured.
+20. Archive managed repositories safely: done. Config cards use typed confirmation, archived repos leave future routing/default selection, and audit events preserve who/why.
+21. Real Linear inbound webhook smoke once `LINEAR_WEBHOOK_SECRET` and a public tunnel are configured.

@@ -80,6 +80,13 @@ type RepositoryConfigurationBody = {
   url?: string;
 };
 
+type RepositoryArchiveBody = {
+  actorId?: string;
+  confirmationName?: string;
+  projectId?: string;
+  reason?: string;
+};
+
 const mongo = await connectMongo(readMongoConfig());
 const collections = getCollections(mongo.db);
 await ensureIndexes(collections);
@@ -90,15 +97,7 @@ const defaultRepository = readDefaultRepositoryRef(
   projectSlug,
   repoRoot,
 );
-await repository.ensureProject({
-  id: projectId,
-  name: process.env.AGENTIC_PM_PROJECT_NAME ?? formatProjectName(projectId),
-  slug: projectSlug,
-  trackerKind: readTrackerKind(),
-  repositoryIds: [defaultRepository.id],
-  workflowPath: process.env.AGENTIC_PM_WORKFLOW_ROOT,
-});
-await repository.ensureRepository(defaultRepository);
+await ensureDefaultRepositoryForProject(projectId);
 const app = Fastify({
   logger: true,
 });
@@ -334,13 +333,13 @@ app.get("/repositories", async (request) => {
     readProjectId((request.query as { projectId?: string }).projectId) ??
     projectId;
   await ensureDefaultRepositoryForProject(requestedProjectId);
+  const data = await repository.listRepositoryOptions(requestedProjectId);
 
   return {
-    data: await repository.listRepositoryOptions(requestedProjectId),
+    data,
     meta: {
       projectId: requestedProjectId,
-      defaultRepositoryId:
-        requestedProjectId === projectId ? defaultRepository.id : undefined,
+      defaultRepositoryId: data.find((option) => option.isDefault)?.id,
       generatedAt: new Date().toISOString(),
     },
   };
@@ -469,6 +468,52 @@ app.patch("/repositories/:repositoryId", async (request, reply) => {
     data: data ?? repositoryRef,
     meta: {
       action: "repository.update",
+      projectId: requestedProjectId,
+      generatedAt: new Date().toISOString(),
+    },
+  };
+});
+
+app.post("/repositories/:repositoryId/archive", async (request, reply) => {
+  const { repositoryId } = request.params as { repositoryId: string };
+  const body = (request.body ?? {}) as RepositoryArchiveBody;
+  const requestedProjectId = readProjectId(body.projectId) ?? projectId;
+  const safeRepositoryId = readRepositoryId(repositoryId);
+
+  if (!safeRepositoryId) {
+    return reply.code(400).send({
+      error: "A valid repository id is required.",
+    });
+  }
+
+  const existing = await repository.getRepository(
+    safeRepositoryId,
+    requestedProjectId,
+  );
+  if (!existing) {
+    return reply.code(404).send({
+      error: `Repository not found: ${safeRepositoryId}`,
+    });
+  }
+
+  const confirmationName = readRequiredText(body.confirmationName, 120);
+  if (confirmationName !== existing.name) {
+    return reply.code(400).send({
+      error: `Type ${existing.name} to archive this repository.`,
+    });
+  }
+
+  const repositoryRef = await repository.archiveRepository({
+    projectId: requestedProjectId,
+    repositoryId: existing.id,
+    actorId: body.actorId,
+    reason: readOptionalText(body.reason, 500),
+  });
+
+  return {
+    data: repositoryRef,
+    meta: {
+      action: "repository.archive",
       projectId: requestedProjectId,
       generatedAt: new Date().toISOString(),
     },
@@ -1348,9 +1393,16 @@ async function ensureDefaultRepositoryForProject(
         : formatProjectName(selectedProjectId),
     slug: selectedProjectSlug,
     trackerKind: readTrackerKind(),
-    repositoryIds: [selectedDefaultRepository.id],
     workflowPath: process.env.AGENTIC_PM_WORKFLOW_ROOT,
   });
+
+  if (await repository.hasRepository(selectedProjectId)) {
+    return (
+      (await repository.getDefaultRepository(selectedProjectId)) ??
+      selectedDefaultRepository
+    );
+  }
+
   return repository.ensureRepository(selectedDefaultRepository);
 }
 
