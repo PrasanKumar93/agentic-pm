@@ -1,11 +1,15 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { basename } from "node:path";
+import { basename, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import cors from "@fastify/cors";
 import { config as loadDotenv } from "dotenv";
 import Fastify, { type FastifyRequest } from "fastify";
-import { readResolvedTrackerConfig } from "@agentic-pm/config";
+import {
+  loadWorkflowDocument,
+  readResolvedTrackerConfig,
+  type WorkflowDocument,
+} from "@agentic-pm/config";
 import type {
   Artifact,
   ArtifactType,
@@ -48,6 +52,9 @@ const host = process.env.API_HOST ?? "0.0.0.0";
 const port = Number(process.env.API_PORT ?? 4000);
 const projectId = process.env.AGENTIC_PM_PROJECT_ID ?? "project_local";
 const projectSlug = process.env.AGENTIC_PM_PROJECT_SLUG ?? "local";
+const workflowRoot = resolve(
+  process.env.AGENTIC_PM_WORKFLOW_ROOT ?? `${repoRoot}/examples/workflow`,
+);
 const trackerConfig = readResolvedTrackerConfig();
 const linearConfig = trackerConfig.linear;
 const linearWebhookSecret = process.env.LINEAR_WEBHOOK_SECRET;
@@ -153,6 +160,44 @@ type LinearVerificationHealth = {
   missingStateNames: string[];
   availableStateNames: string[];
   error?: string;
+};
+
+type RuntimeHealth = {
+  kind: DesiredAgentRuntime;
+  status: IntegrationHealthStatus;
+  message: string;
+  configError?: string;
+  workflow: {
+    root: string;
+    loaded: boolean;
+    path?: string;
+    error?: string;
+  };
+  codex: {
+    enabled: boolean;
+    command: string;
+    args: string[];
+    approvalPolicy?: string;
+    sandbox?: string;
+    skipGitRepoCheck: boolean;
+    model?: string;
+    reasoningEffort?: string;
+    apiKeyConfigured: boolean;
+    apiKeySource?: "CODEX_API_KEY" | "OPENAI_API_KEY";
+    turnTimeoutMs: number;
+    stallTimeoutMs: number;
+  };
+  cursor: {
+    enabled: boolean;
+    command: string;
+    args?: string[];
+    outputFormat: "text" | "json" | "stream-json";
+    sandbox?: "enabled" | "disabled";
+    trustWorkspace: boolean;
+    force: boolean;
+    model?: string;
+    apiKeyConfigured: boolean;
+  };
 };
 
 type OperatorTrackerSyncResult =
@@ -1065,6 +1110,23 @@ function readPositiveNumber(
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function readBoolean(value: string | undefined, fallback: boolean): boolean {
+  if (!value) {
+    return fallback;
+  }
+
+  return ["1", "true", "yes", "on"].includes(value.toLowerCase());
+}
+
+function readRuntimeKind(): DesiredAgentRuntime {
+  const requestedRuntime = process.env.AGENT_RUNTIME;
+  return requestedRuntime === "codex" ||
+    requestedRuntime === "cursor" ||
+    requestedRuntime === "generic"
+    ? requestedRuntime
+    : "fake";
+}
+
 function readProjectId(value: string | undefined): string | undefined {
   const projectId = value?.trim();
   return projectId && /^[A-Za-z0-9_.:-]{1,128}$/.test(projectId)
@@ -1093,6 +1155,66 @@ function readOptionalText(
 ): string | undefined {
   const trimmed = typeof value === "string" ? value.trim() : undefined;
   return trimmed ? trimmed.slice(0, maxLength) : undefined;
+}
+
+function readOptionalEnvText(
+  value: string | undefined,
+  fallback?: string,
+): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed || fallback;
+}
+
+function readCodexApiKeySource(): {
+  source?: "CODEX_API_KEY" | "OPENAI_API_KEY";
+} {
+  if (process.env.CODEX_API_KEY?.trim()) {
+    return { source: "CODEX_API_KEY" };
+  }
+
+  if (process.env.OPENAI_API_KEY?.trim()) {
+    return { source: "OPENAI_API_KEY" };
+  }
+
+  return {};
+}
+
+function parseCommandArgs(
+  value: string | undefined,
+  fallback: string[],
+): string[] {
+  return parseOptionalCommandArgs(value) ?? fallback;
+}
+
+function parseOptionalCommandArgs(value: string | undefined): string[] | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  if (trimmed.startsWith("[")) {
+    const parsed = JSON.parse(trimmed);
+    if (!Array.isArray(parsed) || !parsed.every((item) => typeof item === "string")) {
+      throw new Error("Command args JSON must be an array of strings.");
+    }
+    return parsed;
+  }
+
+  return trimmed.split(/\s+/);
+}
+
+function parseCursorOutputFormat(
+  value: string | undefined,
+): "text" | "json" | "stream-json" {
+  return value === "text" || value === "json" || value === "stream-json"
+    ? value
+    : "stream-json";
+}
+
+function parseCursorSandbox(
+  value: string | undefined,
+): "enabled" | "disabled" | undefined {
+  return value === "enabled" || value === "disabled" ? value : undefined;
 }
 
 function readPullRequestSettings(
@@ -1437,6 +1559,7 @@ async function appendTrackerSyncEvent(input: {
 
 async function buildIntegrationHealth() {
   const trackerKind = readTrackerKind();
+  const runtime = await buildRuntimeHealth();
   const linearApiKey = process.env.LINEAR_API_KEY?.trim();
   const linearTeamKey = linearConfig.teamKey;
   const linearApiKeyConfigured = Boolean(linearApiKey);
@@ -1566,7 +1689,123 @@ async function buildIntegrationHealth() {
       cancelledState: linearCancelledState,
       verification,
     },
+    runtime,
   };
+}
+
+async function buildRuntimeHealth(): Promise<RuntimeHealth> {
+  const runtimeKind = readRuntimeKind();
+  const workflowResult = await loadWorkflowForHealth();
+  const codexConfig = workflowResult.workflow?.config.codex ?? {
+    command: "codex",
+    args: ["exec", "--json", "-"],
+    approval_policy: "never",
+    sandbox: "workspace-write",
+    skip_git_repo_check: false,
+    turn_timeout_ms: 3_600_000,
+    stall_timeout_ms: 300_000,
+  };
+  const codexApiKey = readCodexApiKeySource();
+  let codexArgs = codexConfig.args;
+  let cursorArgs: string[] | undefined;
+  let configError: string | undefined;
+  try {
+    codexArgs = parseCommandArgs(process.env.CODEX_ARGS, codexConfig.args);
+    cursorArgs = parseOptionalCommandArgs(process.env.CURSOR_ARGS);
+  } catch (error) {
+    configError = sanitizeIntegrationError(error);
+  }
+  const cursorApiKeyConfigured = Boolean(process.env.CURSOR_API_KEY?.trim());
+  const turnTimeoutMs = readPositiveNumber(
+    process.env.AGENT_RUNTIME_TURN_TIMEOUT_MS ??
+      process.env.CODEX_TURN_TIMEOUT_MS,
+    codexConfig.turn_timeout_ms,
+  );
+  const stallTimeoutMs = readPositiveNumber(
+    process.env.AGENT_RUNTIME_STALL_TIMEOUT_MS ??
+      process.env.CODEX_STALL_TIMEOUT_MS,
+    codexConfig.stall_timeout_ms,
+  );
+
+  let status: IntegrationHealthStatus = workflowResult.error ? "error" : "ok";
+  let message = `Using ${runtimeKind} runtime`;
+
+  if (workflowResult.error) {
+    message = "Runtime workflow could not be loaded";
+  } else if (configError) {
+    status = "error";
+    message = "Runtime args config is invalid";
+  } else if (runtimeKind === "codex" && !codexApiKey.source) {
+    status = "warn";
+    message = "Codex selected; relying on CLI login";
+  } else if (runtimeKind === "cursor" && !cursorApiKeyConfigured) {
+    status = "warn";
+    message = "Cursor selected; relying on CLI login";
+  }
+
+  return {
+    kind: runtimeKind,
+    status,
+    message,
+    configError,
+    workflow: {
+      root: workflowRoot,
+      loaded: Boolean(workflowResult.workflow),
+      path: workflowResult.workflow?.path,
+      error: workflowResult.error,
+    },
+    codex: {
+      enabled: runtimeKind === "codex",
+      command: process.env.CODEX_COMMAND ?? codexConfig.command,
+      args: codexArgs,
+      approvalPolicy: readOptionalEnvText(
+        process.env.CODEX_APPROVAL_POLICY ??
+          process.env.CODEX_ASK_FOR_APPROVAL,
+        codexConfig.approval_policy,
+      ),
+      sandbox: readOptionalEnvText(
+        process.env.CODEX_SANDBOX ?? process.env.CODEX_SANDBOX_MODE,
+        codexConfig.sandbox,
+      ),
+      skipGitRepoCheck: readBoolean(
+        process.env.CODEX_SKIP_GIT_REPO_CHECK,
+        codexConfig.skip_git_repo_check,
+      ),
+      model: readOptionalEnvText(process.env.CODEX_MODEL),
+      reasoningEffort: readOptionalEnvText(process.env.CODEX_REASONING_EFFORT),
+      apiKeyConfigured: Boolean(codexApiKey.source),
+      apiKeySource: codexApiKey.source,
+      turnTimeoutMs,
+      stallTimeoutMs,
+    },
+    cursor: {
+      enabled: runtimeKind === "cursor",
+      command: readOptionalEnvText(process.env.CURSOR_COMMAND, "cursor-agent") ??
+        "cursor-agent",
+      args: cursorArgs,
+      outputFormat: parseCursorOutputFormat(process.env.CURSOR_OUTPUT_FORMAT),
+      sandbox: parseCursorSandbox(process.env.CURSOR_SANDBOX),
+      trustWorkspace: readBoolean(process.env.CURSOR_TRUST_WORKSPACE, false),
+      force: readBoolean(process.env.CURSOR_FORCE, false),
+      model: readOptionalEnvText(process.env.CURSOR_MODEL),
+      apiKeyConfigured: cursorApiKeyConfigured,
+    },
+  };
+}
+
+async function loadWorkflowForHealth(): Promise<{
+  workflow?: WorkflowDocument;
+  error?: string;
+}> {
+  try {
+    return {
+      workflow: await loadWorkflowDocument(workflowRoot),
+    };
+  } catch (error) {
+    return {
+      error: sanitizeIntegrationError(error),
+    };
+  }
 }
 
 function uniqueTextValues(values: string[]): string[] {

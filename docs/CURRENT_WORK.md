@@ -76,6 +76,7 @@ Date: 2026-04-30
 - Manual completion gate observability: review-state work items now show a PR-aware Manual completion card in run detail, remove `complete` from icon-only table quick actions, disable completion for blocked/pending/unknown linked GitHub PRs, allow local-only artifacts with a manual warning, and treat already merged GitHub PRs as ready for Symphony completion.
 - Inline repository editing: Config view managed repository cards now expose edit forms backed by `PATCH /repositories/:repositoryId`, so name, URL, default branch, local path, and PR settings can be updated without re-registering the repository or editing MongoDB directly.
 - Codex runtime policy hardening: Codex approval policy, sandbox mode, and skip-git-repo-check are now typed workflow/env settings that inject into CLI args safely, while respecting explicit `CODEX_ARGS`. Added argument-builder tests so workspace, model, reasoning, sandbox, and approval flags do not duplicate or land on the wrong side of `exec`.
+- Runtime health visibility: `/integrations/health` now reports selected runtime, workflow load status, Codex policy/auth/timeout settings, and Cursor policy/auth settings. Config view shows the active/standby runtime cards and the top health badge includes runtime readiness.
 
 ## In Progress
 
@@ -87,7 +88,6 @@ Date: 2026-04-30
 - Repository edit/archive controls with explicit confirmation.
 - Optional outer folder rename after the active tool sandbox/workspace path is refreshed.
 - Repository archive controls with explicit confirmation.
-- Surface runtime policy settings in Config view health/readiness.
 
 ## Immediate Execution Order
 
@@ -109,4 +109,5 @@ Date: 2026-04-30
 16. Gate visible manual completion with PR readiness evidence: done. The run detail panel owns completion with blocker reasons, and row quick actions no longer expose icon-only completion.
 17. Inline repository editing: done. Config cards use `PATCH /repositories/:repositoryId` and server actions to update repository and PR settings in place.
 18. Bake writable Codex CLI sandbox config into runtime settings: done. Codex now injects approval/sandbox/skip-git settings from workflow/env with tests.
-19. Real Linear inbound webhook smoke once `LINEAR_WEBHOOK_SECRET` and a public tunnel are configured.
+19. Surface runtime policy settings in Config view health/readiness: done. API health now includes workflow/runtime settings, and the dashboard shows Codex/Cursor policy cards.
+20. Real Linear inbound webhook smoke once `LINEAR_WEBHOOK_SECRET` and a public tunnel are configured.

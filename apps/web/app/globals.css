@@ -562,10 +562,21 @@ h2 {
   gap: 14px;
 }
 
+.runtimeConfigPanel {
+  display: grid;
+  gap: 14px;
+}
+
 .linearStatusGrid {
   display: grid;
   gap: 10px;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.runtimeStatusGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 0.75fr) minmax(0, 1.5fr) minmax(0, 0.75fr);
 }
 
 .linearStatusCard {
@@ -658,6 +669,74 @@ h2 {
   color: var(--text);
   font-size: 13px;
   line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.runtimePolicyGrid {
+  align-items: start;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.runtimePolicy {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.runtimePolicy.active {
+  background: var(--teal-soft);
+  border-color: #b8ddcf;
+}
+
+.runtimePolicyHeader {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.runtimePolicyHeader strong {
+  font-size: 16px;
+}
+
+.runtimePolicyHeader span {
+  background: #f3f5f3;
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  padding: 4px 8px;
+  text-transform: uppercase;
+}
+
+.runtimePolicy dl {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+
+.runtimePolicy dl div {
+  min-width: 0;
+}
+
+.runtimePolicy dt {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.runtimePolicy dd {
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.3;
+  margin: 3px 0 0;
   overflow-wrap: anywhere;
 }
 
@@ -1910,6 +1989,8 @@ h2 {
   .auditMetrics,
   .configGrid,
   .linearStatusGrid,
+  .runtimePolicyGrid,
+  .runtimeStatusGrid,
   .contentGrid,
   .metrics {
     grid-template-columns: 1fr;

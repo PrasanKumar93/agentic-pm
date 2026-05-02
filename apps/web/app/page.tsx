@@ -230,6 +230,43 @@ type IntegrationHealth = {
       error?: string;
     };
   };
+  runtime: {
+    kind: DesiredAgentRuntime;
+    status: IntegrationHealthStatus;
+    message: string;
+    configError?: string;
+    workflow: {
+      root: string;
+      loaded: boolean;
+      path?: string;
+      error?: string;
+    };
+    codex: {
+      enabled: boolean;
+      command: string;
+      args: string[];
+      approvalPolicy?: string;
+      sandbox?: string;
+      skipGitRepoCheck: boolean;
+      model?: string;
+      reasoningEffort?: string;
+      apiKeyConfigured: boolean;
+      apiKeySource?: "CODEX_API_KEY" | "OPENAI_API_KEY";
+      turnTimeoutMs: number;
+      stallTimeoutMs: number;
+    };
+    cursor: {
+      enabled: boolean;
+      command: string;
+      args?: string[];
+      outputFormat: "text" | "json" | "stream-json";
+      sandbox?: "enabled" | "disabled";
+      trustWorkspace: boolean;
+      force: boolean;
+      model?: string;
+      apiKeyConfigured: boolean;
+    };
+  };
 };
 
 type IntegrationHealthResponse = {
@@ -1867,6 +1904,36 @@ function createUnavailableIntegrationHealth(): IntegrationHealth {
       doneState: "Unknown",
       cancelledState: "Unknown",
     },
+    runtime: {
+      kind: "fake",
+      status: "error",
+      message: "Runtime health unavailable",
+      configError: "API unavailable",
+      workflow: {
+        root: "unknown",
+        loaded: false,
+        error: "API unavailable",
+      },
+      codex: {
+        enabled: false,
+        command: "codex",
+        args: ["exec", "--json", "-"],
+        approvalPolicy: "never",
+        sandbox: "workspace-write",
+        skipGitRepoCheck: false,
+        apiKeyConfigured: false,
+        turnTimeoutMs: 0,
+        stallTimeoutMs: 0,
+      },
+      cursor: {
+        enabled: false,
+        command: "cursor-agent",
+        outputFormat: "stream-json",
+        trustWorkspace: false,
+        force: false,
+        apiKeyConfigured: false,
+      },
+    },
   };
 }
 
@@ -2387,6 +2454,135 @@ function ConfigView({
         </div>
       </section>
 
+      <section className="panel runtimeConfigPanel">
+        <div className="panelHeader compact">
+          <div>
+            <h2>Runtime policy</h2>
+            <p>{integrations.runtime.message}</p>
+          </div>
+          {integrations.runtime.status === "error" ? (
+            <AlertTriangle size={17} />
+          ) : (
+            <ShieldCheck size={17} />
+          )}
+        </div>
+
+        <div className="runtimeStatusGrid">
+          <div className={`linearStatusCard ${integrations.runtime.status}`}>
+            <span>Selected runtime</span>
+            <strong>{formatRuntime(integrations.runtime.kind)}</strong>
+            <small>{integrations.runtime.workflow.loaded ? "workflow loaded" : "workflow missing"}</small>
+          </div>
+          <div className="linearStatusCard">
+            <span>Workflow root</span>
+            <strong>{shortenPath(integrations.runtime.workflow.root)}</strong>
+            <small>{integrations.runtime.workflow.path ? shortenPath(integrations.runtime.workflow.path) : "default path"}</small>
+          </div>
+          <div className="linearStatusCard">
+            <span>Turn timeout</span>
+            <strong>{formatDurationMs(integrations.runtime.codex.turnTimeoutMs)}</strong>
+            <small>stall {formatDurationMs(integrations.runtime.codex.stallTimeoutMs)}</small>
+          </div>
+        </div>
+
+        {integrations.runtime.workflow.error || integrations.runtime.configError ? (
+          <div className="linearError">
+            {integrations.runtime.workflow.error ?? integrations.runtime.configError}
+          </div>
+        ) : null}
+
+        <div className="runtimePolicyGrid">
+          <div className={integrations.runtime.codex.enabled ? "runtimePolicy active" : "runtimePolicy"}>
+            <div className="runtimePolicyHeader">
+              <strong>Codex</strong>
+              <span>{integrations.runtime.codex.enabled ? "active" : "standby"}</span>
+            </div>
+            <dl>
+              <div>
+                <dt>Command</dt>
+                <dd>{integrations.runtime.codex.command}</dd>
+              </div>
+              <div>
+                <dt>Args</dt>
+                <dd>{integrations.runtime.codex.args.join(" ")}</dd>
+              </div>
+              <div>
+                <dt>Approval</dt>
+                <dd>{integrations.runtime.codex.approvalPolicy ?? "default"}</dd>
+              </div>
+              <div>
+                <dt>Sandbox</dt>
+                <dd>{integrations.runtime.codex.sandbox ?? "default"}</dd>
+              </div>
+              <div>
+                <dt>Skip git check</dt>
+                <dd>{integrations.runtime.codex.skipGitRepoCheck ? "enabled" : "disabled"}</dd>
+              </div>
+              <div>
+                <dt>Auth</dt>
+                <dd>
+                  {integrations.runtime.codex.apiKeyConfigured
+                    ? integrations.runtime.codex.apiKeySource ?? "configured"
+                    : "CLI login"}
+                </dd>
+              </div>
+              <div>
+                <dt>Model</dt>
+                <dd>{integrations.runtime.codex.model ?? "CLI default"}</dd>
+              </div>
+              <div>
+                <dt>Reasoning</dt>
+                <dd>{integrations.runtime.codex.reasoningEffort ?? "CLI default"}</dd>
+              </div>
+            </dl>
+          </div>
+
+          <div className={integrations.runtime.cursor.enabled ? "runtimePolicy active" : "runtimePolicy"}>
+            <div className="runtimePolicyHeader">
+              <strong>Cursor</strong>
+              <span>{integrations.runtime.cursor.enabled ? "active" : "standby"}</span>
+            </div>
+            <dl>
+              <div>
+                <dt>Command</dt>
+                <dd>{integrations.runtime.cursor.command}</dd>
+              </div>
+              <div>
+                <dt>Args</dt>
+                <dd>
+                  {integrations.runtime.cursor.args?.join(" ") ??
+                    `--print --output-format ${integrations.runtime.cursor.outputFormat}`}
+                </dd>
+              </div>
+              <div>
+                <dt>Sandbox</dt>
+                <dd>{integrations.runtime.cursor.sandbox ?? "default"}</dd>
+              </div>
+              <div>
+                <dt>Trust workspace</dt>
+                <dd>{integrations.runtime.cursor.trustWorkspace ? "enabled" : "disabled"}</dd>
+              </div>
+              <div>
+                <dt>Force</dt>
+                <dd>{integrations.runtime.cursor.force ? "enabled" : "disabled"}</dd>
+              </div>
+              <div>
+                <dt>Auth</dt>
+                <dd>
+                  {integrations.runtime.cursor.apiKeyConfigured
+                    ? "CURSOR_API_KEY"
+                    : "CLI login"}
+                </dd>
+              </div>
+              <div>
+                <dt>Model</dt>
+                <dd>{integrations.runtime.cursor.model ?? "CLI default"}</dd>
+              </div>
+            </dl>
+          </div>
+        </div>
+      </section>
+
       <section className="configGrid">
         <div className="panel configPanel">
           <div className="panelHeader compact">
@@ -2787,22 +2983,31 @@ function formatLinearVerificationStatus(
 }
 
 function TrackerHealthBadge({ health }: { health: IntegrationHealth }) {
-  const title = health.linear.enabled
-    ? [
-        `Linear tracker: ${health.tracker.message}`,
-        `API key: ${health.linear.apiKeyConfigured ? "configured" : "missing"}`,
-        `Team key: ${health.linear.teamKeyConfigured ? "configured" : "missing"}`,
-        `Webhook secret: ${health.linear.webhookSecretConfigured ? "configured" : "missing"}`,
-        `Verification: ${formatLinearVerificationStatus(health.linear.verification?.status)}`,
-        `Review state: ${health.linear.reviewState}`,
-        `Done state: ${health.linear.doneState}`,
-        `Cancelled state: ${health.linear.cancelledState}`,
-      ].join("\n")
-    : health.tracker.message;
+  const title = [
+    health.linear.enabled
+      ? [
+          `Linear tracker: ${health.tracker.message}`,
+          `API key: ${health.linear.apiKeyConfigured ? "configured" : "missing"}`,
+          `Team key: ${health.linear.teamKeyConfigured ? "configured" : "missing"}`,
+          `Webhook secret: ${health.linear.webhookSecretConfigured ? "configured" : "missing"}`,
+          `Verification: ${formatLinearVerificationStatus(health.linear.verification?.status)}`,
+          `Review state: ${health.linear.reviewState}`,
+          `Done state: ${health.linear.doneState}`,
+          `Cancelled state: ${health.linear.cancelledState}`,
+        ].join("\n")
+      : health.tracker.message,
+    [
+      `Runtime: ${formatRuntime(health.runtime.kind)}`,
+      `Workflow: ${health.runtime.workflow.loaded ? "loaded" : "missing"}`,
+      `Codex sandbox: ${health.runtime.codex.sandbox ?? "default"}`,
+      `Codex approval: ${health.runtime.codex.approvalPolicy ?? "default"}`,
+      `Codex skip git check: ${health.runtime.codex.skipGitRepoCheck ? "enabled" : "disabled"}`,
+    ].join("\n"),
+  ].join("\n\n");
 
   return (
-    <div className={`healthBadge ${health.tracker.status}`} title={title}>
-      {health.tracker.status === "ok" ? (
+    <div className={`healthBadge ${combineHealthStatus(health)}`} title={title}>
+      {combineHealthStatus(health) === "ok" ? (
         <CheckCircle2 size={15} />
       ) : (
         <AlertTriangle size={15} />
@@ -2811,10 +3016,24 @@ function TrackerHealthBadge({ health }: { health: IntegrationHealth }) {
         <strong>
           {health.linear.enabled ? "Linear" : health.tracker.kind}
         </strong>
-        <span>{health.tracker.message}</span>
+        <span>
+          {health.tracker.message} · {formatRuntime(health.runtime.kind)}
+        </span>
       </div>
     </div>
   );
+}
+
+function combineHealthStatus(health: IntegrationHealth): IntegrationHealthStatus {
+  if (health.tracker.status === "error" || health.runtime.status === "error") {
+    return "error";
+  }
+
+  if (health.tracker.status === "warn" || health.runtime.status === "warn") {
+    return "warn";
+  }
+
+  return "ok";
 }
 
 function ActionIcon({
@@ -2857,6 +3076,37 @@ function formatRuntime(runtime: DesiredAgentRuntime): string {
     generic: "Generic",
   };
   return labels[runtime];
+}
+
+function formatDurationMs(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) {
+    return "not set";
+  }
+
+  if (value < 1000) {
+    return `${value}ms`;
+  }
+
+  const seconds = Math.round(value / 1000);
+  if (seconds < 60) {
+    return `${seconds}s`;
+  }
+
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) {
+    return `${minutes}m`;
+  }
+
+  const hours = Math.round(minutes / 60);
+  return `${hours}h`;
+}
+
+function shortenPath(value: string): string {
+  if (value.length <= 44) {
+    return value;
+  }
+
+  return `...${value.slice(-41)}`;
 }
 
 function formatBranchName(branchName: string): string {
