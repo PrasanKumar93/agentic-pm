@@ -38,6 +38,9 @@ importers:
       '@agentic-pm/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@agentic-pm/git':
+        specifier: workspace:*
+        version: link:../../packages/git
       '@agentic-pm/trackers':
         specifier: workspace:*
         version: link:../../packages/trackers

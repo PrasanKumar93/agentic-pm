@@ -34,6 +34,7 @@
 - [x] Register managed repositories from the dashboard.
 - [x] Edit managed repository and PR settings from the dashboard.
 - [x] Archive managed repositories with typed confirmation while preserving history.
+- [x] Check repository local path, clone access, and PR remote readiness from the dashboard.
 
 ## Milestone 3: Linear Loop
 

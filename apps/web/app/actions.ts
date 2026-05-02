@@ -68,6 +68,11 @@ type ReturnState = {
 
 type ActionResponse = {
   data?: {
+    checks?: Array<{
+      label?: string;
+      message?: string;
+      status?: string;
+    }>;
     id?: string;
     name?: string;
     desiredRuntime?: string;
@@ -289,6 +294,75 @@ export async function submitRepositoryArchive(
       redirectUrl = createFeedbackUrl(
         "error",
         formatRequestError("Repository archive failed", error),
+        returnState,
+      );
+    }
+  }
+
+  revalidatePath("/");
+  redirect(redirectUrl);
+}
+
+export async function submitRepositoryConnectivityCheck(
+  formData: FormData,
+): Promise<void> {
+  const name = String(formData.get("name") ?? "").trim();
+  const url = String(formData.get("url") ?? "").trim();
+  const defaultBranch = String(formData.get("defaultBranch") ?? "").trim();
+  const localPath = String(formData.get("localPath") ?? "").trim();
+  const prMode = String(formData.get("prMode") ?? "local_draft").trim();
+  const prRemoteName = String(formData.get("prRemoteName") ?? "").trim();
+  const prBaseBranch = String(formData.get("prBaseBranch") ?? "").trim();
+  const returnState = {
+    ...readReturnState(formData),
+    view: "config",
+  };
+  let redirectUrl = createFeedbackUrl(
+    "error",
+    "Repository name and URL are required for access check.",
+    returnState,
+  );
+
+  if (name && url && isPullRequestMode(prMode)) {
+    try {
+      const response = await fetch(`${apiUrl}/repositories/connectivity-check`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actorId: "dashboard",
+          defaultBranch,
+          localPath,
+          name,
+          projectId: returnState.projectId,
+          pullRequest: {
+            baseBranch: prBaseBranch,
+            mode: prMode,
+            remoteName: prRemoteName,
+          },
+          url,
+        }),
+        cache: "no-store",
+      });
+
+      const payload = await readActionResponse(response);
+      redirectUrl = response.ok
+        ? createFeedbackUrl(
+            payload.data?.status === "error" ? "error" : "success",
+            formatRepositoryConnectivitySuccess(payload),
+            returnState,
+          )
+        : createFeedbackUrl(
+            "error",
+            payload.error ??
+              `Repository access check failed with HTTP ${response.status}.`,
+            returnState,
+          );
+    } catch (error) {
+      redirectUrl = createFeedbackUrl(
+        "error",
+        formatRequestError("Repository access check failed", error),
         returnState,
       );
     }
@@ -795,6 +869,15 @@ function formatRepositoryUpdateSuccess(payload: ActionResponse): string {
 function formatRepositoryArchiveSuccess(payload: ActionResponse): string {
   const name = payload.data?.name ?? "repository";
   return `Archived ${name}.`;
+}
+
+function formatRepositoryConnectivitySuccess(payload: ActionResponse): string {
+  const name = payload.data?.name ?? "repository";
+  const status = payload.data?.status ?? "unknown";
+  const summary = payload.data?.checks
+    ?.map((check) => `${check.label ?? "Check"}: ${check.status ?? "unknown"}`)
+    .join("; ");
+  return `Checked ${name}: ${status}${summary ? ` (${summary})` : ""}.`;
 }
 
 function formatRequestError(prefix: string, error: unknown): string {

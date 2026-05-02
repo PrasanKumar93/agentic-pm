@@ -6,11 +6,115 @@ import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 import {
   buildPullRequestDraft,
+  checkRepositoryConnectivity,
   checkoutPullRequestBranch,
   updateGitHubPullRequestBranch,
 } from "./index.js";
 
 const execFileAsync = promisify(execFile);
+
+describe("repository connectivity checks", () => {
+  it("passes for a local repo with a reachable draft PR remote", async () => {
+    const root = await mkdtemp(join(tmpdir(), "agentic-pm-git-check-"));
+    const remotePath = join(root, "remote.git");
+    const sourcePath = join(root, "source");
+
+    await git(["init", "--bare", remotePath], root);
+    await mkdir(sourcePath);
+    await git(["init"], sourcePath);
+    await configureGitIdentity(sourcePath);
+    await git(["remote", "add", "origin", remotePath], sourcePath);
+    await writeFile(join(sourcePath, "README.md"), "hello\n", "utf8");
+    await git(["add", "README.md"], sourcePath);
+    await git(["commit", "-m", "Initial commit"], sourcePath);
+    await git(["branch", "-M", "main"], sourcePath);
+    await git(["push", "-u", "origin", "main"], sourcePath);
+
+    const result = await checkRepositoryConnectivity({
+      url: remotePath,
+      defaultBranch: "main",
+      localPath: sourcePath,
+      pullRequest: {
+        mode: "github_draft",
+        remoteName: "origin",
+        baseBranch: "main",
+      },
+    });
+
+    expect(result.status).toBe("ok");
+    expect(result.checks.map((check) => check.status)).toEqual([
+      "ok",
+      "ok",
+      "ok",
+    ]);
+  });
+
+  it("warns when clone access works but no local path is configured", async () => {
+    const root = await mkdtemp(join(tmpdir(), "agentic-pm-git-check-"));
+    const remotePath = join(root, "remote.git");
+    const sourcePath = join(root, "source");
+
+    await git(["init", "--bare", remotePath], root);
+    await mkdir(sourcePath);
+    await git(["init"], sourcePath);
+    await configureGitIdentity(sourcePath);
+    await git(["remote", "add", "origin", remotePath], sourcePath);
+    await writeFile(join(sourcePath, "README.md"), "hello\n", "utf8");
+    await git(["add", "README.md"], sourcePath);
+    await git(["commit", "-m", "Initial commit"], sourcePath);
+    await git(["branch", "-M", "main"], sourcePath);
+    await git(["push", "-u", "origin", "main"], sourcePath);
+
+    const result = await checkRepositoryConnectivity({
+      url: remotePath,
+      defaultBranch: "main",
+      pullRequest: {
+        mode: "local_draft",
+      },
+    });
+
+    expect(result.status).toBe("warn");
+    expect(result.checks.find((check) => check.name === "local_path")?.status).toBe(
+      "warn",
+    );
+    expect(
+      result.checks.find((check) => check.name === "repository_url")?.status,
+    ).toBe("ok");
+  });
+
+  it("fails when a GitHub draft PR base branch is missing", async () => {
+    const root = await mkdtemp(join(tmpdir(), "agentic-pm-git-check-"));
+    const remotePath = join(root, "remote.git");
+    const sourcePath = join(root, "source");
+
+    await git(["init", "--bare", remotePath], root);
+    await mkdir(sourcePath);
+    await git(["init"], sourcePath);
+    await configureGitIdentity(sourcePath);
+    await git(["remote", "add", "origin", remotePath], sourcePath);
+    await writeFile(join(sourcePath, "README.md"), "hello\n", "utf8");
+    await git(["add", "README.md"], sourcePath);
+    await git(["commit", "-m", "Initial commit"], sourcePath);
+    await git(["branch", "-M", "main"], sourcePath);
+    await git(["push", "-u", "origin", "main"], sourcePath);
+
+    const result = await checkRepositoryConnectivity({
+      url: remotePath,
+      defaultBranch: "main",
+      localPath: sourcePath,
+      pullRequest: {
+        mode: "github_draft",
+        remoteName: "origin",
+        baseBranch: "release",
+      },
+    });
+
+    expect(result.status).toBe("error");
+    expect(result.checks.find((check) => check.name === "pr_remote")?.status).toBe(
+      "error",
+    );
+  });
+});
 
 describe("pull request branch updates", () => {
   it("checks out an existing PR branch and pushes a follow-up commit", async () => {

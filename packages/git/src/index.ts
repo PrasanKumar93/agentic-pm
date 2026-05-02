@@ -1,9 +1,10 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { slugify } from "@agentic-pm/core";
+import { slugify, type PullRequestMode } from "@agentic-pm/core";
 
 const execFileAsync = promisify(execFile);
 
@@ -69,6 +70,38 @@ export interface GitHubPullRequestUpdateResult {
   stdout: string;
 }
 
+export type RepositoryConnectivityStatus = "ok" | "warn" | "error";
+
+export type RepositoryConnectivityCheckName =
+  | "local_path"
+  | "repository_url"
+  | "pr_remote";
+
+export interface RepositoryConnectivityCheck {
+  name: RepositoryConnectivityCheckName;
+  label: string;
+  status: RepositoryConnectivityStatus;
+  message: string;
+  details?: string;
+}
+
+export interface RepositoryConnectivityInput {
+  url: string;
+  defaultBranch?: string;
+  localPath?: string;
+  pullRequest?: {
+    baseBranch?: string;
+    mode?: PullRequestMode;
+    remoteName?: string;
+  };
+  timeoutMs?: number;
+}
+
+export interface RepositoryConnectivityResult {
+  status: RepositoryConnectivityStatus;
+  checks: RepositoryConnectivityCheck[];
+}
+
 export function buildAgentBranchName(issueIdentifier: string, title: string, suffix?: string): string {
   const slug = slugify(title);
   const suffixPart = suffix ? `-${slugify(suffix)}` : "";
@@ -77,6 +110,23 @@ export function buildAgentBranchName(issueIdentifier: string, title: string, suf
 
 export function isProtectedBranch(branch: string): boolean {
   return ["main", "master", "develop", "production"].includes(branch);
+}
+
+export async function checkRepositoryConnectivity(
+  input: RepositoryConnectivityInput,
+): Promise<RepositoryConnectivityResult> {
+  const timeoutMs = Math.min(Math.max(input.timeoutMs ?? 5_000, 1_000), 30_000);
+  const defaultBranch = input.defaultBranch?.trim() || "main";
+  const checks = await Promise.all([
+    checkLocalPath(input.localPath),
+    checkRepositoryUrl(input.url, defaultBranch, timeoutMs),
+    checkPullRequestRemote(input, defaultBranch, timeoutMs),
+  ]);
+
+  return {
+    status: summarizeConnectivityChecks(checks),
+    checks,
+  };
 }
 
 export async function buildPullRequestDraft(input: PullRequestDraftInput): Promise<PullRequestDraft | undefined> {
@@ -249,6 +299,277 @@ export async function updateGitHubPullRequestBranch(
     remoteName: input.remoteName,
     stdout: stdout.trim(),
   };
+}
+
+async function checkLocalPath(
+  localPath: string | undefined,
+): Promise<RepositoryConnectivityCheck> {
+  const path = localPath?.trim();
+  if (!path) {
+    return {
+      name: "local_path",
+      label: "Local path",
+      status: "warn",
+      message: "No local path configured; workers will clone from the repository URL.",
+    };
+  }
+
+  const resolvedPath = resolveShellPath(path);
+  try {
+    const pathStat = await stat(resolvedPath);
+    if (!pathStat.isDirectory()) {
+      return {
+        name: "local_path",
+        label: "Local path",
+        status: "error",
+        message: "Local path exists but is not a directory.",
+        details: resolvedPath,
+      };
+    }
+  } catch {
+    return {
+      name: "local_path",
+      label: "Local path",
+      status: "error",
+      message: "Local path does not exist.",
+      details: resolvedPath,
+    };
+  }
+
+  const gitRoot = await readGitRoot(resolvedPath);
+  if (!gitRoot) {
+    return {
+      name: "local_path",
+      label: "Local path",
+      status: "error",
+      message: "Local path is not inside a git repository.",
+      details: resolvedPath,
+    };
+  }
+
+  const currentBranch = await readCurrentBranch(resolvedPath);
+  return {
+    name: "local_path",
+    label: "Local path",
+    status: "ok",
+    message: `Local git repository found on ${currentBranch}.`,
+    details: gitRoot,
+  };
+}
+
+async function checkRepositoryUrl(
+  url: string,
+  defaultBranch: string,
+  timeoutMs: number,
+): Promise<RepositoryConnectivityCheck> {
+  const repositoryUrl = url.trim();
+  if (!repositoryUrl) {
+    return {
+      name: "repository_url",
+      label: "Repository URL",
+      status: "error",
+      message: "Repository URL is required.",
+    };
+  }
+
+  const lsRemote = await runGitForCheck(
+    tmpdir(),
+    ["ls-remote", repositoryUrl],
+    timeoutMs,
+  );
+  if (!lsRemote.ok) {
+    return {
+      name: "repository_url",
+      label: "Repository URL",
+      status: "error",
+      message: `Repository URL is not reachable: ${lsRemote.message}`,
+      details: repositoryUrl,
+    };
+  }
+
+  const branchCheck = await runGitForCheck(
+    tmpdir(),
+    ["ls-remote", "--heads", repositoryUrl, defaultBranch],
+    timeoutMs,
+  );
+  if (branchCheck.ok && branchCheck.stdout.trim()) {
+    return {
+      name: "repository_url",
+      label: "Repository URL",
+      status: "ok",
+      message: `Repository is reachable and ${defaultBranch} exists.`,
+      details: repositoryUrl,
+    };
+  }
+
+  return {
+    name: "repository_url",
+    label: "Repository URL",
+    status: "warn",
+    message: `Repository is reachable, but ${defaultBranch} was not found.`,
+    details: repositoryUrl,
+  };
+}
+
+async function checkPullRequestRemote(
+  input: RepositoryConnectivityInput,
+  defaultBranch: string,
+  timeoutMs: number,
+): Promise<RepositoryConnectivityCheck> {
+  if (input.pullRequest?.mode !== "github_draft") {
+    return {
+      name: "pr_remote",
+      label: "PR remote",
+      status: "ok",
+      message: "Remote PR creation is not required for this PR mode.",
+    };
+  }
+
+  const remoteName = input.pullRequest.remoteName?.trim() || "origin";
+  const baseBranch = input.pullRequest.baseBranch?.trim() || defaultBranch;
+  const localPath = input.localPath?.trim();
+
+  if (localPath) {
+    const resolvedPath = resolveShellPath(localPath);
+    const gitRoot = await readGitRoot(resolvedPath);
+    if (gitRoot) {
+      const remoteUrl = await readRemoteUrl(resolvedPath, remoteName);
+      if (!remoteUrl) {
+        return {
+          name: "pr_remote",
+          label: "PR remote",
+          status: "error",
+          message: `Remote ${remoteName} is not configured in the local repo.`,
+          details: resolvedPath,
+        };
+      }
+
+      const remoteBranch = await runGitForCheck(
+        resolvedPath,
+        ["ls-remote", "--heads", remoteName, baseBranch],
+        timeoutMs,
+      );
+      if (remoteBranch.ok && remoteBranch.stdout.trim()) {
+        return {
+          name: "pr_remote",
+          label: "PR remote",
+          status: "ok",
+          message: `Remote ${remoteName}/${baseBranch} is reachable for draft PRs.`,
+          details: remoteUrl,
+        };
+      }
+
+      return {
+        name: "pr_remote",
+        label: "PR remote",
+        status: "error",
+        message: remoteBranch.ok
+          ? `Remote ${remoteName}/${baseBranch} was not found.`
+          : `Remote ${remoteName} is not reachable: ${remoteBranch.message}`,
+        details: remoteUrl,
+      };
+    }
+  }
+
+  const remoteBranch = await runGitForCheck(
+    tmpdir(),
+    ["ls-remote", "--heads", input.url.trim(), baseBranch],
+    timeoutMs,
+  );
+  if (remoteBranch.ok && remoteBranch.stdout.trim()) {
+    return {
+      name: "pr_remote",
+      label: "PR remote",
+      status: "ok",
+      message: `Repository URL has ${baseBranch} for draft PRs.`,
+      details: input.url.trim(),
+    };
+  }
+
+  return {
+    name: "pr_remote",
+    label: "PR remote",
+    status: "error",
+    message: remoteBranch.ok
+      ? `Repository URL does not expose PR base branch ${baseBranch}.`
+      : `Repository URL cannot verify PR base branch: ${remoteBranch.message}`,
+    details: input.url.trim(),
+  };
+}
+
+function summarizeConnectivityChecks(
+  checks: RepositoryConnectivityCheck[],
+): RepositoryConnectivityStatus {
+  if (checks.some((check) => check.status === "error")) {
+    return "error";
+  }
+
+  if (checks.some((check) => check.status === "warn")) {
+    return "warn";
+  }
+
+  return "ok";
+}
+
+function resolveShellPath(path: string): string {
+  if (path === "~") {
+    return homedir();
+  }
+
+  if (path.startsWith("~/")) {
+    return join(homedir(), path.slice(2));
+  }
+
+  if (path.startsWith("file://")) {
+    try {
+      return fileURLToPath(path);
+    } catch {
+      return resolve(path);
+    }
+  }
+
+  return resolve(path);
+}
+
+async function runGitForCheck(
+  cwd: string,
+  args: string[],
+  timeoutMs: number,
+): Promise<{ ok: true; stdout: string } | { ok: false; message: string }> {
+  try {
+    const { stdout } = await execFileAsync("git", args, {
+      cwd,
+      encoding: "utf8",
+      maxBuffer: 10 * 1024 * 1024,
+      timeout: timeoutMs,
+    });
+    return { ok: true, stdout };
+  } catch (error) {
+    return {
+      ok: false,
+      message: formatGitCheckError(error),
+    };
+  }
+}
+
+function formatGitCheckError(error: unknown): string {
+  const gitError = error as {
+    code?: unknown;
+    killed?: boolean;
+    message?: string;
+    signal?: string;
+    stderr?: string;
+  };
+  if (gitError.killed || gitError.signal === "SIGTERM") {
+    return "timed out";
+  }
+
+  const stderr = gitError.stderr?.trim();
+  if (stderr) {
+    return stderr.split(/\r?\n/).at(-1) ?? stderr;
+  }
+
+  return gitError.message ?? "git command failed";
 }
 
 async function readHeadSha(workspacePath: string): Promise<string | undefined> {

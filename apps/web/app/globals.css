@@ -785,7 +785,13 @@ h2 {
   width: 16px;
 }
 
-.repoForm button {
+.repoFormActions {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.repoFormActions button {
   justify-content: center;
   margin-top: 4px;
 }
@@ -913,6 +919,13 @@ h2 {
   height: 16px;
   padding: 0;
   width: 16px;
+}
+
+.repoEditActions {
+  display: grid;
+  gap: 8px;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .repoEditForm button,

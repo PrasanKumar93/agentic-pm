@@ -25,6 +25,7 @@ import {
   submitDispatchAction,
   submitPullRequestLink,
   submitRepositoryArchive,
+  submitRepositoryConnectivityCheck,
   submitRepositoryRegistration,
   submitRepositoryUpdate,
   submitReviewChangeRequest,
@@ -2660,10 +2661,24 @@ function ConfigView({
               <input defaultChecked name="prDraft" type="checkbox" />
               <span>Create as draft</span>
             </label>
-            <button className="primary" title="Register repository" type="submit">
-              <Plus size={16} />
-              Register
-            </button>
+            <div className="repoFormActions">
+              <button
+                formAction={submitRepositoryConnectivityCheck}
+                title="Check repository access"
+                type="submit"
+              >
+                <ShieldCheck size={16} />
+                Check access
+              </button>
+              <button
+                className="primary"
+                title="Register repository"
+                type="submit"
+              >
+                <Plus size={16} />
+                Register
+              </button>
+            </div>
           </form>
         </div>
 
@@ -2804,10 +2819,20 @@ function ConfigView({
                         />
                         <span>Create as draft</span>
                       </label>
-                      <button title="Save repository changes" type="submit">
-                        <Save size={14} />
-                        Save changes
-                      </button>
+                      <div className="repoEditActions">
+                        <button
+                          formAction={submitRepositoryConnectivityCheck}
+                          title="Check repository access"
+                          type="submit"
+                        >
+                          <ShieldCheck size={14} />
+                          Check access
+                        </button>
+                        <button title="Save repository changes" type="submit">
+                          <Save size={14} />
+                          Save changes
+                        </button>
+                      </div>
                     </form>
                   </details>
                   <details className="repoArchiveDetails">

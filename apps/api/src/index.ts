@@ -35,6 +35,7 @@ import {
   type WebhookDeliveryStatus,
   WorkItemNotFoundError,
 } from "@agentic-pm/db";
+import { checkRepositoryConnectivity } from "@agentic-pm/git";
 import {
   LinearTrackerAdapter,
   normalizeLinearIssue,
@@ -85,6 +86,10 @@ type RepositoryArchiveBody = {
   confirmationName?: string;
   projectId?: string;
   reason?: string;
+};
+
+type RepositoryConnectivityBody = RepositoryConfigurationBody & {
+  timeoutMs?: number;
 };
 
 const mongo = await connectMongo(readMongoConfig());
@@ -469,6 +474,56 @@ app.patch("/repositories/:repositoryId", async (request, reply) => {
     meta: {
       action: "repository.update",
       projectId: requestedProjectId,
+      generatedAt: new Date().toISOString(),
+    },
+  };
+});
+
+app.post("/repositories/connectivity-check", async (request, reply) => {
+  const body = (request.body ?? {}) as RepositoryConnectivityBody;
+  const name = readRequiredText(body.name, 120);
+  const url = readRequiredText(body.url, 2_000);
+  if (!name || !url) {
+    return reply.code(400).send({
+      error: "Repository name and URL are required.",
+    });
+  }
+
+  const result = await checkRepositoryConnectivity({
+    url,
+    defaultBranch: readRequiredText(body.defaultBranch, 120) ?? "main",
+    localPath: readOptionalText(body.localPath, 2_000),
+    pullRequest: readPullRequestSettings(body.pullRequest),
+    timeoutMs: readPositiveNumber(body.timeoutMs, 5_000),
+  });
+
+  await repository.appendEvent({
+    projectId: readProjectId(body.projectId) ?? projectId,
+    type: "repository.connectivity_checked",
+    level: result.status === "error" ? "warn" : "info",
+    message: `${body.actorId || "local-operator"} checked ${name} repository connectivity`,
+    payload: {
+      actorId: body.actorId,
+      repositoryName: name,
+      status: result.status,
+      checks: result.checks.map((check) => ({
+        name: check.name,
+        status: check.status,
+        message: check.message,
+      })),
+      hasLocalPath: Boolean(body.localPath),
+      pullRequestMode: body.pullRequest?.mode,
+    },
+  });
+
+  return {
+    data: {
+      name,
+      status: result.status,
+      checks: result.checks,
+    },
+    meta: {
+      action: "repository.connectivity_check",
       generatedAt: new Date().toISOString(),
     },
   };
@@ -1148,7 +1203,7 @@ function firstHeader(value: string | string[] | undefined): string | undefined {
 }
 
 function readPositiveNumber(
-  value: string | undefined,
+  value: number | string | undefined,
   fallback: number,
 ): number {
   const parsed = Number(value);
