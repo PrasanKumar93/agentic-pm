@@ -55,6 +55,7 @@
 - [x] Normalize verified Linear issue webhooks into MongoDB.
 - [x] Deduplicate Linear webhook deliveries by `Linear-Delivery`.
 - [x] Show webhook delivery replay audit in the dashboard.
+- [x] Show Linear webhook setup readiness in Config.
 
 ## Milestone 4: Agent Runtime Loop
 

@@ -69,7 +69,15 @@ The response never returns secret values. It exposes booleans for API key, team 
 - `availableStateNames` for the configured team.
 - `checkedAt` and a sanitized error string when verification fails.
 
-Dashboard Config renders this as the operator-facing Linear verification panel. A fully usable Linear loop requires `status: verified`; missing webhook secret is allowed but keeps the overall health in warning state because polling can run while webhooks remain inactive.
+The response also includes `linear.webhookSetup` for operator-facing webhook readiness:
+
+- `status`: `disabled`, `missing_secret`, `local_only`, or `ready`.
+- `endpointPath`: always `/webhooks/linear`.
+- `localCallbackUrl`: defaults to `http://127.0.0.1:<API_PORT>/webhooks/linear`, or `AGENTIC_PM_LOCAL_WEBHOOK_URL`.
+- `publicCallbackUrl`: read from `LINEAR_WEBHOOK_PUBLIC_URL` or `AGENTIC_PM_PUBLIC_WEBHOOK_URL`, or derived from `AGENTIC_PM_PUBLIC_BASE_URL` / `PUBLIC_WEBHOOK_BASE_URL`.
+- `secretConfigured`, `publicCallbackConfigured`, `toleranceMs`, `signatureHeader`, `deliveryHeader`, and `timestampField`.
+
+Dashboard Config renders Linear verification and webhook setup as separate panels. A fully usable Linear loop requires `verification.status: verified`; missing webhook secret is allowed but keeps the overall health in warning state because polling can run while webhooks remain inactive.
 
 ## 4. Webhook Endpoint
 
@@ -193,7 +201,8 @@ Signature validation must use the raw request body bytes. The API replaces Fasti
 https://<public-host>/webhooks/linear
 ```
 
-5. Copy the webhook signing secret into `LINEAR_WEBHOOK_SECRET`.
+5. Set the same URL in `LINEAR_WEBHOOK_PUBLIC_URL` so Config can show the live callback target.
+6. Copy the webhook signing secret into `LINEAR_WEBHOOK_SECRET`.
 
 For localhost testing, expose the API with a tunnel such as ngrok or Cloudflare Tunnel, then use that public HTTPS URL in Linear.
 
@@ -210,6 +219,7 @@ Expected result for a complete Linear setup:
 - `data.tracker.status` is `ok` when webhook secret is present or `warn` when only polling is configured.
 - `data.linear.verification.status` is `verified`.
 - `data.linear.verification.missingStateNames` is empty.
+- `data.linear.webhookSetup.status` is `ready` when both `LINEAR_WEBHOOK_SECRET` and a public callback URL are configured.
 
 Valid signature:
 

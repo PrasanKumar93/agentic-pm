@@ -174,6 +174,26 @@ type LinearVerificationHealth = {
   error?: string;
 };
 
+type LinearWebhookSetupStatus =
+  | "disabled"
+  | "missing_secret"
+  | "local_only"
+  | "ready";
+
+type LinearWebhookSetupHealth = {
+  status: LinearWebhookSetupStatus;
+  message: string;
+  endpointPath: string;
+  localCallbackUrl: string;
+  publicCallbackUrl?: string;
+  publicCallbackConfigured: boolean;
+  secretConfigured: boolean;
+  toleranceMs: number;
+  signatureHeader: string;
+  deliveryHeader: string;
+  timestampField: string;
+};
+
 type RuntimeHealth = {
   kind: DesiredAgentRuntime;
   status: IntegrationHealthStatus;
@@ -1893,6 +1913,10 @@ async function buildIntegrationHealth() {
       apiKeyConfigured: linearApiKeyConfigured,
       teamKeyConfigured: linearTeamKeyConfigured,
       webhookSecretConfigured: linearWebhookSecretConfigured,
+      webhookSetup: buildLinearWebhookSetupHealth({
+        enabled: linearEnabled,
+        secretConfigured: linearWebhookSecretConfigured,
+      }),
       webhookToleranceMs: linearWebhookToleranceMs,
       activeStates: linearActiveStates,
       runningState: linearRunningState,
@@ -1904,6 +1928,79 @@ async function buildIntegrationHealth() {
     },
     runtime,
   };
+}
+
+function buildLinearWebhookSetupHealth(input: {
+  enabled: boolean;
+  secretConfigured: boolean;
+}): LinearWebhookSetupHealth {
+  const endpointPath = "/webhooks/linear";
+  const publicCallbackUrl = readLinearPublicWebhookUrl(endpointPath);
+  const publicCallbackConfigured = Boolean(publicCallbackUrl);
+  const status: LinearWebhookSetupStatus = !input.enabled
+    ? "disabled"
+    : !input.secretConfigured
+      ? "missing_secret"
+      : publicCallbackConfigured
+        ? "ready"
+        : "local_only";
+
+  return {
+    status,
+    message: linearWebhookSetupMessage(status),
+    endpointPath,
+    localCallbackUrl:
+      readOptionalText(process.env.AGENTIC_PM_LOCAL_WEBHOOK_URL, 2_000) ??
+      `http://127.0.0.1:${port}${endpointPath}`,
+    publicCallbackUrl,
+    publicCallbackConfigured,
+    secretConfigured: input.secretConfigured,
+    toleranceMs: linearWebhookToleranceMs,
+    signatureHeader: "Linear-Signature",
+    deliveryHeader: "Linear-Delivery",
+    timestampField: "webhookTimestamp",
+  };
+}
+
+function readLinearPublicWebhookUrl(endpointPath: string): string | undefined {
+  const exactUrl =
+    readOptionalText(process.env.LINEAR_WEBHOOK_PUBLIC_URL, 2_000) ??
+    readOptionalText(process.env.AGENTIC_PM_PUBLIC_WEBHOOK_URL, 2_000);
+  if (exactUrl) {
+    return normalizeHttpUrl(exactUrl);
+  }
+
+  const baseUrl =
+    readOptionalText(process.env.AGENTIC_PM_PUBLIC_BASE_URL, 2_000) ??
+    readOptionalText(process.env.PUBLIC_WEBHOOK_BASE_URL, 2_000);
+  const normalizedBaseUrl = baseUrl ? normalizeHttpUrl(baseUrl) : undefined;
+  return normalizedBaseUrl
+    ? `${normalizedBaseUrl.replace(/\/+$/, "")}${endpointPath}`
+    : undefined;
+}
+
+function normalizeHttpUrl(value: string): string | undefined {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:"
+      ? url.toString()
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function linearWebhookSetupMessage(status: LinearWebhookSetupStatus): string {
+  switch (status) {
+    case "ready":
+      return "Webhook callback URL and signing secret configured";
+    case "local_only":
+      return "Webhook secret configured; public callback URL missing";
+    case "missing_secret":
+      return "Webhook signing secret missing";
+    case "disabled":
+      return "Linear tracker disabled";
+  }
 }
 
 async function buildRuntimeHealth(): Promise<RuntimeHealth> {

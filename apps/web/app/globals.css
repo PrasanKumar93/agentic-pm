@@ -567,10 +567,21 @@ h2 {
   gap: 14px;
 }
 
+.webhookSetupPanel {
+  display: grid;
+  gap: 14px;
+}
+
 .linearStatusGrid {
   display: grid;
   gap: 10px;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.webhookSetupGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.2fr) minmax(0, 0.7fr) minmax(0, 0.7fr);
 }
 
 .runtimeStatusGrid {
@@ -637,6 +648,12 @@ h2 {
   display: grid;
   gap: 8px;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}
+
+.webhookSetupChecklist {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .stateCheck {
@@ -2141,6 +2158,8 @@ h2 {
   .repositoryCheckGrid,
   .runtimePolicyGrid,
   .runtimeStatusGrid,
+  .webhookSetupChecklist,
+  .webhookSetupGrid,
   .contentGrid,
   .metrics {
     grid-template-columns: 1fr;

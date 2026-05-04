@@ -228,6 +228,11 @@ type LinearVerificationStatus =
   | "verified"
   | "missing_states"
   | "failed";
+type LinearWebhookSetupStatus =
+  | "disabled"
+  | "missing_secret"
+  | "local_only"
+  | "ready";
 
 type IntegrationHealth = {
   tracker: {
@@ -241,6 +246,19 @@ type IntegrationHealth = {
     apiKeyConfigured: boolean;
     teamKeyConfigured: boolean;
     webhookSecretConfigured: boolean;
+    webhookSetup: {
+      status: LinearWebhookSetupStatus;
+      message: string;
+      endpointPath: string;
+      localCallbackUrl: string;
+      publicCallbackUrl?: string;
+      publicCallbackConfigured: boolean;
+      secretConfigured: boolean;
+      toleranceMs: number;
+      signatureHeader: string;
+      deliveryHeader: string;
+      timestampField: string;
+    };
     webhookToleranceMs: number;
     activeStates: string[];
     runningState: string;
@@ -1965,6 +1983,18 @@ function createUnavailableIntegrationHealth(): IntegrationHealth {
       apiKeyConfigured: false,
       teamKeyConfigured: false,
       webhookSecretConfigured: false,
+      webhookSetup: {
+        status: "disabled",
+        message: "Integration health unavailable",
+        endpointPath: "/webhooks/linear",
+        localCallbackUrl: "http://127.0.0.1:4000/webhooks/linear",
+        publicCallbackConfigured: false,
+        secretConfigured: false,
+        toleranceMs: 0,
+        signatureHeader: "Linear-Signature",
+        deliveryHeader: "Linear-Delivery",
+        timestampField: "webhookTimestamp",
+      },
       webhookToleranceMs: 0,
       activeStates: [],
       runningState: "Unknown",
@@ -2525,6 +2555,8 @@ function ConfigView({
         </div>
       </section>
 
+      <LinearWebhookSetupPanel setup={integrations.linear.webhookSetup} />
+
       <section className="panel runtimeConfigPanel">
         <div className="panelHeader compact">
           <div>
@@ -2977,6 +3009,93 @@ function ConfigView({
   );
 }
 
+function LinearWebhookSetupPanel({
+  setup,
+}: {
+  setup: IntegrationHealth["linear"]["webhookSetup"];
+}) {
+  const tone = getLinearWebhookSetupTone(setup.status);
+
+  return (
+    <section className="panel webhookSetupPanel">
+      <div className="panelHeader compact">
+        <div>
+          <h2>Webhook setup</h2>
+          <p>{setup.message}</p>
+        </div>
+        {tone === "ok" ? (
+          <ShieldCheck size={17} />
+        ) : (
+          <AlertTriangle size={17} />
+        )}
+      </div>
+
+      <div className="webhookSetupGrid">
+        <div className={`linearStatusCard ${tone}`}>
+          <span>Public callback</span>
+          <strong>{setup.publicCallbackUrl ?? "missing"}</strong>
+          <small>
+            {setup.publicCallbackConfigured
+              ? "ready for Linear"
+              : "set LINEAR_WEBHOOK_PUBLIC_URL"}
+          </small>
+        </div>
+        <div className="linearStatusCard">
+          <span>Local callback</span>
+          <strong>{setup.localCallbackUrl}</strong>
+          <small>{setup.endpointPath}</small>
+        </div>
+        <div
+          className={`linearStatusCard ${
+            setup.secretConfigured ? "ok" : "error"
+          }`}
+        >
+          <span>Signing secret</span>
+          <strong>{setup.secretConfigured ? "configured" : "missing"}</strong>
+          <small>LINEAR_WEBHOOK_SECRET</small>
+        </div>
+        <div className="linearStatusCard">
+          <span>Verification</span>
+          <strong>{setup.signatureHeader}</strong>
+          <small>{setup.timestampField} · {setup.toleranceMs}ms</small>
+        </div>
+      </div>
+
+      <div className="webhookSetupChecklist">
+        <div className={setup.secretConfigured ? "stateCheck ok" : "stateCheck error"}>
+          {setup.secretConfigured ? (
+            <CheckCircle2 size={14} />
+          ) : (
+            <AlertTriangle size={14} />
+          )}
+          <span>Secret</span>
+          <strong>{setup.secretConfigured ? "ready" : "required"}</strong>
+        </div>
+        <div
+          className={
+            setup.publicCallbackConfigured ? "stateCheck ok" : "stateCheck"
+          }
+        >
+          {setup.publicCallbackConfigured ? (
+            <CheckCircle2 size={14} />
+          ) : (
+            <Square size={14} />
+          )}
+          <span>Public URL</span>
+          <strong>
+            {setup.publicCallbackConfigured ? "configured" : "local only"}
+          </strong>
+        </div>
+        <div className="stateCheck ok">
+          <CheckCircle2 size={14} />
+          <span>Deduping</span>
+          <strong>{setup.deliveryHeader}</strong>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function RepositoryConnectivityPanel({
   results,
 }: {
@@ -3197,6 +3316,20 @@ function getLinearVerificationTone(
   }
 
   return "error";
+}
+
+function getLinearWebhookSetupTone(
+  status: LinearWebhookSetupStatus,
+): "ok" | "warn" | "error" {
+  switch (status) {
+    case "ready":
+      return "ok";
+    case "local_only":
+    case "disabled":
+      return "warn";
+    case "missing_secret":
+      return "error";
+  }
 }
 
 function formatLinearVerificationStatus(
