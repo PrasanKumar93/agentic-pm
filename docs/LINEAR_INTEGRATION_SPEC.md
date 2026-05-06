@@ -221,19 +221,21 @@ Expected result for a complete Linear setup:
 - `data.linear.verification.missingStateNames` is empty.
 - `data.linear.webhookSetup.status` is `ready` when both `LINEAR_WEBHOOK_SECRET` and a public callback URL are configured.
 
-Valid signature:
+Local signed webhook smoke:
 
 ```sh
-payload='{"type":"Issue","action":"update","webhookTimestamp":'$(date +%s000)',"data":{"id":"issue_123","identifier":"ENG-123","title":"Webhook smoke","state":{"name":"Ready for Agent"},"labels":{"nodes":[{"name":"agent"}]},"createdAt":"2026-04-29T12:00:00.000Z","updatedAt":"2026-04-29T12:00:00.000Z"}}'
-signature=$(printf '%s' "$payload" | openssl dgst -sha256 -hmac "$LINEAR_WEBHOOK_SECRET" -hex | awk '{print $2}')
-curl -i \
-  -H "Content-Type: application/json" \
-  -H "Linear-Signature: $signature" \
-  -H "Linear-Event: Issue" \
-  -H "Linear-Delivery: local-smoke" \
-  --data "$payload" \
-  http://127.0.0.1:4000/webhooks/linear
+pnpm smoke:linear-webhook -- --dry-run
+pnpm smoke:linear-webhook
 ```
+
+The script reads `.env`, signs a realistic Linear `Issue` webhook with `LINEAR_WEBHOOK_SECRET`, posts it to `/webhooks/linear`, replays the same `Linear-Delivery` id, and verifies:
+
+- First delivery returns `data.status: "reconciled"`.
+- Active state payloads create a work item on the API process' configured project.
+- Replay returns `data.status: "duplicate"`.
+- `/webhook-deliveries` and `/work-items` can read back the accepted delivery/work item.
+
+The API process must be restarted after changing `LINEAR_WEBHOOK_SECRET`; the script and API must use the same secret value.
 
 Invalid signature:
 

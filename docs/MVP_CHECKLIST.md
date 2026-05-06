@@ -56,6 +56,7 @@
 - [x] Deduplicate Linear webhook deliveries by `Linear-Delivery`.
 - [x] Show webhook delivery replay audit in the dashboard.
 - [x] Show Linear webhook setup readiness in Config.
+- [x] Add local signed Linear webhook smoke automation.
 
 ## Milestone 4: Agent Runtime Loop
 
