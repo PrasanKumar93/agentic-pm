@@ -68,7 +68,23 @@ This supports running separate Codex and Cursor workers side by side without mix
 
 When a claimed work item has no `repositoryId` and the issue has no repository reference, the worker falls back to the selected project's default repository and persists that assignment before creating the workspace. This keeps older tracker-ingested work items from running in empty workspaces.
 
-## 5. Dashboard Behavior
+## 5. Codex Generated Workspace Policy
+
+Codex runs in headless `exec` mode. For repository-backed generated worktrees, Symphony must make the selected workspace both the current workspace root and an allowed writable directory:
+
+```txt
+codex --ask-for-approval never --sandbox workspace-write --add-dir <workspacePath> --cd <workspacePath> exec --json -
+```
+
+Both workspace flags are injected before `exec` because the Codex CLI accepts them as top-level options and as `exec` options. Keeping them before `exec` preserves one stable command shape for preflight visibility and runtime events.
+
+The runtime adapter must not duplicate explicit operator-supplied `--cd`, `-C`, or `--add-dir` arguments. If an operator supplies those flags in `CODEX_ARGS`, Symphony preserves the operator's values.
+
+`danger-full-access` is not the default resolution for write failures. It should only be used in an externally sandboxed environment and after explicit operator approval. The current safe target is `workspace-write` plus explicit generated workspace roots.
+
+Known local blocker as of 2026-05-07: live Linear issue `PRA-9` received the corrected command shape but Codex still reported `touch testfile` as `Operation not permitted` in the generated `test-linear-app` worktree. The parent shell can write to that same workspace, while nested `codex sandbox macos --full-auto touch ...` fails with `sandbox_apply: Operation not permitted` in this desktop tool environment. The next slice should isolate whether this is caused by nested macOS sandboxing, the desktop tool sandbox, or generated worktree path handling, without weakening the default policy to `danger-full-access`.
+
+## 6. Dashboard Behavior
 
 The work board shows a runtime menu for each non-running work item:
 
@@ -82,7 +98,7 @@ Saving the menu writes an operator action and an `operator.runtime_selected` eve
 
 The runtime selector preserves the active project, status filter, and selected work item.
 
-## 6. Validation
+## 7. Validation
 
 Required checks:
 
@@ -90,3 +106,4 @@ Required checks:
 - `pnpm build`
 - API smoke test for setting and clearing runtime preference
 - Full-width browser smoke test for the work board
+- `pnpm --filter @agentic-pm/agents test` for Codex argument builder coverage

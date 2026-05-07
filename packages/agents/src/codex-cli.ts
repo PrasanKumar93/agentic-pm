@@ -56,11 +56,20 @@ export function ensureCodexWorkspaceArg(
   args: string[],
   workspacePath: string,
 ): string[] {
-  if (hasCdArg(args)) {
-    return args;
+  let normalizedArgs = args;
+
+  if (!hasAddDirArg(normalizedArgs)) {
+    normalizedArgs = insertBeforeExec(normalizedArgs, [
+      "--add-dir",
+      workspacePath,
+    ]);
   }
 
-  return insertBeforeExec(args, ["--cd", workspacePath]);
+  if (!hasCdArg(normalizedArgs)) {
+    normalizedArgs = insertBeforeExec(normalizedArgs, ["--cd", workspacePath]);
+  }
+
+  return normalizedArgs;
 }
 
 export function buildCodexArgs(config: CodexCliRuntimeConfig): string[] {
@@ -169,6 +178,10 @@ function hasModelArg(args: string[]): boolean {
 
 function hasCdArg(args: string[]): boolean {
   return hasOptionArg(args, ["-C", "--cd"]);
+}
+
+function hasAddDirArg(args: string[]): boolean {
+  return hasOptionArg(args, ["--add-dir"]);
 }
 
 function hasConfigOverrideArg(args: string[], key: string): boolean {

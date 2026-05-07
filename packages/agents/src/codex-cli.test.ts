@@ -62,11 +62,25 @@ describe("Codex CLI argument builder", () => {
     ).toEqual(["exec", "--skip-git-repo-check", "--json", "-"]);
   });
 
+  it("injects generated worktrees as cwd and writable directories", () => {
+    expect(ensureCodexWorkspaceArg(["exec", "--json", "-"], "/tmp/workspace")).toEqual([
+      "--add-dir",
+      "/tmp/workspace",
+      "--cd",
+      "/tmp/workspace",
+      "exec",
+      "--json",
+      "-",
+    ]);
+  });
+
   it("does not duplicate model, reasoning, or workspace args", () => {
     const args = buildCodexArgs(
       codexConfig({
         args: [
           "--cd",
+          "/tmp/workspace",
+          "--add-dir",
           "/tmp/workspace",
           "-c",
           "model_reasoning_effort=\"high\"",
@@ -83,6 +97,7 @@ describe("Codex CLI argument builder", () => {
 
     expect(ensureCodexWorkspaceArg(args, "/tmp/other")).toEqual(args);
     expect(args.filter((arg) => arg === "--cd")).toHaveLength(1);
+    expect(args.filter((arg) => arg === "--add-dir")).toHaveLength(1);
     expect(args.filter((arg) => arg === "-m")).toHaveLength(1);
     expect(args.filter((arg) => arg === "-c")).toHaveLength(1);
   });

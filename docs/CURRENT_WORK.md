@@ -84,14 +84,19 @@ Date: 2026-04-30
 - Linear webhook smoke automation: `pnpm smoke:linear-webhook` now builds a realistic signed Linear Issue payload from `.env`, posts it to `/webhooks/linear`, verifies work-item reconciliation, replays the same `Linear-Delivery` id, and checks `/webhook-deliveries` plus `/work-items` for persisted evidence.
 - Local signed Linear webhook smoke passed against `project_linear_live_smoke`: restarted Mongo/Redis with `docker compose --env-file .env -f docker/docker-compose.yml up -d`, restarted the API with `LINEAR_WEBHOOK_SECRET`, posted delivery `local-linear-smoke-1778141674950-4597f3c0`, reconciled `SMK-1778141674950`, created queued work item `work_5a5bf5b50ec847df`, and verified duplicate replay with `attemptCount: 2`.
 - Real Linear inbound webhook smoke passed through ngrok: created Linear webhook `b2d35563-3229-4407-89db-12070d9e938c` for `Issue` events on team `PRA`, delivered `PRA-8` create through `https://1672-49-36-125-134.ngrok-free.app/webhooks/linear`, recorded inactive `Backlog` delivery `2129656c-3433-435f-bc89-9ad60c310043`, then moved `PRA-8` to `Todo` and verified active delivery `0b04042f-97d3-4122-bf47-b81eea03103b` created queued work item `work_816f4f8f900c4c20` with default repository `test-linear-app`.
+- Real webhook-created work dispatch proof: `PRA-8` ran through the live Linear webhook -> Symphony -> Codex path, synced Linear to `In Progress` then `In Review`, posted Linear comments, and captured log/review artifacts. The issue was intentionally too generic to produce a useful code patch, so it proved webhook-to-runtime handoff but not the PR artifact path.
+- Codex generated-worktree writable-root hardening: Codex runtime args now inject both `--add-dir <workspacePath>` and `--cd <workspacePath>` before `exec`, preserving explicit user-supplied args and avoiding duplicate workspace flags.
 
 ## In Progress
 
-- Continue from inbound webhook proof to dispatching the real webhook-created work item through Codex/Cursor.
+- Investigate nested Codex sandbox writes for generated git worktrees. Real coding issue `PRA-9` (`work_88e6caf9f9654b09`, latest run `run_ad473d4bbb674dad`) received the corrected Codex args:
+  `--ask-for-approval never --sandbox workspace-write --add-dir <workspacePath> --cd <workspacePath> exec ...`
+  but Codex still reported `touch testfile` as `Operation not permitted` and captured only log/review artifacts. A direct parent-shell `touch` in the same workspace succeeds, while `codex sandbox macos --full-auto touch ...` fails with `sandbox_apply: Operation not permitted` from this desktop/nested tool environment. Do not switch the default to `danger-full-access`; the next slice should keep `workspace-write` and isolate why nested Codex sandboxing denies writes here.
 
 ## Next Queue
 
-- Dispatch `PRA-8` from webhook-created queued work to prove the full real Linear webhook to runtime to PR loop.
+- Resolve the PRA-9 Codex nested-sandbox write blocker without `danger-full-access`, then rerun the same Linear task and verify patch, GitHub draft PR, review packet, Linear comments, and PR status artifacts.
+- Add a tiny repeatable Codex workspace-write smoke command/script that runs against a throwaway repository worktree and records whether the child Codex shell can create a file.
 - Add an operator script for creating/updating the Linear webhook from `.env` so ngrok URL changes do not require ad hoc GraphQL.
 - Optional outer folder rename after the active tool sandbox/workspace path is refreshed.
 - Add repository connectivity result filtering per repository once Config has heavier repository fleets.
@@ -124,4 +129,6 @@ Date: 2026-04-30
 24. Add local signed Linear webhook smoke automation: done. `pnpm smoke:linear-webhook -- --dry-run` previews the payload, and live mode verifies reconciliation plus delivery-id idempotency against the running API.
 25. Local signed Linear webhook smoke on `project_linear_live_smoke`: done. Delivery `local-linear-smoke-1778141674950-4597f3c0` reconciled `SMK-1778141674950`, created work item `work_5a5bf5b50ec847df`, and duplicate replay returned `duplicate`.
 26. Real Linear inbound webhook smoke through ngrok: done. Linear webhook `b2d35563-3229-4407-89db-12070d9e938c` delivered `PRA-8`; moving `PRA-8` from `Backlog` to `Todo` created work item `work_816f4f8f900c4c20`.
-27. Dispatch webhook-created `PRA-8` through Codex/Cursor and verify PR artifact flow.
+27. Dispatch webhook-created `PRA-8` through Codex: done for webhook-to-runtime handoff and Linear state/comments, but not for PR creation because the smoke issue produced no meaningful repository change.
+28. Harden Codex generated-worktree args: done. `--add-dir` and `--cd` are injected before `exec` with tests.
+29. Unblock safe Codex writes in generated worktrees: next. `PRA-9` shows the corrected args but still hits a nested sandbox write denial in this desktop environment.

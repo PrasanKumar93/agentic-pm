@@ -67,6 +67,7 @@
 - [x] Parse Cursor `stream-json` output into sanitized runtime events.
 - [x] Parse Codex `exec --json` output into sanitized runtime events.
 - [x] Configure Codex approval, sandbox, and smoke git-repo policy through typed runtime settings.
+- [x] Inject generated Codex worktrees with `--add-dir` and `--cd` before `exec`.
 - [x] Surface selected runtime, workflow load, Codex policy, and Cursor policy in dashboard health/config.
 - [x] Run a real Codex runtime adapter from the worker.
 - [x] Verify Cursor Agent CLI noninteractive mode locally.
@@ -94,3 +95,4 @@
 - [x] Show persisted review feedback history in the run detail panel.
 - [x] Show GitHub PR readiness, review state, and checks in the run detail panel.
 - [x] Gate manual completion in the run detail panel with PR readiness evidence.
+- [ ] Isolate and fix nested Codex `workspace-write` write denial for generated repository worktrees without using `danger-full-access` as the default.
