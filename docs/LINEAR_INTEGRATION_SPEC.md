@@ -326,6 +326,13 @@ External repository routing smoke verified on 2026-04-30:
 
 Webhook smoke should return `data.status: "reconciled"` for active issue payloads and create a local work item for the configured project. Replaying the exact same payload and `Linear-Delivery` should return `data.status: "duplicate"` and should not append another `tracker.issue.webhook_reconciled` event.
 
+Real inbound webhook smoke verified on 2026-05-07:
+
+- Started an ngrok tunnel to `http://127.0.0.1:4000` and set `LINEAR_WEBHOOK_PUBLIC_URL` to the public `/webhooks/linear` callback.
+- Created Linear webhook `b2d35563-3229-4407-89db-12070d9e938c` for `Issue` events on team `PRA` with the same `LINEAR_WEBHOOK_SECRET` used by the API.
+- Created Linear issue `PRA-8`; Linear delivered create event `2129656c-3433-435f-bc89-9ad60c310043` through ngrok. Symphony reconciled it as inactive because Linear created it in `Backlog`, which is intentionally not in `activeStates`.
+- Moved `PRA-8` to `Todo`; Linear delivered update event `0b04042f-97d3-4122-bf47-b81eea03103b`. Symphony reconciled it as active and created queued work item `work_816f4f8f900c4c20` with the project default `test-linear-app` repository.
+
 ## 11. References
 
 - Linear webhook docs: https://linear.app/developers/webhooks

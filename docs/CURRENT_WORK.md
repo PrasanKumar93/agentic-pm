@@ -83,16 +83,16 @@ Date: 2026-04-30
 - Linear webhook setup visibility: `/integrations/health` now includes `linear.webhookSetup`, and Config shows local callback URL, public callback URL readiness, signing secret status, verification header/timestamp requirements, and delivery dedupe header before the real inbound smoke.
 - Linear webhook smoke automation: `pnpm smoke:linear-webhook` now builds a realistic signed Linear Issue payload from `.env`, posts it to `/webhooks/linear`, verifies work-item reconciliation, replays the same `Linear-Delivery` id, and checks `/webhook-deliveries` plus `/work-items` for persisted evidence.
 - Local signed Linear webhook smoke passed against `project_linear_live_smoke`: restarted Mongo/Redis with `docker compose --env-file .env -f docker/docker-compose.yml up -d`, restarted the API with `LINEAR_WEBHOOK_SECRET`, posted delivery `local-linear-smoke-1778141674950-4597f3c0`, reconciled `SMK-1778141674950`, created queued work item `work_5a5bf5b50ec847df`, and verified duplicate replay with `attemptCount: 2`.
+- Real Linear inbound webhook smoke passed through ngrok: created Linear webhook `b2d35563-3229-4407-89db-12070d9e938c` for `Issue` events on team `PRA`, delivered `PRA-8` create through `https://1672-49-36-125-134.ngrok-free.app/webhooks/linear`, recorded inactive `Backlog` delivery `2129656c-3433-435f-bc89-9ad60c310043`, then moved `PRA-8` to `Todo` and verified active delivery `0b04042f-97d3-4122-bf47-b81eea03103b` created queued work item `work_816f4f8f900c4c20` with default repository `test-linear-app`.
 
 ## In Progress
 
-- Continue toward real inbound Linear webhook smoke through a public tunnel.
+- Continue from inbound webhook proof to dispatching the real webhook-created work item through Codex/Cursor.
 
 ## Next Queue
 
-- Create a public tunnel to `http://127.0.0.1:4000`.
-- Set `LINEAR_WEBHOOK_PUBLIC_URL` or `AGENTIC_PM_PUBLIC_BASE_URL` to the public tunnel callback before the live Linear webhook smoke.
-- Register the public `/webhooks/linear` URL in Linear with the same webhook signing secret and trigger a real Linear issue update.
+- Dispatch `PRA-8` from webhook-created queued work to prove the full real Linear webhook to runtime to PR loop.
+- Add an operator script for creating/updating the Linear webhook from `.env` so ngrok URL changes do not require ad hoc GraphQL.
 - Optional outer folder rename after the active tool sandbox/workspace path is refreshed.
 - Add repository connectivity result filtering per repository once Config has heavier repository fleets.
 
@@ -123,4 +123,5 @@ Date: 2026-04-30
 23. Surface Linear webhook setup readiness: done. Health and Config now show the callback URL/secret/tunnel prerequisites for a real inbound webhook.
 24. Add local signed Linear webhook smoke automation: done. `pnpm smoke:linear-webhook -- --dry-run` previews the payload, and live mode verifies reconciliation plus delivery-id idempotency against the running API.
 25. Local signed Linear webhook smoke on `project_linear_live_smoke`: done. Delivery `local-linear-smoke-1778141674950-4597f3c0` reconciled `SMK-1778141674950`, created work item `work_5a5bf5b50ec847df`, and duplicate replay returned `duplicate`.
-26. Real Linear inbound webhook smoke once a public tunnel is configured.
+26. Real Linear inbound webhook smoke through ngrok: done. Linear webhook `b2d35563-3229-4407-89db-12070d9e938c` delivered `PRA-8`; moving `PRA-8` from `Backlog` to `Todo` created work item `work_816f4f8f900c4c20`.
+27. Dispatch webhook-created `PRA-8` through Codex/Cursor and verify PR artifact flow.
