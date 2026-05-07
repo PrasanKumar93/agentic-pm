@@ -95,4 +95,5 @@
 - [x] Show persisted review feedback history in the run detail panel.
 - [x] Show GitHub PR readiness, review state, and checks in the run detail panel.
 - [x] Gate manual completion in the run detail panel with PR readiness evidence.
-- [ ] Add a repeatable Codex auth/write smoke for generated repository worktrees and fix the remaining `workspace-write` execution blocker without using `danger-full-access` as the default.
+- [x] Add a repeatable Codex auth/write smoke for generated repository worktrees.
+- [ ] Use the Codex auth/write smoke result to fix the remaining `workspace-write` execution blocker without using `danger-full-access` as the default.
