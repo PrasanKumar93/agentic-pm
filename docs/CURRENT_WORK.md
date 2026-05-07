@@ -82,6 +82,7 @@ Date: 2026-04-30
 - Repository connectivity visibility: Config view now reads recent `repository.connectivity_checked` events through `GET /repositories/connectivity-checks` and renders the last per-check local path, repository URL, and PR remote results inline.
 - Linear webhook setup visibility: `/integrations/health` now includes `linear.webhookSetup`, and Config shows local callback URL, public callback URL readiness, signing secret status, verification header/timestamp requirements, and delivery dedupe header before the real inbound smoke.
 - Linear webhook smoke automation: `pnpm smoke:linear-webhook` now builds a realistic signed Linear Issue payload from `.env`, posts it to `/webhooks/linear`, verifies work-item reconciliation, replays the same `Linear-Delivery` id, and checks `/webhook-deliveries` plus `/work-items` for persisted evidence.
+- Local signed Linear webhook smoke passed against `project_linear_live_smoke`: restarted Mongo/Redis with `docker compose --env-file .env -f docker/docker-compose.yml up -d`, restarted the API with `LINEAR_WEBHOOK_SECRET`, posted delivery `local-linear-smoke-1778141674950-4597f3c0`, reconciled `SMK-1778141674950`, created queued work item `work_5a5bf5b50ec847df`, and verified duplicate replay with `attemptCount: 2`.
 
 ## In Progress
 
@@ -89,9 +90,9 @@ Date: 2026-04-30
 
 ## Next Queue
 
-- Configure `LINEAR_WEBHOOK_SECRET` and run a real inbound webhook smoke through a public tunnel.
+- Create a public tunnel to `http://127.0.0.1:4000`.
 - Set `LINEAR_WEBHOOK_PUBLIC_URL` or `AGENTIC_PM_PUBLIC_BASE_URL` to the public tunnel callback before the live Linear webhook smoke.
-- Run `pnpm smoke:linear-webhook` after restarting the API with `LINEAR_WEBHOOK_SECRET`, then repeat through the public Linear webhook.
+- Register the public `/webhooks/linear` URL in Linear with the same webhook signing secret and trigger a real Linear issue update.
 - Optional outer folder rename after the active tool sandbox/workspace path is refreshed.
 - Add repository connectivity result filtering per repository once Config has heavier repository fleets.
 
@@ -121,4 +122,5 @@ Date: 2026-04-30
 22. Render connectivity check details inline: done. Config shows the recent event-backed check results after `Check access`.
 23. Surface Linear webhook setup readiness: done. Health and Config now show the callback URL/secret/tunnel prerequisites for a real inbound webhook.
 24. Add local signed Linear webhook smoke automation: done. `pnpm smoke:linear-webhook -- --dry-run` previews the payload, and live mode verifies reconciliation plus delivery-id idempotency against the running API.
-25. Real Linear inbound webhook smoke once `LINEAR_WEBHOOK_SECRET` and a public tunnel are configured.
+25. Local signed Linear webhook smoke on `project_linear_live_smoke`: done. Delivery `local-linear-smoke-1778141674950-4597f3c0` reconciled `SMK-1778141674950`, created work item `work_5a5bf5b50ec847df`, and duplicate replay returned `duplicate`.
+26. Real Linear inbound webhook smoke once a public tunnel is configured.
