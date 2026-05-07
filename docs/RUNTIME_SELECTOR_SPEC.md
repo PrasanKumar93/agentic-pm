@@ -82,7 +82,7 @@ The runtime adapter must not duplicate explicit operator-supplied `--cd`, `-C`, 
 
 `danger-full-access` is not the default resolution for write failures. It should only be used in an externally sandboxed environment and after explicit operator approval. The current safe target is `workspace-write` plus explicit generated workspace roots.
 
-Known local blocker as of 2026-05-07: live Linear issue `PRA-9` received the corrected command shape but Codex still reported `touch testfile` as `Operation not permitted` in the generated `test-linear-app` worktree. The parent shell can write to that same workspace, while nested `codex sandbox macos --full-auto touch ...` fails with `sandbox_apply: Operation not permitted` in this desktop tool environment. The next slice should isolate whether this is caused by nested macOS sandboxing, the desktop tool sandbox, or generated worktree path handling, without weakening the default policy to `danger-full-access`.
+Known local blocker as of 2026-05-07: live Linear issue `PRA-9` received the corrected command shape but Codex still reported `touch package.json` as `Operation not permitted` in the generated `test-linear-app` worktree. Direct `codex sandbox macos --full-auto touch ...` can write in that same worktree when launched outside the parent chat/tool sandbox, so the workspace path and base Codex sandbox policy are not enough to explain the failure. A direct `codex exec` smoke using the current project `.env` plus Symphony's `OPENAI_API_KEY -> CODEX_API_KEY` bridge returned a 401 invalid API key. The next slice should add a repeatable auth/write smoke and validate the configured Codex credential path before retrying `PRA-9`, without weakening the default policy to `danger-full-access`.
 
 ## 6. Dashboard Behavior
 

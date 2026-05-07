@@ -89,14 +89,14 @@ Date: 2026-04-30
 
 ## In Progress
 
-- Investigate nested Codex sandbox writes for generated git worktrees. Real coding issue `PRA-9` (`work_88e6caf9f9654b09`, latest run `run_ad473d4bbb674dad`) received the corrected Codex args:
+- Validate Codex auth and `workspace-write` execution before the next real PR attempt. Real coding issue `PRA-9` (`work_88e6caf9f9654b09`, latest run `run_6ce8590f11ac41b5`) received the corrected Codex args:
   `--ask-for-approval never --sandbox workspace-write --add-dir <workspacePath> --cd <workspacePath> exec ...`
-  but Codex still reported `touch testfile` as `Operation not permitted` and captured only log/review artifacts. A direct parent-shell `touch` in the same workspace succeeds, while `codex sandbox macos --full-auto touch ...` fails with `sandbox_apply: Operation not permitted` from this desktop/nested tool environment. Do not switch the default to `danger-full-access`; the next slice should keep `workspace-write` and isolate why nested Codex sandboxing denies writes here.
+  but Codex still reported `touch package.json` as `Operation not permitted` and captured only log/review artifacts. Direct `codex sandbox macos --full-auto touch ...` writes successfully in the same generated worktree when launched outside the parent chat/tool sandbox, so the workspace path and base Codex sandbox policy are not the root issue. A direct `codex exec` smoke using the current project `.env` with Symphony's `OPENAI_API_KEY -> CODEX_API_KEY` bridge returned a 401 invalid API key. Do not switch the default to `danger-full-access`; the next slice should keep `workspace-write`, validate the configured Codex auth source, and run a tiny generated-worktree write smoke before retrying `PRA-9`.
 
 ## Next Queue
 
-- Resolve the PRA-9 Codex nested-sandbox write blocker without `danger-full-access`, then rerun the same Linear task and verify patch, GitHub draft PR, review packet, Linear comments, and PR status artifacts.
-- Add a tiny repeatable Codex workspace-write smoke command/script that runs against a throwaway repository worktree and records whether the child Codex shell can create a file.
+- Add a tiny repeatable Codex auth/write smoke command or script that loads `.env`, applies the worker's `OPENAI_API_KEY -> CODEX_API_KEY` bridge, runs `codex exec` in `workspace-write`, and records whether the child Codex shell can create a file without printing secrets.
+- After the auth/write smoke passes, rerun `PRA-9` and verify patch, GitHub draft PR, review packet, Linear comments, and PR status artifacts.
 - Add an operator script for creating/updating the Linear webhook from `.env` so ngrok URL changes do not require ad hoc GraphQL.
 - Optional outer folder rename after the active tool sandbox/workspace path is refreshed.
 - Add repository connectivity result filtering per repository once Config has heavier repository fleets.
@@ -131,4 +131,4 @@ Date: 2026-04-30
 26. Real Linear inbound webhook smoke through ngrok: done. Linear webhook `b2d35563-3229-4407-89db-12070d9e938c` delivered `PRA-8`; moving `PRA-8` from `Backlog` to `Todo` created work item `work_816f4f8f900c4c20`.
 27. Dispatch webhook-created `PRA-8` through Codex: done for webhook-to-runtime handoff and Linear state/comments, but not for PR creation because the smoke issue produced no meaningful repository change.
 28. Harden Codex generated-worktree args: done. `--add-dir` and `--cd` are injected before `exec` with tests.
-29. Unblock safe Codex writes in generated worktrees: next. `PRA-9` shows the corrected args but still hits a nested sandbox write denial in this desktop environment.
+29. Unblock safe Codex generated-worktree execution: next. `PRA-9` shows the corrected args but still reports read-only through `codex exec`; direct Codex sandbox writes work, and the current `.env` key path returns 401 in a direct API-key smoke.
