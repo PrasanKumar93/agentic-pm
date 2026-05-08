@@ -86,16 +86,18 @@ Date: 2026-04-30
 - Local signed Linear webhook smoke passed against `project_linear_live_smoke`: restarted Mongo/Redis with `docker compose --env-file .env -f docker/docker-compose.yml up -d`, restarted the API with `LINEAR_WEBHOOK_SECRET`, posted delivery `local-linear-smoke-1778141674950-4597f3c0`, reconciled `SMK-1778141674950`, created queued work item `work_5a5bf5b50ec847df`, and verified duplicate replay with `attemptCount: 2`.
 - Real Linear inbound webhook smoke passed through ngrok: created Linear webhook `b2d35563-3229-4407-89db-12070d9e938c` for `Issue` events on team `PRA`, delivered `PRA-8` create through `https://1672-49-36-125-134.ngrok-free.app/webhooks/linear`, recorded inactive `Backlog` delivery `2129656c-3433-435f-bc89-9ad60c310043`, then moved `PRA-8` to `Todo` and verified active delivery `0b04042f-97d3-4122-bf47-b81eea03103b` created queued work item `work_816f4f8f900c4c20` with default repository `test-linear-app`.
 - Real webhook-created work dispatch proof: `PRA-8` ran through the live Linear webhook -> Symphony -> Codex path, synced Linear to `In Progress` then `In Review`, posted Linear comments, and captured log/review artifacts. The issue was intentionally too generic to produce a useful code patch, so it proved webhook-to-runtime handoff but not the PR artifact path.
-- Codex generated-worktree writable-root hardening: Codex runtime args now inject both `--add-dir <workspacePath>` and `--cd <workspacePath>` before `exec`, preserving explicit user-supplied args and avoiding duplicate workspace flags.
+- Codex generated-worktree writable-root hardening: Codex runtime args now inject `--add-dir <workspacePath>`, `--cd <workspacePath>`, and `--sandbox workspace-write` as `exec` options, preserving explicit user-supplied args and normalizing old top-level workspace flags from `.env`.
+- Live Codex workspace-write recovery smoke: `PRA-9` was retried after the Codex arg normalization, ran safely under `workspace-write`, captured log/patch/PR/review artifacts, pushed branch `agent/pra-9-codex-webhook-smoke-add-status-cli-2026-05-07t17-59-52-ec394304`, created draft GitHub PR #4 for `test-linear-app`, synced Linear back to `In Review`, and posted the review-ready comment.
+- Live same-PR Codex review-change smoke on `PRA-9` / `test-linear-app` PR #4: persisted reviewer feedback for multi-word CLI args, synced Linear back to `Todo`, checked out the existing PR branch, reran Codex with feedback, pushed follow-up commit `2046ad79395e1af842833533a180b0698cf16a07`, recorded `github.pr.updated`, refreshed patch/PR/review artifacts, and kept the manual merge gate.
 
 ## In Progress
 
-- Retry a real Linear PR work item through Codex after the `workspace-write` fix. The blocker was Codex CLI argument placement: `--sandbox`, `--add-dir`, and `--cd` before `exec` caused nested `codex exec` turns to start read-only on Codex CLI `0.110.0`. The adapter and smoke harness now normalize those flags onto the `exec` side, including old `CODEX_ARGS` values from `.env`; `pnpm smoke:codex-auth-write -- --json --workspace /private/tmp/agentic-pm-codex-default-fixed-workspace --marker codex-default-fixed-write-smoke.txt` passed without `danger-full-access`.
+- Clean up remaining Codex run-log noise and PR review readiness ergonomics after the live `PRA-9` proof. The remaining non-blocking noise is the local `~/.codex/state_5.sqlite` migration warning emitted by Codex CLI; workspace writes, PR creation, and same-PR change requests now work without `danger-full-access`.
 
 ## Next Queue
 
-- Rerun a real Linear Codex work item and verify patch, GitHub draft PR, review packet, Linear comments, and PR status artifacts on `test-linear-app`.
-- Add an operator script for creating/updating the Linear webhook from `.env` so ngrok URL changes do not require ad hoc GraphQL.
+- Normalize known Codex warning stderr into warning/info severity so the timeline is not visually dominated by non-fatal state DB and model-personality warnings.
+- Add an operator script or dashboard action for creating/updating the Linear webhook from `.env` so ngrok URL changes do not require ad hoc GraphQL.
 - Optional outer folder rename after the active tool sandbox/workspace path is refreshed.
 - Add repository connectivity result filtering per repository once Config has heavier repository fleets.
 
@@ -128,5 +130,7 @@ Date: 2026-04-30
 25. Local signed Linear webhook smoke on `project_linear_live_smoke`: done. Delivery `local-linear-smoke-1778141674950-4597f3c0` reconciled `SMK-1778141674950`, created work item `work_5a5bf5b50ec847df`, and duplicate replay returned `duplicate`.
 26. Real Linear inbound webhook smoke through ngrok: done. Linear webhook `b2d35563-3229-4407-89db-12070d9e938c` delivered `PRA-8`; moving `PRA-8` from `Backlog` to `Todo` created work item `work_816f4f8f900c4c20`.
 27. Dispatch webhook-created `PRA-8` through Codex: done for webhook-to-runtime handoff and Linear state/comments, but not for PR creation because the smoke issue produced no meaningful repository change.
-28. Harden Codex generated-worktree args: done. `--add-dir` and `--cd` are injected as `exec` options with tests.
+28. Harden Codex generated-worktree args: done. `--add-dir`, `--cd`, and `--sandbox` are injected as `exec` options with tests.
 29. Add repeatable Codex auth/write smoke: done. The smoke exposed that top-level workspace/sandbox flags made nested Codex turns read-only; the adapter now normalizes those flags onto the `exec` side, and live smoke passes under `workspace-write`.
+30. Retry live Codex PR creation after workspace-write fix: done on `PRA-9`; Symphony created `test-linear-app` draft PR #4 with patch, PR, review packet, Linear comments, and pushed branch evidence.
+31. Prove live same-PR Codex review changes: done on `PRA-9`; Symphony persisted reviewer feedback, reran Codex on the existing PR #4 branch, pushed follow-up commit `2046ad79395e1af842833533a180b0698cf16a07`, and recorded `github.pr.updated`.

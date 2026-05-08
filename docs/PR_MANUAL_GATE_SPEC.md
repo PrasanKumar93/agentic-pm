@@ -195,3 +195,8 @@ Required checks:
 - Git helper smoke test for checkout + follow-up commit push to an existing PR branch
 - API `complete` action smoke test against a review-state work item
 - Dashboard smoke test at `http://localhost:3000`
+
+Live validation evidence:
+
+- `PRA-9` on `project_linear_live_smoke` created `test-linear-app` draft PR #4 after the Codex `workspace-write` arg normalization. Run `run_acf6b3c5ec394304` captured log, patch, PR, and review packet artifacts; the PR artifact points to `https://github.com/PrasanKumar93/test-linear-app/pull/4` and branch `agent/pra-9-codex-webhook-smoke-add-status-cli-2026-05-07t17-59-52-ec394304`.
+- A same-PR Codex review-change request on `PRA-9` stored reviewer feedback, synced Linear back to `Todo`, checked out the existing PR branch, pushed follow-up commit `2046ad79395e1af842833533a180b0698cf16a07`, recorded `github.pr.updated`, refreshed PR artifact `art_fe8d4b9f451e4961`, and returned Linear to `In Review`.
