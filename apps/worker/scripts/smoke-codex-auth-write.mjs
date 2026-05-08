@@ -145,9 +145,9 @@ try {
       reason === "codex_failed" ? "write_verification_failed" : reason,
       "Codex completed but did not create the expected marker file.",
       {
-      markerExists: markerContent !== undefined,
-      markerFileName,
-      outputTail: outputTail(result),
+        markerExists: markerContent !== undefined,
+        markerFileName,
+        outputTail: outputTail(result),
       },
     );
   }
@@ -248,14 +248,14 @@ function runCodex(input) {
 }
 
 function buildCodexArgs(input) {
-  let output = [...input.args];
+  let output = normalizeCodexArgs(input.args);
 
   if (!hasOptionArg(output, ["--ask-for-approval", "-a"])) {
     output = insertBeforeExec(output, ["--ask-for-approval", input.approvalPolicy]);
   }
 
   if (!hasOptionArg(output, ["--sandbox"])) {
-    output = insertBeforeExec(output, ["--sandbox", input.sandboxMode]);
+    output = insertAfterExec(output, ["--sandbox", input.sandboxMode]);
   }
 
   if (input.reasoningEffort && !hasConfigOverrideArg(output, "model_reasoning_effort")) {
@@ -265,12 +265,18 @@ function buildCodexArgs(input) {
     ]);
   }
 
+  const workspaceArgs = [];
+
   if (!hasOptionArg(output, ["--add-dir"])) {
-    output = insertBeforeExec(output, ["--add-dir", input.workspacePath]);
+    workspaceArgs.push("--add-dir", input.workspacePath);
   }
 
   if (!hasOptionArg(output, ["--cd", "-C"])) {
-    output = insertBeforeExec(output, ["--cd", input.workspacePath]);
+    workspaceArgs.push("--cd", input.workspacePath);
+  }
+
+  if (workspaceArgs.length > 0) {
+    output = insertAfterExec(output, workspaceArgs);
   }
 
   if (input.model && !hasOptionArg(output, ["--model", "-m"])) {
@@ -295,6 +301,95 @@ function insertBeforeExec(args, inserted) {
     return [...inserted, ...args];
   }
   return [...args.slice(0, execIndex), ...inserted, ...args.slice(execIndex)];
+}
+
+function insertAfterExec(args, inserted) {
+  const execIndex = args.indexOf("exec");
+  if (execIndex < 0) {
+    return [...args, ...inserted];
+  }
+  return [
+    ...args.slice(0, execIndex + 1),
+    ...inserted,
+    ...args.slice(execIndex + 1),
+  ];
+}
+
+function normalizeCodexArgs(args) {
+  const execIndex = args.indexOf("exec");
+  if (execIndex < 0) {
+    return args;
+  }
+
+  const beforeExec = args.slice(0, execIndex);
+  const afterExec = args.slice(execIndex + 1);
+  const normalizedBeforeExec = [];
+  const normalizedAfterExec = [];
+
+  for (let index = 0; index < beforeExec.length; index += 1) {
+    const movedApprovalIndex = moveOptionWithValue(
+      beforeExec,
+      index,
+      ["--ask-for-approval", "-a"],
+      normalizedBeforeExec,
+    );
+    if (movedApprovalIndex !== undefined) {
+      index = movedApprovalIndex;
+      continue;
+    }
+
+    const movedExecIndex = moveOptionWithValue(
+      beforeExec,
+      index,
+      ["--sandbox", "--add-dir", "--cd", "-C"],
+      normalizedAfterExec,
+    );
+    if (movedExecIndex !== undefined) {
+      index = movedExecIndex;
+      continue;
+    }
+
+    normalizedBeforeExec.push(beforeExec[index]);
+  }
+
+  for (let index = 0; index < afterExec.length; index += 1) {
+    const movedApprovalIndex = moveOptionWithValue(
+      afterExec,
+      index,
+      ["--ask-for-approval", "-a"],
+      normalizedBeforeExec,
+    );
+    if (movedApprovalIndex !== undefined) {
+      index = movedApprovalIndex;
+      continue;
+    }
+
+    normalizedAfterExec.push(afterExec[index]);
+  }
+
+  return [...normalizedBeforeExec, "exec", ...normalizedAfterExec];
+}
+
+function moveOptionWithValue(args, index, names, target) {
+  const arg = args[index];
+  for (const name of names) {
+    if (arg === name) {
+      target.push(arg);
+      const value = args[index + 1];
+      if (value && !value.startsWith("-")) {
+        target.push(value);
+        return index + 1;
+      }
+      return index;
+    }
+
+    if (arg.startsWith(`${name}=`)) {
+      target.push(arg);
+      return index;
+    }
+  }
+
+  return undefined;
 }
 
 function hasOptionArg(args, names) {

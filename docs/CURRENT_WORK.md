@@ -90,14 +90,11 @@ Date: 2026-04-30
 
 ## In Progress
 
-- Validate Codex auth and `workspace-write` execution before the next real PR attempt. Real coding issue `PRA-9` (`work_88e6caf9f9654b09`, latest run `run_6ce8590f11ac41b5`) received the corrected Codex args:
-  `--ask-for-approval never --sandbox workspace-write --add-dir <workspacePath> --cd <workspacePath> exec ...`
-  but Codex still reported `touch package.json` as `Operation not permitted` and captured only log/review artifacts. The repeatable smoke now reaches Codex with the project `.env` auth bridge and classifies the failure as `workspace_write_failed`: `codex exec` reports `operation not permitted` while direct `codex sandbox macos --full-auto touch ...` writes successfully in `/private/tmp`. Do not switch the default to `danger-full-access`; the next slice should keep `workspace-write` and isolate why `codex exec` denies writes despite the direct sandbox command succeeding.
+- Retry a real Linear PR work item through Codex after the `workspace-write` fix. The blocker was Codex CLI argument placement: `--sandbox`, `--add-dir`, and `--cd` before `exec` caused nested `codex exec` turns to start read-only on Codex CLI `0.110.0`. The adapter and smoke harness now normalize those flags onto the `exec` side, including old `CODEX_ARGS` values from `.env`; `pnpm smoke:codex-auth-write -- --json --workspace /private/tmp/agentic-pm-codex-default-fixed-workspace --marker codex-default-fixed-write-smoke.txt` passed without `danger-full-access`.
 
 ## Next Queue
 
-- Investigate the Codex CLI `exec` write-denial delta: direct `codex sandbox macos --full-auto touch ...` succeeds, but `pnpm smoke:codex-auth-write` reaches Codex and returns `workspace_write_failed`. Likely next probes are Codex CLI upgrade/state cleanup, config overrides, or an adapter change that invokes a known-writable Codex execution mode without `danger-full-access`.
-- After `pnpm smoke:codex-auth-write` passes, rerun `PRA-9` and verify patch, GitHub draft PR, review packet, Linear comments, and PR status artifacts.
+- Rerun a real Linear Codex work item and verify patch, GitHub draft PR, review packet, Linear comments, and PR status artifacts on `test-linear-app`.
 - Add an operator script for creating/updating the Linear webhook from `.env` so ngrok URL changes do not require ad hoc GraphQL.
 - Optional outer folder rename after the active tool sandbox/workspace path is refreshed.
 - Add repository connectivity result filtering per repository once Config has heavier repository fleets.
@@ -131,5 +128,5 @@ Date: 2026-04-30
 25. Local signed Linear webhook smoke on `project_linear_live_smoke`: done. Delivery `local-linear-smoke-1778141674950-4597f3c0` reconciled `SMK-1778141674950`, created work item `work_5a5bf5b50ec847df`, and duplicate replay returned `duplicate`.
 26. Real Linear inbound webhook smoke through ngrok: done. Linear webhook `b2d35563-3229-4407-89db-12070d9e938c` delivered `PRA-8`; moving `PRA-8` from `Backlog` to `Todo` created work item `work_816f4f8f900c4c20`.
 27. Dispatch webhook-created `PRA-8` through Codex: done for webhook-to-runtime handoff and Linear state/comments, but not for PR creation because the smoke issue produced no meaningful repository change.
-28. Harden Codex generated-worktree args: done. `--add-dir` and `--cd` are injected before `exec` with tests.
-29. Add repeatable Codex auth/write smoke: done. Live result is `workspace_write_failed` even though direct Codex sandbox writes succeed; next isolate the `codex exec` write-denial delta before retrying `PRA-9`.
+28. Harden Codex generated-worktree args: done. `--add-dir` and `--cd` are injected as `exec` options with tests.
+29. Add repeatable Codex auth/write smoke: done. The smoke exposed that top-level workspace/sandbox flags made nested Codex turns read-only; the adapter now normalizes those flags onto the `exec` side, and live smoke passes under `workspace-write`.

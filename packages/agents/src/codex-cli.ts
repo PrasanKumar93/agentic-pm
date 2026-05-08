@@ -56,17 +56,22 @@ export function ensureCodexWorkspaceArg(
   args: string[],
   workspacePath: string,
 ): string[] {
-  let normalizedArgs = args;
+  let normalizedArgs = normalizeCodexArgs(args);
+  const workspaceArgs: string[] = [];
 
   if (!hasAddDirArg(normalizedArgs)) {
-    normalizedArgs = insertBeforeExec(normalizedArgs, [
+    workspaceArgs.push(
       "--add-dir",
       workspacePath,
-    ]);
+    );
   }
 
   if (!hasCdArg(normalizedArgs)) {
-    normalizedArgs = insertBeforeExec(normalizedArgs, ["--cd", workspacePath]);
+    workspaceArgs.push("--cd", workspacePath);
+  }
+
+  if (workspaceArgs.length > 0) {
+    normalizedArgs = insertAfterExec(normalizedArgs, workspaceArgs);
   }
 
   return normalizedArgs;
@@ -86,7 +91,7 @@ export function buildCodexArgs(config: CodexCliRuntimeConfig): string[] {
   }
 
   if (config.sandboxMode && !hasOptionArg(normalizedArgs, ["--sandbox"])) {
-    normalizedArgs = insertBeforeExec(normalizedArgs, [
+    normalizedArgs = insertAfterExec(normalizedArgs, [
       "--sandbox",
       config.sandboxMode
     ]);
@@ -151,18 +156,46 @@ function normalizeCodexArgs(args: string[]): string[] {
 
   const beforeExec = args.slice(0, execIndex);
   const afterExec = args.slice(execIndex + 1);
-  const normalizedBeforeExec = [...beforeExec];
+  const normalizedBeforeExec: string[] = [];
   const normalizedAfterExec: string[] = [];
+
+  for (let index = 0; index < beforeExec.length; index += 1) {
+    const arg = beforeExec[index];
+    const movedApprovalIndex = moveOptionWithValue({
+      args: beforeExec,
+      index,
+      names: ["--ask-for-approval", "-a"],
+      target: normalizedBeforeExec,
+    });
+    if (movedApprovalIndex !== undefined) {
+      index = movedApprovalIndex;
+      continue;
+    }
+
+    const movedExecIndex = moveOptionWithValue({
+      args: beforeExec,
+      index,
+      names: ["--sandbox", "--add-dir", "--cd", "-C"],
+      target: normalizedAfterExec,
+    });
+    if (movedExecIndex !== undefined) {
+      index = movedExecIndex;
+      continue;
+    }
+
+    normalizedBeforeExec.push(arg);
+  }
 
   for (let index = 0; index < afterExec.length; index += 1) {
     const arg = afterExec[index];
-    if (arg === "--ask-for-approval" || arg === "-a") {
-      normalizedBeforeExec.push(arg);
-      const value = afterExec[index + 1];
-      if (value && !value.startsWith("-")) {
-        normalizedBeforeExec.push(value);
-        index += 1;
-      }
+    const movedApprovalIndex = moveOptionWithValue({
+      args: afterExec,
+      index,
+      names: ["--ask-for-approval", "-a"],
+      target: normalizedBeforeExec,
+    });
+    if (movedApprovalIndex !== undefined) {
+      index = movedApprovalIndex;
       continue;
     }
 
@@ -170,6 +203,33 @@ function normalizeCodexArgs(args: string[]): string[] {
   }
 
   return [...normalizedBeforeExec, "exec", ...normalizedAfterExec];
+}
+
+function moveOptionWithValue(input: {
+  args: string[];
+  index: number;
+  names: string[];
+  target: string[];
+}): number | undefined {
+  const arg = input.args[input.index];
+  for (const name of input.names) {
+    if (arg === name) {
+      input.target.push(arg);
+      const value = input.args[input.index + 1];
+      if (value && !value.startsWith("-")) {
+        input.target.push(value);
+        return input.index + 1;
+      }
+      return input.index;
+    }
+
+    if (arg.startsWith(`${name}=`)) {
+      input.target.push(arg);
+      return input.index;
+    }
+  }
+
+  return undefined;
 }
 
 function hasModelArg(args: string[]): boolean {

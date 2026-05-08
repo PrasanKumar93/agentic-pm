@@ -3,7 +3,7 @@ import { buildCodexArgs, ensureCodexWorkspaceArg } from "./codex-cli.js";
 import type { CodexCliRuntimeConfig } from "./codex-cli.js";
 
 describe("Codex CLI argument builder", () => {
-  it("injects headless approval and sandbox policy before exec", () => {
+  it("injects headless approval before exec and sandbox policy as an exec option", () => {
     expect(
       buildCodexArgs(
         codexConfig({
@@ -15,15 +15,15 @@ describe("Codex CLI argument builder", () => {
     ).toEqual([
       "--ask-for-approval",
       "never",
+      "exec",
       "--sandbox",
       "workspace-write",
-      "exec",
       "--json",
       "-"
     ]);
   });
 
-  it("preserves explicit approval and sandbox args", () => {
+  it("normalizes explicit approval and sandbox args to the working sides of exec", () => {
     expect(
       buildCodexArgs(
         codexConfig({
@@ -43,9 +43,9 @@ describe("Codex CLI argument builder", () => {
     ).toEqual([
       "--ask-for-approval",
       "on-request",
+      "exec",
       "--sandbox",
       "read-only",
-      "exec",
       "--json",
       "-"
     ]);
@@ -64,11 +64,11 @@ describe("Codex CLI argument builder", () => {
 
   it("injects generated worktrees as cwd and writable directories", () => {
     expect(ensureCodexWorkspaceArg(["exec", "--json", "-"], "/tmp/workspace")).toEqual([
+      "exec",
       "--add-dir",
       "/tmp/workspace",
       "--cd",
       "/tmp/workspace",
-      "exec",
       "--json",
       "-",
     ]);
@@ -100,6 +100,35 @@ describe("Codex CLI argument builder", () => {
     expect(args.filter((arg) => arg === "--add-dir")).toHaveLength(1);
     expect(args.filter((arg) => arg === "-m")).toHaveLength(1);
     expect(args.filter((arg) => arg === "-c")).toHaveLength(1);
+  });
+
+  it("moves explicit top-level workspace args to exec options", () => {
+    expect(
+      ensureCodexWorkspaceArg(
+        [
+          "--sandbox",
+          "workspace-write",
+          "--add-dir",
+          "/tmp/workspace",
+          "--cd",
+          "/tmp/workspace",
+          "exec",
+          "--json",
+          "-"
+        ],
+        "/tmp/other",
+      ),
+    ).toEqual([
+      "exec",
+      "--sandbox",
+      "workspace-write",
+      "--add-dir",
+      "/tmp/workspace",
+      "--cd",
+      "/tmp/workspace",
+      "--json",
+      "-",
+    ]);
   });
 });
 

@@ -125,7 +125,7 @@ Codex inherits the hardened process behavior:
 Codex uses the CLI's noninteractive exec mode. The runtime sends the rendered Symphony prompt to stdin:
 
 ```txt
-codex --ask-for-approval never --sandbox workspace-write --add-dir <workspacePath> --cd <workspacePath> exec --json -
+codex --ask-for-approval never exec --add-dir <workspacePath> --cd <workspacePath> --sandbox workspace-write --json -
 ```
 
 Model availability depends on the installed Codex CLI, account, and auth method. For API-key automation, the current local smoke path is validated with `CODEX_MODEL=gpt-5.1-codex` and `CODEX_REASONING_EFFORT=medium`. Keep `CODEX_MODEL` empty to inherit the CLI default, or set both model and reasoning effort explicitly to avoid incompatible user-level Codex config.
@@ -139,7 +139,7 @@ pnpm smoke:codex-auth-write
 
 The smoke command creates a throwaway git workspace by default, loads `.env` without printing secret values, applies the same `OPENAI_API_KEY -> CODEX_API_KEY` child-process bridge as the worker, runs `codex exec` with `workspace-write`, `--add-dir`, and `--cd`, and verifies that Codex can create a marker file. Its failure reasons distinguish `missing_auth`, `auth_failed`, `model_unsupported`, `workspace_write_failed`, `timeout`, and generic `codex_failed`.
 
-As of 2026-05-08 local testing, the smoke reaches Codex but returns `workspace_write_failed` with `operation not permitted` from the child shell, while direct `codex sandbox macos --full-auto touch ...` can write in the same `/private/tmp` style workspace. Treat that as a Codex `exec` invocation/config issue to resolve before retrying live Linear PR work.
+As of 2026-05-08 local testing, Codex CLI `0.110.0` started nested `codex exec` sessions as read-only when `--sandbox`, `--add-dir`, and `--cd` were supplied before `exec`. Symphony now normalizes those options onto the `exec` side of the command, including older `CODEX_ARGS` values from `.env`. `pnpm smoke:codex-auth-write -- --json --workspace /private/tmp/agentic-pm-codex-default-fixed-workspace --marker codex-default-fixed-write-smoke.txt` passed with `workspace-write`, so real Linear PR retries can use the safe policy instead of `danger-full-access`.
 
 When Codex emits JSONL, the adapter converts each line into sanitized Symphony events:
 

@@ -73,16 +73,16 @@ When a claimed work item has no `repositoryId` and the issue has no repository r
 Codex runs in headless `exec` mode. For repository-backed generated worktrees, Symphony must make the selected workspace both the current workspace root and an allowed writable directory:
 
 ```txt
-codex --ask-for-approval never --sandbox workspace-write --add-dir <workspacePath> --cd <workspacePath> exec --json -
+codex --ask-for-approval never exec --add-dir <workspacePath> --cd <workspacePath> --sandbox workspace-write --json -
 ```
 
-Both workspace flags are injected before `exec` because the Codex CLI accepts them as top-level options and as `exec` options. Keeping them before `exec` preserves one stable command shape for preflight visibility and runtime events.
+Workspace and sandbox flags are injected after `exec` because Codex CLI `0.110.0` honored that shape for nested noninteractive runs. Local smoke testing showed top-level `--sandbox workspace-write` could still produce a read-only nested turn, even though the visible command looked correct.
 
-The runtime adapter must not duplicate explicit operator-supplied `--cd`, `-C`, or `--add-dir` arguments. If an operator supplies those flags in `CODEX_ARGS`, Symphony preserves the operator's values.
+The runtime adapter must not duplicate explicit operator-supplied `--cd`, `-C`, or `--add-dir` arguments. If an operator supplies those flags in `CODEX_ARGS`, Symphony preserves the operator's values and normalizes old top-level workspace/sandbox flags onto the `exec` side.
 
 `danger-full-access` is not the default resolution for write failures. It should only be used in an externally sandboxed environment and after explicit operator approval. The current safe target is `workspace-write` plus explicit generated workspace roots.
 
-Known local blocker as of 2026-05-07: live Linear issue `PRA-9` received the corrected command shape but Codex still reported `touch package.json` as `Operation not permitted` in the generated `test-linear-app` worktree. Direct `codex sandbox macos --full-auto touch ...` can write in that same worktree when launched outside the parent chat/tool sandbox, so the workspace path and base Codex sandbox policy are not enough to explain the failure. A direct `codex exec` smoke using the current project `.env` plus Symphony's `OPENAI_API_KEY -> CODEX_API_KEY` bridge returned a 401 invalid API key. The next slice should add a repeatable auth/write smoke and validate the configured Codex credential path before retrying `PRA-9`, without weakening the default policy to `danger-full-access`.
+Known local result as of 2026-05-08: the repeatable Codex auth/write smoke passes after moving `--sandbox`, `--add-dir`, and `--cd` to `exec` options. The remaining `~/.codex/state_5.sqlite` migration warning is noisy but no longer blocks workspace writes.
 
 ## 6. Dashboard Behavior
 
