@@ -2496,18 +2496,7 @@ function buildReviewCompletionGate(
   }
 
   if (pullRequest.readiness.status === "blocked") {
-    return {
-      buttonTitle: "Resolve PR blockers before marking this work complete.",
-      canComplete: false,
-      detail:
-        "The linked PR has blockers that should be fixed through the review loop.",
-      label: "Blocked",
-      nextStep:
-        "Use Update / Resolve Conflicts or Fix with agent, then refresh.",
-      reasons: pullRequest.readiness.reasons,
-      title: "Completion blocked",
-      tone: "blocked",
-    };
+    return buildBlockedReviewCompletionGate(pullRequest);
   }
 
   return {
@@ -2520,6 +2509,96 @@ function buildReviewCompletionGate(
     reasons: pullRequest.readiness.reasons,
     title: "PR readiness unknown",
     tone: "unknown",
+  };
+}
+
+function buildBlockedReviewCompletionGate(
+  pullRequest: PullRequestStatusSummary,
+): ReviewCompletionGate {
+  const hasMergeConflict =
+    pullRequest.mergeable === false || pullRequest.mergeableState === "dirty";
+  const hasRequestedChanges =
+    pullRequest.review.status === "changes_requested";
+  const hasFailingChecks = pullRequest.checks.status === "failure";
+  const isClosed = pullRequest.state !== "open" && !pullRequest.merged;
+
+  if (
+    pullRequest.draft &&
+    !hasMergeConflict &&
+    !hasRequestedChanges &&
+    !hasFailingChecks &&
+    !isClosed
+  ) {
+    return {
+      buttonTitle:
+        "Mark the GitHub PR ready or merge it externally before completing.",
+      canComplete: false,
+      detail:
+        "The linked PR branch is clean, but GitHub still marks the PR as a draft.",
+      label: "Draft",
+      nextStep:
+        "Mark the PR ready for review in GitHub, complete the human review or merge step, then refresh.",
+      reasons: pullRequest.readiness.reasons,
+      title: "Manual PR action pending",
+      tone: "blocked",
+    };
+  }
+
+  if (hasMergeConflict) {
+    return {
+      buttonTitle: "Resolve PR merge conflicts before completing.",
+      canComplete: false,
+      detail:
+        "The linked PR has merge conflicts that should be fixed on the PR branch.",
+      label: "Conflict",
+      nextStep:
+        "Use Update / Resolve Conflicts, then refresh PR readiness.",
+      reasons: pullRequest.readiness.reasons,
+      title: "Merge conflict blocked",
+      tone: "blocked",
+    };
+  }
+
+  if (hasRequestedChanges || hasFailingChecks) {
+    return {
+      buttonTitle: "Resolve review or check blockers before completing.",
+      canComplete: false,
+      detail:
+        "The linked PR has review or check blockers that likely need a follow-up commit.",
+      label: "Blocked",
+      nextStep:
+        "Use Fix with agent for the requested change, then refresh PR readiness.",
+      reasons: pullRequest.readiness.reasons,
+      title: "Code follow-up needed",
+      tone: "blocked",
+    };
+  }
+
+  if (isClosed) {
+    return {
+      buttonTitle: "Reopen or relink the PR before completing.",
+      canComplete: false,
+      detail:
+        "The linked PR is not open, so Symphony cannot use it as merge-ready evidence.",
+      label: "Closed",
+      nextStep:
+        "Reopen the PR, link a current PR artifact, or rerun the work item.",
+      reasons: pullRequest.readiness.reasons,
+      title: "PR link needs attention",
+      tone: "blocked",
+    };
+  }
+
+  return {
+    buttonTitle: "Resolve PR blockers before marking this work complete.",
+    canComplete: false,
+    detail:
+      "The linked PR still has blockers before Symphony can close the manual gate.",
+    label: "Blocked",
+    nextStep: "Resolve the GitHub blocker, then refresh PR readiness.",
+    reasons: pullRequest.readiness.reasons,
+    title: "Completion blocked",
+    tone: "blocked",
   };
 }
 

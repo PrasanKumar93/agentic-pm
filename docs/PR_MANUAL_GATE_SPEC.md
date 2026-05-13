@@ -126,7 +126,7 @@ The selected run artifact list exposes PR review evidence:
 - Linked GitHub PR artifacts show a read-only readiness card with PR state, draft/mergeability, review summary, check summary, and blocker/pending reasons.
 - Linked GitHub PR readiness also shows the checked head commit and freshness of the readiness fetch, so follow-up review commits on the same PR branch are visible in Symphony.
 - The review-state `complete` action is exposed from a Manual completion card in run detail, not as an icon-only work-board quick action.
-- Linked GitHub PRs enable `Mark complete` only when readiness is `ready`, including already merged PRs. Blocked, pending, unknown, or missing PR evidence keeps visible completion disabled and shows a concrete next step. Local-only PR artifacts can still be completed after explicit manual review because no remote readiness exists.
+- Linked GitHub PRs enable `Mark complete` only when readiness is `ready`, including already merged PRs. Blocked, pending, unknown, or missing PR evidence keeps visible completion disabled and shows a concrete next step. Draft-only PRs point the reviewer to GitHub/manual review actions, merge-conflicted PRs point to `Update / Resolve Conflicts`, and review/check blockers point to the same-PR feedback loop. Local-only PR artifacts can still be completed after explicit manual review because no remote readiness exists.
 
 Manual PR linking uses:
 
