@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -76,6 +76,36 @@ export interface GitHubPullRequestUpdateResult {
   mergeability: PullRequestMergeabilityResult;
   remoteName: string;
   stdout: string;
+}
+
+export interface PullRequestConflictPreparationInput {
+  workspacePath: string;
+  baseBranch: string;
+  branchName: string;
+  remoteName: string;
+}
+
+export interface PullRequestConflictPreparationResult {
+  baseBranch: string;
+  branchName: string;
+  conflictedFiles: string[];
+  headSha: string;
+  remoteName: string;
+}
+
+export interface PullRequestConflictResolutionCommitInput {
+  workspacePath: string;
+  baseBranch: string;
+  branchName: string;
+  commitMessage: string;
+  remoteName: string;
+}
+
+export interface PullRequestConflictResolutionCommitResult {
+  branchName: string;
+  commitSha: string;
+  mergeability: PullRequestMergeabilityResult;
+  remoteName: string;
 }
 
 export interface PullRequestMergeabilityInput {
@@ -471,6 +501,101 @@ export async function assertPullRequestMergeable(
   }
 }
 
+export async function preparePullRequestConflictResolution(
+  input: PullRequestConflictPreparationInput,
+): Promise<PullRequestConflictPreparationResult> {
+  const branchName = input.branchName.trim();
+  const baseBranch = input.baseBranch.trim();
+  const remoteName = input.remoteName.trim();
+  if (!branchName || isProtectedBranch(branchName)) {
+    throw new Error(`Refusing to prepare unsafe PR branch: ${input.branchName}`);
+  }
+  if (!baseBranch || !remoteName) {
+    throw new Error("Conflict resolution requires a base branch and remote name");
+  }
+
+  const gitRoot = await readGitRoot(input.workspacePath);
+  if (!gitRoot || (await normalizePath(gitRoot)) !== (await normalizePath(input.workspacePath))) {
+    throw new Error("Conflict resolution requires the workspace path to be a git repository root");
+  }
+
+  await runGit(input.workspacePath, ["merge", "--abort"]).catch(() => undefined);
+  await runGit(input.workspacePath, ["switch", branchName]);
+  await runGit(input.workspacePath, ["fetch", "--quiet", remoteName, baseBranch]);
+  const headSha = (await runGit(input.workspacePath, ["rev-parse", "HEAD"])).trim();
+
+  try {
+    await runGit(input.workspacePath, ["merge", "--no-commit", "--no-ff", "FETCH_HEAD"]);
+    await runGit(input.workspacePath, ["merge", "--abort"]).catch(() => undefined);
+    throw new Error(`Pull request branch ${branchName} does not currently conflict with ${baseBranch}`);
+  } catch (error) {
+    const details = formatGitExecutionError(error);
+    if (!isMergeConflictOutput(details)) {
+      await runGit(input.workspacePath, ["merge", "--abort"]).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  return {
+    baseBranch,
+    branchName,
+    conflictedFiles: await readUnmergedFiles(input.workspacePath),
+    headSha,
+    remoteName,
+  };
+}
+
+export async function commitPullRequestConflictResolution(
+  input: PullRequestConflictResolutionCommitInput,
+): Promise<PullRequestConflictResolutionCommitResult> {
+  const branchName = input.branchName.trim();
+  if (!branchName || isProtectedBranch(branchName)) {
+    throw new Error(`Refusing to commit unsafe PR branch: ${input.branchName}`);
+  }
+
+  const unresolvedFiles = await readUnmergedFiles(input.workspacePath);
+  if (unresolvedFiles.length > 0) {
+    await assertNoConflictMarkers({
+      workspacePath: input.workspacePath,
+      files: unresolvedFiles,
+      baseBranch: input.baseBranch,
+      branchName,
+    });
+    await runGit(input.workspacePath, ["add", "-A"]);
+  }
+
+  const remainingUnresolvedFiles = await readUnmergedFiles(input.workspacePath);
+  if (remainingUnresolvedFiles.length > 0) {
+    throw new PullRequestMergeConflictError({
+      baseBranch: input.baseBranch,
+      branchName,
+      details: `Unresolved files: ${remainingUnresolvedFiles.join(", ")}`,
+    });
+  }
+
+  await runGit(input.workspacePath, ["add", "-A"]);
+  const changedFiles = await readChangedFiles(input.workspacePath);
+  if (changedFiles.length === 0) {
+    throw new Error("No conflict resolution changes to commit");
+  }
+
+  await runGit(input.workspacePath, ["commit", "-m", input.commitMessage]);
+  const commitSha = (await runGit(input.workspacePath, ["rev-parse", "HEAD"])).trim();
+  const mergeability = await assertPullRequestMergeable({
+    workspacePath: input.workspacePath,
+    baseBranch: input.baseBranch,
+    branchName,
+    remoteName: input.remoteName,
+  });
+
+  return {
+    branchName,
+    commitSha,
+    mergeability,
+    remoteName: input.remoteName,
+  };
+}
+
 async function checkLocalPath(
   localPath: string | undefined,
 ): Promise<RepositoryConnectivityCheck> {
@@ -810,6 +935,46 @@ async function readChangedFiles(workspacePath: string): Promise<string[]> {
     .filter(Boolean)
     .map((line) => line.slice(3).split(" -> ").pop()?.trim())
     .filter((file): file is string => Boolean(file));
+}
+
+async function readUnmergedFiles(workspacePath: string): Promise<string[]> {
+  const { stdout } = await execFileAsync(
+    "git",
+    ["diff", "--name-only", "--diff-filter=U"],
+    {
+      cwd: workspacePath,
+      encoding: "utf8",
+    },
+  );
+
+  return [...new Set(stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean))];
+}
+
+async function assertNoConflictMarkers(input: {
+  workspacePath: string;
+  files: string[];
+  baseBranch: string;
+  branchName: string;
+}): Promise<void> {
+  const filesWithMarkers: string[] = [];
+  for (const file of input.files) {
+    try {
+      const content = await readFile(join(input.workspacePath, file), "utf8");
+      if (/^(<{7}|={7}|>{7})/m.test(content)) {
+        filesWithMarkers.push(file);
+      }
+    } catch {
+      filesWithMarkers.push(file);
+    }
+  }
+
+  if (filesWithMarkers.length > 0) {
+    throw new PullRequestMergeConflictError({
+      baseBranch: input.baseBranch,
+      branchName: input.branchName,
+      details: `Conflict markers remain in: ${filesWithMarkers.join(", ")}`,
+    });
+  }
 }
 
 async function readChangedFilesSinceCommit(

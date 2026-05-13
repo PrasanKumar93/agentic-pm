@@ -10,6 +10,8 @@ import {
   buildPullRequestDraft,
   checkRepositoryConnectivity,
   checkoutPullRequestBranch,
+  commitPullRequestConflictResolution,
+  preparePullRequestConflictResolution,
   PullRequestMergeConflictError,
   updateGitHubPullRequestBranch,
 } from "./index.js";
@@ -217,6 +219,57 @@ describe("pull request branch updates", () => {
         remoteName: "origin",
       }),
     ).rejects.toBeInstanceOf(PullRequestMergeConflictError);
+  });
+
+  it("prepares conflict markers and commits a resolved PR branch", async () => {
+    const root = await mkdtemp(join(tmpdir(), "agentic-pm-git-test-"));
+    const remotePath = join(root, "remote.git");
+    const sourcePath = join(root, "source");
+    const branchName = "agent/test-conflict-resolution";
+
+    await git(["init", "--bare", remotePath], root);
+    await mkdir(sourcePath);
+    await git(["init"], sourcePath);
+    await configureGitIdentity(sourcePath);
+    await git(["remote", "add", "origin", remotePath], sourcePath);
+    await writeFile(join(sourcePath, "README.md"), "base\n", "utf8");
+    await git(["add", "README.md"], sourcePath);
+    await git(["commit", "-m", "Initial commit"], sourcePath);
+    await git(["branch", "-M", "main"], sourcePath);
+    await git(["push", "-u", "origin", "main"], sourcePath);
+    await git(["switch", "-c", branchName], sourcePath);
+    await writeFile(join(sourcePath, "README.md"), "feature\n", "utf8");
+    await git(["commit", "-am", "Feature edit"], sourcePath);
+    await git(["switch", "main"], sourcePath);
+    await writeFile(join(sourcePath, "README.md"), "main\n", "utf8");
+    await git(["commit", "-am", "Main edit"], sourcePath);
+    await git(["push", "origin", "main"], sourcePath);
+    await git(["switch", branchName], sourcePath);
+
+    const prepared = await preparePullRequestConflictResolution({
+      workspacePath: sourcePath,
+      baseBranch: "main",
+      branchName,
+      remoteName: "origin",
+    });
+
+    expect(prepared.conflictedFiles).toEqual(["README.md"]);
+    await expect(gitOutput(["status", "--porcelain=v1"], sourcePath)).resolves.toContain(
+      "UU README.md",
+    );
+
+    await writeFile(join(sourcePath, "README.md"), "main\nfeature\n", "utf8");
+    const result = await commitPullRequestConflictResolution({
+      workspacePath: sourcePath,
+      baseBranch: "main",
+      branchName,
+      commitMessage: "Resolve merge conflict",
+      remoteName: "origin",
+    });
+
+    expect(result.branchName).toBe(branchName);
+    expect(result.commitSha).toHaveLength(40);
+    expect(result.mergeability.mergeTreeSha).toHaveLength(40);
   });
 
   it("checks out an existing PR branch and pushes a follow-up commit", async () => {

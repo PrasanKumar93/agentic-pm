@@ -43,8 +43,10 @@ import {
 } from "@agentic-pm/db";
 import {
   buildPullRequestDraft,
+  commitPullRequestConflictResolution,
   checkoutPullRequestBranch,
   createGitHubPullRequest,
+  preparePullRequestConflictResolution,
   PullRequestMergeConflictError,
   updateGitHubPullRequestBranch,
 } from "@agentic-pm/git";
@@ -147,6 +149,14 @@ interface PullRequestRemoteOutcome {
   remoteName: string;
   remotePrUrl?: string;
   stdout: string;
+}
+
+interface ConflictResolutionContext {
+  baseBranch: string;
+  branchName: string;
+  conflictedFiles: string[];
+  commitSha: string;
+  remoteName: string;
 }
 
 const runtimePreflight = await runRuntimePreflight(runtime);
@@ -344,78 +354,18 @@ async function dispatchOne(): Promise<void> {
     });
     const prompt = appendReviewRequestPrompt(basePrompt, workItem.reviewRequest);
 
-    const session = await runtime.start({
+    const agentOutcome = await runAgentTurn({
+      run,
+      workItem,
       workspacePath,
       prompt,
+      capturedAgentEvents,
     });
-
-    const stopBeforeEvents = await repository.getRunStopRequest({
-      runId: run.id,
-      workItemId: workItem.id,
-    });
-    if (stopBeforeEvents.shouldStop) {
-      await stopRun({ run, workItem, session, stopRequest: stopBeforeEvents });
+    if (agentOutcome.stopped) {
       return;
     }
 
-    let failed = false;
-    for await (const agentEvent of runtime.run(session, prompt)) {
-      await repository.heartbeatRun(run.id);
-
-      if (agentEvent.type !== "heartbeat") {
-        const severity = classifyAgentEventSeverity(agentEvent);
-        const payload = buildAgentEventPayload(
-          agentEvent.payload,
-          severity.reason,
-        );
-        capturedAgentEvents.push({
-          type: agentEvent.type,
-          level: severity.level,
-          message: agentEvent.message,
-          payload,
-          createdAt: new Date(),
-        });
-
-        await repository.appendEvent({
-          projectId,
-          workItemId: workItem.id,
-          runId: run.id,
-          type: `agent.${agentEvent.type}`,
-          level: severity.level,
-          message: agentEvent.message,
-          payload,
-        });
-      }
-
-      if (agentEvent.type === "session.failed") {
-        failed = true;
-      }
-
-      const stopRequest = await repository.getRunStopRequest({
-        runId: run.id,
-        workItemId: workItem.id,
-      });
-      if (stopRequest.shouldStop) {
-        await stopRun({ run, workItem, session, stopRequest });
-        return;
-      }
-    }
-
-    const stopBeforeFinalize = await repository.getRunStopRequest({
-      runId: run.id,
-      workItemId: workItem.id,
-    });
-    if (stopBeforeFinalize.shouldStop) {
-      await stopRun({
-        run,
-        workItem,
-        session,
-        stopRequest: stopBeforeFinalize,
-      });
-      return;
-    }
-
-    if (failed) {
+    if (agentOutcome.failed) {
       const logArtifact = await captureRunLogArtifact({
         run,
         workItem,
@@ -445,12 +395,59 @@ async function dispatchOne(): Promise<void> {
       return;
     }
 
+    let conflictResolution: ConflictResolutionContext | undefined;
+    try {
+      conflictResolution = await resolvePullRequestConflictsBeforeReview({
+        run,
+        workItem,
+        issue,
+        workspacePath,
+        repository: workRepository,
+        capturedAgentEvents,
+      });
+    } catch (error) {
+      if (!(error instanceof PullRequestMergeConflictError)) {
+        throw error;
+      }
+      const message = error.message;
+      const logArtifact = await captureRunLogArtifact({
+        run,
+        workItem,
+        issue,
+        capturedAgentEvents,
+      });
+      await repository.setRunStatus(run.id, "failed", message);
+      await repository.markWorkItemStatus(workItem.id, "blocked");
+      await repository.appendEvent({
+        projectId,
+        workItemId: workItem.id,
+        runId: run.id,
+        type: "run.blocked",
+        level: "error",
+        message,
+      });
+      await commentOnTrackerIssue({
+        issue,
+        workItem,
+        run,
+        kind: "run_failed",
+        body: buildRunFailedComment(
+          issue,
+          run,
+          message,
+          logArtifact ? [logArtifact] : [],
+        ),
+      });
+      return;
+    }
+
     const artifacts = await captureReviewArtifacts({
       run,
       workItem,
       issue,
       capturedAgentEvents,
       repository: workRepository,
+      conflictResolution,
     });
     await repository.setRunStatus(run.id, "waiting_for_review");
     await repository.markWorkItemStatus(workItem.id, "waiting_for_review");
@@ -668,12 +665,214 @@ type ReviewArtifactWorkItem = Pick<
   "id" | "projectId" | "reviewRequest"
 >;
 
+async function runAgentTurn(input: {
+  run: Run;
+  workItem: { id: string; projectId: string };
+  workspacePath: string;
+  prompt: string;
+  capturedAgentEvents: CapturedAgentEvent[];
+}): Promise<{ failed: boolean; stopped: boolean }> {
+  const session = await runtime.start({
+    workspacePath: input.workspacePath,
+    prompt: input.prompt,
+  });
+
+  const stopBeforeEvents = await repository.getRunStopRequest({
+    runId: input.run.id,
+    workItemId: input.workItem.id,
+  });
+  if (stopBeforeEvents.shouldStop) {
+    await stopRun({
+      run: input.run,
+      workItem: input.workItem,
+      session,
+      stopRequest: stopBeforeEvents,
+    });
+    return { failed: false, stopped: true };
+  }
+
+  let failed = false;
+  for await (const agentEvent of runtime.run(session, input.prompt)) {
+    await repository.heartbeatRun(input.run.id);
+
+    if (agentEvent.type !== "heartbeat") {
+      const severity = classifyAgentEventSeverity(agentEvent);
+      const payload = buildAgentEventPayload(
+        agentEvent.payload,
+        severity.reason,
+      );
+      input.capturedAgentEvents.push({
+        type: agentEvent.type,
+        level: severity.level,
+        message: agentEvent.message,
+        payload,
+        createdAt: new Date(),
+      });
+
+      await repository.appendEvent({
+        projectId,
+        workItemId: input.workItem.id,
+        runId: input.run.id,
+        type: `agent.${agentEvent.type}`,
+        level: severity.level,
+        message: agentEvent.message,
+        payload,
+      });
+    }
+
+    if (agentEvent.type === "session.failed") {
+      failed = true;
+    }
+
+    const stopRequest = await repository.getRunStopRequest({
+      runId: input.run.id,
+      workItemId: input.workItem.id,
+    });
+    if (stopRequest.shouldStop) {
+      await stopRun({
+        run: input.run,
+        workItem: input.workItem,
+        session,
+        stopRequest,
+      });
+      return { failed, stopped: true };
+    }
+  }
+
+  const stopBeforeFinalize = await repository.getRunStopRequest({
+    runId: input.run.id,
+    workItemId: input.workItem.id,
+  });
+  if (stopBeforeFinalize.shouldStop) {
+    await stopRun({
+      run: input.run,
+      workItem: input.workItem,
+      session,
+      stopRequest: stopBeforeFinalize,
+    });
+    return { failed, stopped: true };
+  }
+
+  return { failed, stopped: false };
+}
+
+async function resolvePullRequestConflictsBeforeReview(input: {
+  run: Run;
+  workItem: WorkItem;
+  issue: Issue;
+  workspacePath: string;
+  repository?: RepositoryRef;
+  capturedAgentEvents: CapturedAgentEvent[];
+}): Promise<ConflictResolutionContext | undefined> {
+  const prSettings = resolvePullRequestSettings(input.repository);
+  if (prSettings.mode !== "github_draft" || !prSettings.remoteName) {
+    return undefined;
+  }
+
+  const branchName = input.workItem.reviewRequest?.branchName;
+  if (!branchName) {
+    return undefined;
+  }
+
+  const baseBranch =
+    input.workItem.reviewRequest?.baseBranch ??
+    prSettings.baseBranch ??
+    input.repository?.defaultBranch ??
+    "main";
+
+  const remoteName = input.workItem.reviewRequest?.remoteName ?? prSettings.remoteName;
+
+  try {
+    await preparePullRequestConflictResolution({
+      workspacePath: input.workspacePath,
+      baseBranch,
+      branchName,
+      remoteName,
+    });
+  } catch (error) {
+    if (error instanceof PullRequestMergeConflictError) {
+      throw error;
+    }
+    return undefined;
+  }
+
+  const conflictedFiles = await readConflictedFiles(input.workspacePath);
+  await repository.appendEvent({
+    projectId: input.workItem.projectId,
+    workItemId: input.workItem.id,
+    runId: input.run.id,
+    type: "github.pr.conflict_resolution_started",
+    level: "warn",
+    message: `Resolving merge conflicts for ${branchName}`,
+    payload: {
+      baseBranch,
+      branchName,
+      conflictedFiles,
+      remoteName,
+    },
+  });
+
+  const prompt = buildConflictResolutionPrompt({
+    issue: input.issue,
+    baseBranch,
+    branchName,
+    conflictedFiles,
+  });
+  const outcome = await runAgentTurn({
+    run: input.run,
+    workItem: input.workItem,
+    workspacePath: input.workspacePath,
+    prompt,
+    capturedAgentEvents: input.capturedAgentEvents,
+  });
+  if (outcome.stopped) {
+    return undefined;
+  }
+  if (outcome.failed) {
+    throw new Error("agent failed while resolving merge conflicts");
+  }
+
+  const result = await commitPullRequestConflictResolution({
+    workspacePath: input.workspacePath,
+    baseBranch,
+    branchName,
+    commitMessage: `${input.issue.identifier}: Resolve merge conflicts`,
+    remoteName,
+  });
+
+  await repository.appendEvent({
+    projectId: input.workItem.projectId,
+    workItemId: input.workItem.id,
+    runId: input.run.id,
+    type: "github.pr.conflict_resolution_committed",
+    level: "info",
+    message: `Committed merge conflict resolution for ${branchName}`,
+    payload: {
+      baseBranch,
+      branchName,
+      commitSha: result.commitSha,
+      conflictedFiles,
+      mergeability: result.mergeability,
+      remoteName,
+    },
+  });
+
+  return {
+    baseBranch,
+    branchName,
+    commitSha: result.commitSha,
+    conflictedFiles,
+    remoteName,
+  };
+}
+
 async function captureReviewArtifacts(input: {
   run: Run;
   workItem: ReviewArtifactWorkItem;
   issue: Issue;
   capturedAgentEvents: CapturedAgentEvent[];
   repository?: RepositoryRef;
+  conflictResolution?: ConflictResolutionContext;
 }): Promise<Artifact[]> {
   const artifacts: Artifact[] = [];
   const logArtifact = await captureRunLogArtifact(input);
@@ -705,6 +904,7 @@ async function captureReviewArtifacts(input: {
       issueId: input.issue.id,
       issueIdentifier: input.issue.identifier,
       artifactCount: artifacts.length,
+      conflictResolution: input.conflictResolution,
     },
   });
 
@@ -830,6 +1030,47 @@ async function captureUntrackedPatch(workspacePath: string): Promise<string> {
   }
 
   return patches.join("\n");
+}
+
+async function readConflictedFiles(workspacePath: string): Promise<string[]> {
+  const { stdout } = await execFileAsync(
+    "git",
+    ["diff", "--name-only", "--diff-filter=U"],
+    {
+      cwd: workspacePath,
+      encoding: "utf8",
+    },
+  );
+
+  return stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+}
+
+function buildConflictResolutionPrompt(input: {
+  issue: Issue;
+  baseBranch: string;
+  branchName: string;
+  conflictedFiles: string[];
+}): string {
+  const files = input.conflictedFiles.length
+    ? input.conflictedFiles.map((file) => `- ${file}`).join("\n")
+    : "- Git did not report specific conflicted files. Inspect the working tree.";
+
+  return `# Resolve Pull Request Merge Conflicts
+
+The implementation for ${input.issue.identifier} is on branch ${input.branchName}, but it conflicts with the latest ${input.baseBranch}.
+
+Resolve the merge conflicts already present in this workspace. Conflict markers are in the files below:
+
+${files}
+
+Rules:
+- Preserve the intended behavior from the task: ${input.issue.title}
+- Preserve compatible changes from ${input.baseBranch}.
+- Remove all conflict markers.
+- Do not merge, push, rebase, or create a pull request.
+- Do not make unrelated cleanup changes.
+
+After editing, leave the resolved files in the working tree. Symphony will commit, re-check mergeability, and push the PR branch.`;
 }
 
 async function readGitDiffAllowingDifference(
@@ -963,6 +1204,7 @@ async function capturePullRequestArtifact(
     workItem: ReviewArtifactWorkItem;
     issue: Issue;
     repository?: RepositoryRef;
+    conflictResolution?: ConflictResolutionContext;
   },
   artifacts: Artifact[],
 ): Promise<Artifact | undefined> {
@@ -1031,11 +1273,11 @@ async function capturePullRequestArtifact(
             };
             remoteStatus = "updated";
           } else {
-              remoteResult = await createGitHubPullRequest({
-                workspacePath: input.run.workspacePath,
-                draft,
-                remoteName,
-                ghCommand: prSettings.ghCommand,
+            remoteResult = await createGitHubPullRequest({
+              workspacePath: input.run.workspacePath,
+              draft,
+              remoteName,
+              ghCommand: prSettings.ghCommand,
               draftPr: prSettings.draft,
             });
             remoteStatus = "created";
@@ -1121,6 +1363,7 @@ async function capturePullRequestArtifact(
         mergeGate: "manual",
         mergeability: remoteResult?.mergeability,
         mergeConflictGate: "required",
+        conflictResolution: input.conflictResolution,
         mode: prMode,
         pullRequestBranchPolicy: prSettings.branch,
         pullRequestConfigSource: prSettings.source,
