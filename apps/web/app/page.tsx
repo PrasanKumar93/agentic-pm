@@ -716,7 +716,7 @@ export default async function DashboardPage({
             />
             <TrackerHealthBadge health={dashboard.integrations} />
             <a
-              className="iconButton"
+              className="toolbarButton"
               href={buildDashboardHref({
                 projectId: dashboard.selectedProjectId,
                 status: statusFilter,
