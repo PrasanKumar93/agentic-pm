@@ -35,6 +35,9 @@ import {
 
 export const dynamic = "force-dynamic";
 
+const CONFLICT_RESOLUTION_FEEDBACK =
+  "Update this PR branch against the latest base branch, resolve any merge conflicts, preserve the original issue behavior, and push the follow-up commit to the same PR.";
+
 type WorkItemStatus =
   | "queued"
   | "running"
@@ -629,6 +632,10 @@ export default async function DashboardPage({
         "remoteBranchName",
       ),
     );
+  const reviewChangeDefaultRuntime =
+    selected?.desiredRuntime ??
+    normalizeRuntimePreference(selected?.latestRun?.agentRuntime) ??
+    "codex";
   const completionGate = buildReviewCompletionGate(
     selected,
     selectedPullRequestArtifact,
@@ -1341,63 +1348,101 @@ export default async function DashboardPage({
                     ) : null}
 
                     {canRequestReviewChanges ? (
-                      <form
-                        action={submitReviewChangeRequest}
-                        className="reviewRequestForm"
-                      >
-                        <input
-                          name="projectId"
-                          type="hidden"
-                          value={dashboard.selectedProjectId}
-                        />
-                        <input
-                          name="status"
-                          type="hidden"
-                          value={statusFilter}
-                        />
-                        <input
-                          name="workItemId"
-                          type="hidden"
-                          value={selected.id}
-                        />
-                        <div className="reviewRequestHeader">
-                          <div>
-                            <span>Review loop</span>
-                            <strong>Request changes</strong>
-                          </div>
-                          <select
-                            aria-label="Runtime for change request"
-                            defaultValue={
-                              selected.desiredRuntime ??
-                              normalizeRuntimePreference(
-                                selected.latestRun?.agentRuntime,
-                              ) ??
-                              "codex"
-                            }
+                      <div className="reviewLoopStack">
+                        <form
+                          action={submitReviewChangeRequest}
+                          className="reviewConflictForm"
+                        >
+                          <input
+                            name="projectId"
+                            type="hidden"
+                            value={dashboard.selectedProjectId}
+                          />
+                          <input
+                            name="status"
+                            type="hidden"
+                            value={statusFilter}
+                          />
+                          <input
+                            name="workItemId"
+                            type="hidden"
+                            value={selected.id}
+                          />
+                          <input
                             name="desiredRuntime"
-                            title="Runtime for change request"
+                            type="hidden"
+                            value={reviewChangeDefaultRuntime}
+                          />
+                          <input
+                            name="feedback"
+                            type="hidden"
+                            value={CONFLICT_RESOLUTION_FEEDBACK}
+                          />
+                          <button
+                            aria-label="Update / Resolve Conflicts"
+                            title={CONFLICT_RESOLUTION_FEEDBACK}
+                            type="submit"
                           >
-                            {runtimeOptions
-                              .filter((option) => option.value !== "default")
-                              .map((option) => (
-                                <option key={option.value} value={option.value}>
-                                  {option.label}
-                                </option>
-                              ))}
-                          </select>
-                        </div>
-                        <textarea
-                          maxLength={4000}
-                          name="feedback"
-                          placeholder="Describe the follow-up change needed on this PR"
-                          rows={3}
-                          required
-                        />
-                        <button type="submit">
-                          <RotateCcw size={14} />
-                          <span>Fix with agent</span>
-                        </button>
-                      </form>
+                            <GitBranch size={14} />
+                            <span>Update / Resolve Conflicts</span>
+                          </button>
+                        </form>
+
+                        <form
+                          action={submitReviewChangeRequest}
+                          className="reviewRequestForm"
+                        >
+                          <input
+                            name="projectId"
+                            type="hidden"
+                            value={dashboard.selectedProjectId}
+                          />
+                          <input
+                            name="status"
+                            type="hidden"
+                            value={statusFilter}
+                          />
+                          <input
+                            name="workItemId"
+                            type="hidden"
+                            value={selected.id}
+                          />
+                          <div className="reviewRequestHeader">
+                            <div>
+                              <span>Review loop</span>
+                              <strong>Request changes</strong>
+                            </div>
+                            <select
+                              aria-label="Runtime for change request"
+                              defaultValue={reviewChangeDefaultRuntime}
+                              name="desiredRuntime"
+                              title="Runtime for change request"
+                            >
+                              {runtimeOptions
+                                .filter((option) => option.value !== "default")
+                                .map((option) => (
+                                  <option
+                                    key={option.value}
+                                    value={option.value}
+                                  >
+                                    {option.label}
+                                  </option>
+                                ))}
+                            </select>
+                          </div>
+                          <textarea
+                            maxLength={4000}
+                            name="feedback"
+                            placeholder="Describe the follow-up change needed on this PR"
+                            rows={3}
+                            required
+                          />
+                          <button type="submit">
+                            <RotateCcw size={14} />
+                            <span>Fix with agent</span>
+                          </button>
+                        </form>
+                      </div>
                     ) : null}
 
                     <div className="feedbackHistory">
@@ -2429,7 +2474,7 @@ function buildReviewCompletionGate(
         "The linked PR has blockers that should be fixed through the review loop.",
       label: "Blocked",
       nextStep:
-        "Use Fix with agent for code changes, or resolve GitHub blockers, then refresh.",
+        "Use Update / Resolve Conflicts or Fix with agent, then refresh.",
       reasons: pullRequest.readiness.reasons,
       title: "Completion blocked",
       tone: "blocked",
