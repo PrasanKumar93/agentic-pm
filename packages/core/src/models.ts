@@ -43,7 +43,7 @@ export type OperatorActionName =
   | "resume"
   | "cancel"
   | "complete";
-export type DispatchActionName = "pause" | "resume" | "start_eligible";
+export type DispatchActionName = "pause" | "resume";
 
 export interface Project {
   id: string;

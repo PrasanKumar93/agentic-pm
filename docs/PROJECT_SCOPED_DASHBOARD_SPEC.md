@@ -71,7 +71,8 @@ Dispatch action body:
 }
 ```
 
-The dashboard always sends the selected project ID, so pause, resume, and start eligible affect the visible project.
+The dashboard always sends the selected project ID, so pause and resume affect
+the visible project. Retry/requeue is task-level only.
 
 ### Scoped Webhook Audit
 

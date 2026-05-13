@@ -16,7 +16,6 @@ const allowedActions = new Set<WorkItemAction>([
 const allowedDispatchActions = new Set<DispatchAction>([
   "pause",
   "resume",
-  "start_eligible",
 ]);
 const allowedDesiredRuntimes = new Set<DesiredRuntimePreference>([
   "default",
@@ -50,7 +49,7 @@ type WorkItemAction =
   | "resume"
   | "cancel"
   | "complete";
-type DispatchAction = "pause" | "resume" | "start_eligible";
+type DispatchAction = "pause" | "resume";
 type DesiredRuntimePreference =
   | "default"
   | "fake"
@@ -869,8 +868,6 @@ function formatDispatchSuccess(action: DispatchAction): string {
       return "Dispatch paused.";
     case "resume":
       return "Dispatch resumed.";
-    case "start_eligible":
-      return "Eligible queued work started.";
   }
 }
 

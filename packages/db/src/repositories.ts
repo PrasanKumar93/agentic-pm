@@ -34,13 +34,6 @@ const activeRunStatuses: Run["status"][] = [
   "stalled",
   "retrying",
 ];
-const startEligibleStatuses: WorkItemStatus[] = [
-  "paused",
-  "blocked",
-  "failed",
-  "cancelled",
-];
-
 export class WorkItemNotFoundError extends Error {
   constructor(workItemId: string) {
     super(`Work item not found: ${workItemId}`);
@@ -1314,41 +1307,6 @@ export class AgenticRepository {
   }): Promise<DispatchActionResult> {
     const actorId = input.actorId || "local-operator";
     const now = new Date();
-
-    if (input.action === "start_eligible") {
-      const result = await this.collections.workItems.updateMany(
-        {
-          projectId: input.projectId,
-          status: { $in: startEligibleStatuses },
-        },
-        {
-          $set: {
-            status: "queued",
-            updatedAt: now,
-          },
-          $unset: {
-            claimedBy: "",
-            nextAttemptAt: "",
-          },
-        },
-      );
-
-      await this.recordDispatchAction({
-        projectId: input.projectId,
-        actorId,
-        action: input.action,
-        reason: input.reason,
-        affectedWorkItemCount: result.modifiedCount,
-        createdAt: now,
-      });
-
-      return {
-        action: input.action,
-        dispatch: await this.getDispatchControl(input.projectId),
-        affectedWorkItemCount: result.modifiedCount,
-        message: `Queued ${result.modifiedCount} eligible work items`,
-      };
-    }
 
     const paused = input.action === "pause";
     const update: UpdateFilter<DispatchControl> =

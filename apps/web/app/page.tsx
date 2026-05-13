@@ -644,6 +644,9 @@ export default async function DashboardPage({
     selectedPullRequestArtifact,
     pullRequestStatus,
   );
+  const taskRecoveryAction = selected
+    ? getTaskRecoveryAction(selected.status)
+    : undefined;
 
   return (
     <main className="shell">
@@ -747,30 +750,6 @@ export default async function DashboardPage({
                 {dashboard.dispatch.paused
                   ? "Resume dispatch"
                   : "Pause dispatch"}
-              </button>
-            </form>
-            <form action={submitDispatchAction}>
-              <input
-                name="projectId"
-                type="hidden"
-                value={dashboard.selectedProjectId}
-              />
-              <input name="view" type="hidden" value={view} />
-              <input name="status" type="hidden" value={statusFilter} />
-              <input
-                name="workItemId"
-                type="hidden"
-                value={selected?.id ?? ""}
-              />
-              <button
-                className="primary"
-                name="action"
-                title="Start eligible"
-                type="submit"
-                value="start_eligible"
-              >
-                <Play size={16} />
-                Start eligible
               </button>
             </form>
           </div>
@@ -1180,6 +1159,43 @@ export default async function DashboardPage({
                         retries: {selected.retryCount}
                       </p>
                     </div>
+
+                    {taskRecoveryAction ? (
+                      <div className="taskRecoveryCard">
+                        <div>
+                          <span>Task recovery</span>
+                          <strong>{taskRecoveryAction.title}</strong>
+                          <p>{taskRecoveryAction.detail}</p>
+                        </div>
+                        <form action={submitWorkItemAction}>
+                          <input
+                            name="projectId"
+                            type="hidden"
+                            value={dashboard.selectedProjectId}
+                          />
+                          <input
+                            name="status"
+                            type="hidden"
+                            value={statusFilter}
+                          />
+                          <input
+                            name="workItemId"
+                            type="hidden"
+                            value={selected.id}
+                          />
+                          <button
+                            className="primary"
+                            name="action"
+                            title={taskRecoveryAction.buttonTitle}
+                            type="submit"
+                            value={taskRecoveryAction.name}
+                          >
+                            <ActionIcon action={taskRecoveryAction.name} />
+                            {taskRecoveryAction.label}
+                          </button>
+                        </form>
+                      </div>
+                    ) : null}
 
                     {selectedPullRequestArtifact ? (
                       <div className="pullRequestReadiness">
@@ -2402,6 +2418,57 @@ function getAvailableActions(status: WorkItemStatus): Array<{
       ];
     case "completed":
       return [];
+  }
+}
+
+function getTaskRecoveryAction(
+  status: WorkItemStatus,
+):
+  | {
+      buttonTitle: string;
+      detail: string;
+      label: string;
+      name: "retry" | "resume";
+      title: string;
+    }
+  | undefined {
+  switch (status) {
+    case "paused":
+      return {
+        buttonTitle: "Resume this paused task only.",
+        detail: "Move this one paused work item back to the queue.",
+        label: "Resume task",
+        name: "resume",
+        title: "Resume this task",
+      };
+    case "blocked":
+      return {
+        buttonTitle: "Requeue this blocked task only.",
+        detail:
+          "Use after the external blocker or configuration issue has been fixed.",
+        label: "Requeue task",
+        name: "resume",
+        title: "Requeue this task",
+      };
+    case "failed":
+      return {
+        buttonTitle: "Retry this failed task only.",
+        detail: "Queue a fresh attempt for this one failed work item.",
+        label: "Retry task",
+        name: "retry",
+        title: "Retry this task",
+      };
+    case "cancelled":
+      return {
+        buttonTitle: "Retry this cancelled task only.",
+        detail:
+          "Queue a new attempt for this one cancelled work item when cancellation is no longer desired.",
+        label: "Retry task",
+        name: "retry",
+        title: "Retry this task",
+      };
+    default:
+      return undefined;
   }
 }
 

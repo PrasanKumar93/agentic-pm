@@ -1565,6 +1565,48 @@ h2 {
   overflow-wrap: anywhere;
 }
 
+.taskRecoveryCard {
+  align-items: center;
+  background: #f7f9f7;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 10px;
+}
+
+.taskRecoveryCard div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.taskRecoveryCard span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.taskRecoveryCard strong {
+  font-size: 13px;
+}
+
+.taskRecoveryCard p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.taskRecoveryCard form {
+  flex-shrink: 0;
+}
+
+.taskRecoveryCard button {
+  white-space: nowrap;
+}
+
 .reviewLoopStack {
   display: grid;
   gap: 8px;
@@ -2347,5 +2389,19 @@ h2 {
   .actionGroup,
   .actionGroup form {
     gap: 4px;
+  }
+
+  .taskRecoveryCard {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .taskRecoveryCard form {
+    display: flex;
+  }
+
+  .taskRecoveryCard button {
+    justify-content: center;
+    width: 100%;
   }
 }

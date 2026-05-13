@@ -132,7 +132,6 @@ const allowedOperatorActions = new Set<OperatorActionName>([
 const allowedDispatchActions = new Set<DispatchActionName>([
   "pause",
   "resume",
-  "start_eligible",
 ]);
 const allowedDesiredRuntimes = new Set<DesiredAgentRuntime>([
   "fake",

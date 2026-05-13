@@ -158,6 +158,10 @@ The dashboard shows compact row-level actions:
 - `cancelled`: start, retry
 - `completed`: no action
 
+The selected run detail also shows a task recovery card for `paused`,
+`blocked`, `failed`, and `cancelled` work items. That card submits the same
+single-work-item actions and replaces any project-level bulk requeue affordance.
+
 Action buttons submit through server-side form actions, call the API, and revalidate `/`.
 
 Action result banners are covered in `ACTION_FEEDBACK_SPEC.md`.

@@ -1,13 +1,14 @@
 # Dispatch Controls Spec
 
-Status: Draft v0.1
+Status: Draft v0.2
 Date: 2026-04-29
 
 ## 1. Purpose
 
 Dispatch controls let the operator steer the whole local project queue from the dashboard toolbar.
 
-This is project-level control. Row-level actions remain in `OPERATOR_ACTIONS_SPEC.md`.
+This is project-level control. Row-level retry/requeue actions remain in
+`OPERATOR_ACTIONS_SPEC.md`.
 
 ## 2. API Contract
 
@@ -46,7 +47,6 @@ Allowed `:action` values:
 
 - `pause`
 - `resume`
-- `start_eligible`
 
 Request body:
 
@@ -62,18 +62,18 @@ Success response:
 ```json
 {
   "data": {
-    "action": "start_eligible",
+    "action": "pause",
     "dispatch": {
       "projectId": "project_local",
-      "paused": false,
+      "paused": true,
       "createdAt": "2026-04-29T12:00:00.000Z",
       "updatedAt": "2026-04-29T12:00:00.000Z"
     },
-    "affectedWorkItemCount": 2,
-    "message": "Queued 2 eligible work items"
+    "affectedWorkItemCount": 0,
+    "message": "Dispatch paused"
   },
   "meta": {
-    "action": "start_eligible",
+    "action": "pause",
     "generatedAt": "2026-04-29T12:00:00.000Z"
   }
 }
@@ -93,18 +93,12 @@ Pausing does not stop a currently running agent session. Active cancellation bel
 
 `resume` stores `paused: false` and clears pause metadata.
 
-### Start Eligible
+### Task-Level Recovery
 
-`start_eligible` queues all work items in these statuses:
-
-- `paused`
-- `blocked`
-- `failed`
-- `cancelled`
-
-It clears `claimedBy` and `nextAttemptAt`.
-
-It does not retry work waiting for human review, because that is a manual review gate and should use the row-level retry action.
+Bulk project-level requeue is intentionally not exposed. Recovering `paused`,
+`blocked`, `failed`, or `cancelled` work must happen from the selected work item
+using row/detail actions, so an operator retries exactly one task after fixing
+the underlying issue.
 
 ## 4. Auditing
 
@@ -125,7 +119,6 @@ The toolbar shows:
 
 - `Pause dispatch` when dispatch is active.
 - `Resume dispatch` when dispatch is paused.
-- `Start eligible` at all times.
 
 The live-data notice adds `dispatch paused` when the project is paused.
 
@@ -135,5 +128,5 @@ Required checks:
 
 - `pnpm typecheck`
 - `pnpm build`
-- API smoke test for pause, resume, and start eligible
+- API smoke test for pause and resume
 - Browser smoke test at `http://localhost:3000`

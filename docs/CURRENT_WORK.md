@@ -18,7 +18,7 @@ Date: 2026-04-30
 - Live dashboard backed by `/work-items`.
 - Row-level operator actions for start, retry, pause, resume, and cancel.
 - Run detail timeline backed by `/runs/:runId/events`.
-- Dispatch controls for project-level pause/resume and start eligible.
+- Dispatch controls for project-level pause/resume, with retry/requeue kept at task level.
 - Worker-side cancellation checks for active agent sessions.
 - Linear webhook signature validation and setup guide.
 - Action result banners in the dashboard.
