@@ -11,6 +11,7 @@ import {
   FolderKanban,
   GitBranch,
   HardDrive,
+  Info,
   Play,
   Plus,
   RefreshCw,
@@ -487,6 +488,7 @@ type ReviewCompletionGate = {
   nextStep: string;
   reasons: string[];
   buttonTitle: string;
+  hint?: string;
 };
 
 type ReviewFeedbackSummary = {
@@ -647,6 +649,12 @@ export default async function DashboardPage({
   const taskRecoveryAction = selected
     ? getTaskRecoveryAction(selected.status)
     : undefined;
+  const pullRequestReadinessStatus =
+    selectedPullRequest?.readiness.status ?? "unknown";
+  const pullRequestReadinessHint = getPullRequestReadinessHint(
+    pullRequestStatus,
+    selectedPullRequest,
+  );
 
   return (
     <main className="shell">
@@ -1201,21 +1209,18 @@ export default async function DashboardPage({
                       <div className="pullRequestReadiness">
                         <div className="eventTimelineHeader">
                           <span>PR readiness</span>
-                          <strong
-                            className={`readinessBadge ${
-                              selectedPullRequest?.readiness.status ?? "unknown"
-                            }`}
-                          >
-                            {formatReadinessStatus(
-                              selectedPullRequest?.readiness.status ??
-                                "unknown",
+                          <ReadinessBadge
+                            hint={pullRequestReadinessHint}
+                            label={formatReadinessStatus(
+                              pullRequestReadinessStatus,
                             )}
-                          </strong>
+                            tone={pullRequestReadinessStatus}
+                          />
                         </div>
 
                         {pullRequestStatus.error ? (
-                          <div className="timelineNotice">
-                            {pullRequestStatus.error}
+                          <div className="timelineNotice subtleNotice">
+                            Provider details are available from the info icon.
                           </div>
                         ) : selectedPullRequest ? (
                           <>
@@ -1268,18 +1273,22 @@ export default async function DashboardPage({
                                 </strong>
                               </div>
                             </div>
-                            <div
-                              className="pullRequestReadinessReasons"
-                              role="list"
-                            >
-                              {selectedPullRequest.readiness.reasons.map(
-                                (reason) => (
-                                  <p key={reason} role="listitem">
-                                    {reason}
-                                  </p>
-                                ),
-                              )}
-                            </div>
+                            {selectedPullRequest.readiness.status !==
+                              "unknown" &&
+                            selectedPullRequest.readiness.reasons.length > 0 ? (
+                              <div
+                                className="pullRequestReadinessReasons"
+                                role="list"
+                              >
+                                {selectedPullRequest.readiness.reasons.map(
+                                  (reason) => (
+                                    <p key={reason} role="listitem">
+                                      {reason}
+                                    </p>
+                                  ),
+                                )}
+                              </div>
+                            ) : null}
                             {selectedPullRequest.checks.checkRuns.length > 0 ? (
                               <div className="pullRequestCheckList" role="list">
                                 {selectedPullRequest.checks.checkRuns
@@ -1317,11 +1326,11 @@ export default async function DashboardPage({
                             <span>Manual completion</span>
                             <strong>{completionGate.title}</strong>
                           </div>
-                          <span
-                            className={`readinessBadge ${completionGate.tone}`}
-                          >
-                            {completionGate.label}
-                          </span>
+                          <ReadinessBadge
+                            hint={completionGate.hint}
+                            label={completionGate.label}
+                            tone={completionGate.tone}
+                          />
                         </div>
                         <p>{completionGate.detail}</p>
                         <div className="completionGateNext">
@@ -2502,10 +2511,11 @@ function buildReviewCompletionGate(
       canComplete: false,
       detail:
         "Symphony could not verify the linked GitHub PR, so completion is paused.",
+      hint: pullRequestStatus.error,
       label: "Unknown",
       nextStep:
         "Restore GitHub/API access, then refresh PR readiness before completing.",
-      reasons: [pullRequestStatus.error],
+      reasons: [],
       title: "PR readiness unavailable",
       tone: "unknown",
     };
@@ -2571,9 +2581,13 @@ function buildReviewCompletionGate(
     canComplete: false,
     detail:
       "The linked PR state is unknown, so Symphony is holding the manual completion action.",
+    hint:
+      pullRequest.readiness.reasons.length > 0
+        ? pullRequest.readiness.reasons.join("\n")
+        : undefined,
     label: "Unknown",
     nextStep: "Refresh PR readiness once GitHub state is available.",
-    reasons: pullRequest.readiness.reasons,
+    reasons: [],
     title: "PR readiness unknown",
     tone: "unknown",
   };
@@ -3885,6 +3899,45 @@ function ActionIcon({
     case "complete":
       return <CheckCircle2 size={14} />;
   }
+}
+
+function ReadinessBadge({
+  hint,
+  label,
+  tone,
+}: {
+  hint?: string;
+  label: string;
+  tone: PullRequestReadinessStatus;
+}) {
+  return (
+    <span
+      aria-label={hint ? `${label}: ${hint}` : label}
+      className={`readinessBadge ${tone}`}
+      title={hint}
+    >
+      {label}
+      {hint ? <Info aria-hidden="true" size={12} /> : null}
+    </span>
+  );
+}
+
+function getPullRequestReadinessHint(
+  status: PullRequestStatusData,
+  pullRequest: PullRequestStatusSummary | undefined,
+): string | undefined {
+  if (status.error) {
+    return status.error;
+  }
+
+  if (
+    pullRequest?.readiness.status === "unknown" &&
+    pullRequest.readiness.reasons.length > 0
+  ) {
+    return pullRequest.readiness.reasons.join("\n");
+  }
+
+  return undefined;
 }
 
 function formatStatus(status: string): string {

@@ -1856,9 +1856,13 @@ h2 {
 }
 
 .readinessBadge {
+  align-items: center;
   border-radius: 999px;
   border: 1px solid var(--border);
+  display: inline-flex;
   font-size: 11px;
+  gap: 5px;
+  justify-content: center;
   min-width: 72px;
   padding: 4px 8px;
   text-align: center;
@@ -1885,6 +1889,10 @@ h2 {
 .readinessBadge.unknown {
   background: #eef2ef;
   color: var(--muted);
+}
+
+.readinessBadge svg {
+  flex-shrink: 0;
 }
 
 .pullRequestSummary {
@@ -2115,6 +2123,13 @@ h2 {
 
 .timelineItem p {
   overflow-wrap: anywhere;
+}
+
+.subtleNotice {
+  background: #f7f9f7;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 7px 8px;
 }
 
 .timelineItemHeader {
