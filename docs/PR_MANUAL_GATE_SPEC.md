@@ -96,6 +96,14 @@ The worker will:
 6. Emit `github.pr.created` on success.
 7. Still write `pull-request.md` as the durable artifact.
 
+Before creating or updating a remote PR, Symphony must verify the PR branch can
+merge cleanly with the configured base branch. The worker fetches the latest
+remote base and runs a non-mutating `git merge-tree --write-tree` check. Merge
+conflicts are a hard gate: the work item is marked `blocked`, the run records
+`github.pr.merge_conflict` / `run.blocked`, and Symphony does not move the issue
+to review-ready. The human still owns the final merge, but the PR handoff should
+not ask the human to resolve avoidable conflicts.
+
 If remote config is missing or `gh` fails, the run still moves to review and the worker records `github.pr.create_skipped` or `github.pr.create_failed`. This keeps local Symphony state authoritative during GitHub outages or auth problems. PR artifact metadata records `pullRequestConfigSource` as `repository` or `env`.
 
 Branch names default to `agent/<issue>-<title slug>-<run suffix>`. Repository PR settings can override the prefix, clamp the maximum branch length, and optionally include a timestamp before the run suffix. Review change requests keep using the existing PR branch recorded in the prior PR artifact.
@@ -172,7 +180,7 @@ with:
 5. Symphony stores `workItem.reviewRequest` with reviewer feedback, base run id, previous PR artifact commit, branch name, remote name, remote PR URL, and preferred runtime.
 6. The work item is queued again and, for Linear, the operator action syncs the issue back to the active state.
 7. Worker checks out the existing PR branch, reruns the selected runtime with review feedback appended to the prompt, and keeps the same manual merge gate.
-8. In `github_draft` mode, the worker commits and pushes a follow-up commit to the same PR branch instead of creating a new PR. If the runtime already committed the follow-up, Symphony detects that HEAD advanced from `baseCommitSha` and pushes that existing commit.
+8. In `github_draft` mode, the worker commits and verifies the branch is conflict-free with the configured base, then pushes a follow-up commit to the same PR branch instead of creating a new PR. If the runtime already committed the follow-up, Symphony detects that HEAD advanced from `baseCommitSha` and pushes that existing commit.
 9. Symphony records `github.pr.updated`, captures refreshed patch/PR/review artifacts, and comments back to Linear.
 
 This is intentionally separate from the initial PR creation path. Initial PR creation owns branch creation and `gh pr create`; review-change reruns own explicit branch reuse, feedback capture, and artifact refresh semantics.

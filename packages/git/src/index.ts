@@ -55,12 +55,14 @@ export interface GitHubPullRequestResult {
   branchName: string;
   commitSha: string;
   draft: boolean;
+  mergeability: PullRequestMergeabilityResult;
   remoteName: string;
   remotePrUrl?: string;
   stdout: string;
 }
 
 export interface GitHubPullRequestUpdateInput {
+  baseBranch?: string;
   workspacePath: string;
   branchName: string;
   commitMessage: string;
@@ -71,8 +73,45 @@ export interface GitHubPullRequestUpdateInput {
 export interface GitHubPullRequestUpdateResult {
   branchName: string;
   commitSha: string;
+  mergeability: PullRequestMergeabilityResult;
   remoteName: string;
   stdout: string;
+}
+
+export interface PullRequestMergeabilityInput {
+  workspacePath: string;
+  baseBranch: string;
+  branchName?: string;
+  remoteName?: string;
+}
+
+export interface PullRequestMergeabilityResult {
+  baseBranch: string;
+  baseRef: string;
+  branchName?: string;
+  headSha: string;
+  mergeTreeSha: string;
+}
+
+export class PullRequestMergeConflictError extends Error {
+  readonly baseBranch: string;
+  readonly branchName?: string;
+  readonly details?: string;
+
+  constructor(input: {
+    baseBranch: string;
+    branchName?: string;
+    details?: string;
+  }) {
+    const branchText = input.branchName ? ` for ${input.branchName}` : "";
+    super(
+      `Pull request branch${branchText} has merge conflicts with ${input.baseBranch}. Resolve the conflict before review.`,
+    );
+    this.name = "PullRequestMergeConflictError";
+    this.baseBranch = input.baseBranch;
+    this.branchName = input.branchName;
+    this.details = input.details;
+  }
 }
 
 export type RepositoryConnectivityStatus = "ok" | "warn" | "error";
@@ -265,6 +304,12 @@ export async function createGitHubPullRequest(input: GitHubPullRequestInput): Pr
     await runGit(input.workspacePath, ["add", "-A"]);
     await runGit(input.workspacePath, ["commit", "-m", input.draft.commitMessage]);
     const commitSha = (await runGit(input.workspacePath, ["rev-parse", "HEAD"])).trim();
+    const mergeability = await assertPullRequestMergeable({
+      workspacePath: input.workspacePath,
+      baseBranch: input.draft.baseBranch,
+      branchName: input.draft.branchName,
+      remoteName: input.remoteName,
+    });
     await runGit(input.workspacePath, ["push", "-u", input.remoteName, input.draft.branchName]);
 
     const ghArgs = [
@@ -290,6 +335,7 @@ export async function createGitHubPullRequest(input: GitHubPullRequestInput): Pr
       branchName: input.draft.branchName,
       commitSha,
       draft,
+      mergeability,
       remoteName: input.remoteName,
       remotePrUrl: extractFirstUrl(stdout),
       stdout: stdout.trim()
@@ -354,14 +400,75 @@ export async function updateGitHubPullRequestBranch(
     throw new Error("No workspace changes to commit for PR update");
   }
   const commitSha = (await runGit(input.workspacePath, ["rev-parse", "HEAD"])).trim();
+  const mergeability = await assertPullRequestMergeable({
+    workspacePath: input.workspacePath,
+    baseBranch: input.baseBranch ?? "main",
+    branchName: input.branchName,
+    remoteName: input.remoteName,
+  });
   const stdout = await runGit(input.workspacePath, ["push", input.remoteName, input.branchName]);
 
   return {
     branchName: input.branchName,
     commitSha,
+    mergeability,
     remoteName: input.remoteName,
     stdout: stdout.trim(),
   };
+}
+
+export async function assertPullRequestMergeable(
+  input: PullRequestMergeabilityInput,
+): Promise<PullRequestMergeabilityResult> {
+  const baseBranch = input.baseBranch.trim();
+  if (!baseBranch) {
+    throw new Error("Pull request mergeability check requires a base branch");
+  }
+
+  const gitRoot = await readGitRoot(input.workspacePath);
+  if (!gitRoot || (await normalizePath(gitRoot)) !== (await normalizePath(input.workspacePath))) {
+    throw new Error("Pull request mergeability check requires the workspace path to be a git repository root");
+  }
+
+  const remoteName = input.remoteName?.trim();
+  const baseRef = remoteName ? "FETCH_HEAD" : baseBranch;
+  if (remoteName) {
+    await runGit(input.workspacePath, ["fetch", "--quiet", remoteName, baseBranch]);
+  }
+
+  const headSha = (await runGit(input.workspacePath, ["rev-parse", "HEAD"])).trim();
+
+  try {
+    const mergeTreeSha = (
+      await runGit(input.workspacePath, [
+        "merge-tree",
+        "--write-tree",
+        "HEAD",
+        baseRef,
+      ])
+    ).trim();
+
+    return {
+      baseBranch,
+      baseRef,
+      branchName: input.branchName,
+      headSha,
+      mergeTreeSha,
+    };
+  } catch (error) {
+    const details = formatGitExecutionError(error);
+    if (isMergeConflictOutput(details)) {
+      throw new PullRequestMergeConflictError({
+        baseBranch,
+        branchName: input.branchName,
+        details,
+      });
+    }
+
+    throw new Error(
+      `Could not verify pull request mergeability against ${baseBranch}: ${details}`,
+    );
+  }
 }
 
 async function checkLocalPath(
@@ -620,6 +727,24 @@ function formatGitCheckError(error: unknown): string {
   }
 
   return gitError.message ?? "git command failed";
+}
+
+function formatGitExecutionError(error: unknown): string {
+  const gitError = error as {
+    message?: string;
+    stderr?: string;
+    stdout?: string;
+  };
+  const output = [gitError.stdout, gitError.stderr]
+    .map((value) => value?.trim())
+    .filter((value): value is string => Boolean(value))
+    .join("\n");
+
+  return output || gitError.message || "git command failed";
+}
+
+function isMergeConflictOutput(output: string): boolean {
+  return /\bCONFLICT\b|merge conflict/i.test(output);
 }
 
 async function readHeadSha(workspacePath: string): Promise<string | undefined> {

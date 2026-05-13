@@ -45,6 +45,7 @@ import {
   buildPullRequestDraft,
   checkoutPullRequestBranch,
   createGitHubPullRequest,
+  PullRequestMergeConflictError,
   updateGitHubPullRequestBranch,
 } from "@agentic-pm/git";
 import { ConsoleEventSink } from "@agentic-pm/observability";
@@ -137,6 +138,12 @@ interface PullRequestRemoteOutcome {
   branchName: string;
   commitSha: string;
   draft?: boolean;
+  mergeability?: {
+    baseBranch: string;
+    baseRef: string;
+    headSha: string;
+    mergeTreeSha: string;
+  };
   remoteName: string;
   remotePrUrl?: string;
   stdout: string;
@@ -463,7 +470,11 @@ async function dispatchOne(): Promise<void> {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await repository.markWorkItemStatus(workItem.id, "failed");
+    const mergeConflict = error instanceof PullRequestMergeConflictError;
+    await repository.markWorkItemStatus(
+      workItem.id,
+      mergeConflict ? "blocked" : "failed",
+    );
 
     if (run) {
       const logArtifact = await captureRunLogArtifact({
@@ -477,7 +488,7 @@ async function dispatchOne(): Promise<void> {
         projectId,
         workItemId: workItem.id,
         runId: run.id,
-        type: "run.failed",
+        type: mergeConflict ? "run.blocked" : "run.failed",
         level: "error",
         message,
       });
@@ -1006,6 +1017,7 @@ async function capturePullRequestArtifact(
           if (reviewRequest?.branchName) {
             const updateResult = await updateGitHubPullRequestBranch({
               workspacePath: input.run.workspacePath,
+              baseBranch: draft.baseBranch,
               branchName: reviewRequest.branchName,
               commitMessage: `${input.issue.identifier}: Address review feedback`,
               remoteName,
@@ -1019,11 +1031,11 @@ async function capturePullRequestArtifact(
             };
             remoteStatus = "updated";
           } else {
-            remoteResult = await createGitHubPullRequest({
-              workspacePath: input.run.workspacePath,
-              draft,
-              remoteName,
-              ghCommand: prSettings.ghCommand,
+              remoteResult = await createGitHubPullRequest({
+                workspacePath: input.run.workspacePath,
+                draft,
+                remoteName,
+                ghCommand: prSettings.ghCommand,
               draftPr: prSettings.draft,
             });
             remoteStatus = "created";
@@ -1046,11 +1058,29 @@ async function capturePullRequestArtifact(
               branchName: remoteResult.branchName,
               commitSha: remoteResult.commitSha,
               draft: remoteResult.draft,
+              mergeability: remoteResult.mergeability,
               remoteName: remoteResult.remoteName,
               remotePrUrl: remoteResult.remotePrUrl,
             },
           });
         } catch (error) {
+          if (error instanceof PullRequestMergeConflictError) {
+            await repository.appendEvent({
+              projectId: input.workItem.projectId,
+              workItemId: input.workItem.id,
+              runId: input.run.id,
+              type: "github.pr.merge_conflict",
+              level: "error",
+              message: error.message,
+              payload: {
+                baseBranch: error.baseBranch,
+                branchName: error.branchName,
+                detail: error.details,
+              },
+            });
+            throw error;
+          }
+
           remoteStatus = "failed";
           await recordGitHubPullRequestWarning(
             input.run,
@@ -1089,6 +1119,8 @@ async function capturePullRequestArtifact(
         issueId: input.issue.id,
         issueIdentifier: input.issue.identifier,
         mergeGate: "manual",
+        mergeability: remoteResult?.mergeability,
+        mergeConflictGate: "required",
         mode: prMode,
         pullRequestBranchPolicy: prSettings.branch,
         pullRequestConfigSource: prSettings.source,
@@ -1102,6 +1134,10 @@ async function capturePullRequestArtifact(
       },
     });
   } catch (error) {
+    if (error instanceof PullRequestMergeConflictError) {
+      throw error;
+    }
+
     await recordArtifactWarning(
       input.run,
       input.workItem,

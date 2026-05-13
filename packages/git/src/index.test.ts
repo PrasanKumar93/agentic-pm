@@ -5,10 +5,12 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 import {
+  assertPullRequestMergeable,
   buildAgentBranchName,
   buildPullRequestDraft,
   checkRepositoryConnectivity,
   checkoutPullRequestBranch,
+  PullRequestMergeConflictError,
   updateGitHubPullRequestBranch,
 } from "./index.js";
 
@@ -148,6 +150,75 @@ describe("repository connectivity checks", () => {
 });
 
 describe("pull request branch updates", () => {
+  it("verifies a PR branch is mergeable with the remote base", async () => {
+    const root = await mkdtemp(join(tmpdir(), "agentic-pm-git-test-"));
+    const remotePath = join(root, "remote.git");
+    const sourcePath = join(root, "source");
+    const branchName = "agent/test-mergeable";
+
+    await git(["init", "--bare", remotePath], root);
+    await mkdir(sourcePath);
+    await git(["init"], sourcePath);
+    await configureGitIdentity(sourcePath);
+    await git(["remote", "add", "origin", remotePath], sourcePath);
+    await writeFile(join(sourcePath, "README.md"), "base\n", "utf8");
+    await git(["add", "README.md"], sourcePath);
+    await git(["commit", "-m", "Initial commit"], sourcePath);
+    await git(["branch", "-M", "main"], sourcePath);
+    await git(["push", "-u", "origin", "main"], sourcePath);
+    await git(["switch", "-c", branchName], sourcePath);
+    await writeFile(join(sourcePath, "feature.txt"), "feature\n", "utf8");
+    await git(["add", "feature.txt"], sourcePath);
+    await git(["commit", "-m", "Add feature"], sourcePath);
+
+    const result = await assertPullRequestMergeable({
+      workspacePath: sourcePath,
+      baseBranch: "main",
+      branchName,
+      remoteName: "origin",
+    });
+
+    expect(result.branchName).toBe(branchName);
+    expect(result.baseBranch).toBe("main");
+    expect(result.headSha).toHaveLength(40);
+    expect(result.mergeTreeSha).toHaveLength(40);
+  });
+
+  it("rejects a PR branch that conflicts with the remote base", async () => {
+    const root = await mkdtemp(join(tmpdir(), "agentic-pm-git-test-"));
+    const remotePath = join(root, "remote.git");
+    const sourcePath = join(root, "source");
+    const branchName = "agent/test-conflict";
+
+    await git(["init", "--bare", remotePath], root);
+    await mkdir(sourcePath);
+    await git(["init"], sourcePath);
+    await configureGitIdentity(sourcePath);
+    await git(["remote", "add", "origin", remotePath], sourcePath);
+    await writeFile(join(sourcePath, "README.md"), "base\n", "utf8");
+    await git(["add", "README.md"], sourcePath);
+    await git(["commit", "-m", "Initial commit"], sourcePath);
+    await git(["branch", "-M", "main"], sourcePath);
+    await git(["push", "-u", "origin", "main"], sourcePath);
+    await git(["switch", "-c", branchName], sourcePath);
+    await writeFile(join(sourcePath, "README.md"), "feature\n", "utf8");
+    await git(["commit", "-am", "Feature edit"], sourcePath);
+    await git(["switch", "main"], sourcePath);
+    await writeFile(join(sourcePath, "README.md"), "main\n", "utf8");
+    await git(["commit", "-am", "Main edit"], sourcePath);
+    await git(["push", "origin", "main"], sourcePath);
+    await git(["switch", branchName], sourcePath);
+
+    await expect(
+      assertPullRequestMergeable({
+        workspacePath: sourcePath,
+        baseBranch: "main",
+        branchName,
+        remoteName: "origin",
+      }),
+    ).rejects.toBeInstanceOf(PullRequestMergeConflictError);
+  });
+
   it("checks out an existing PR branch and pushes a follow-up commit", async () => {
     const root = await mkdtemp(join(tmpdir(), "agentic-pm-git-test-"));
     const remotePath = join(root, "remote.git");
