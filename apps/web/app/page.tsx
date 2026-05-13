@@ -723,9 +723,10 @@ export default async function DashboardPage({
                 view,
                 workItemId: selected?.id,
               })}
-              title="Refresh"
+              title="Refresh dashboard data"
             >
               <RefreshCw size={16} />
+              <span>Refresh data</span>
             </a>
             <form action={submitDispatchAction}>
               <input
@@ -744,8 +745,8 @@ export default async function DashboardPage({
                 name="action"
                 title={
                   dashboard.dispatch.paused
-                    ? "Resume dispatch"
-                    : "Pause dispatch"
+                    ? "Resume this project's queued work"
+                    : "Pause this project's queued work"
                 }
                 type="submit"
                 value={dashboard.dispatch.paused ? "resume" : "pause"}
@@ -756,8 +757,8 @@ export default async function DashboardPage({
                   <CirclePause size={16} />
                 )}
                 {dashboard.dispatch.paused
-                  ? "Resume dispatch"
-                  : "Pause dispatch"}
+                  ? "Resume project queue"
+                  : "Pause project queue"}
               </button>
             </form>
           </div>

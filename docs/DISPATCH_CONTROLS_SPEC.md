@@ -117,8 +117,9 @@ Event payload includes:
 
 The toolbar shows:
 
-- `Pause dispatch` when dispatch is active.
-- `Resume dispatch` when dispatch is paused.
+- `Refresh data` to reload the current dashboard, selected run, feedback, and PR readiness data.
+- `Pause project queue` when dispatch is active.
+- `Resume project queue` when dispatch is paused.
 
 The live-data notice adds `dispatch paused` when the project is paused.
 
