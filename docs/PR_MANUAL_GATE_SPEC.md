@@ -121,7 +121,7 @@ The selected run artifact list exposes PR review evidence:
 - Local-only PR artifacts open `GET /artifacts/:artifactId/content`.
 - GitHub draft PR artifacts with `metadata.remotePrUrl` open the remote pull request.
 - Local PR artifacts without `metadata.remotePrUrl` expose a compact PR URL link form in the dashboard.
-- Review-state work items with a prior PR branch expose an `Update / Resolve Conflicts` quick action. It submits the standard feedback text through the same `request_changes` action as the free-form review textbox, so the turn is audited, visible in feedback history, and reruns the agent on the same PR branch.
+- Review-state work items with a prior PR branch expose an `Update / Resolve Conflicts` quick action. It submits the standard feedback text through the same `request_changes` action as the free-form review textbox, so the turn is audited, visible in feedback history, and reruns the agent on the same PR branch. The review loop is sequential: while a follow-up request is queued or running, the dashboard shows a progress notice and restores the request controls once the work item returns to review.
 - Review-state work items show a Feedback history section above artifacts. It lists persisted reviewer feedback turns with runtime, actor, branch, base commit, and submitted feedback text.
 - Linked GitHub PR artifacts show a read-only readiness card with PR state, draft/mergeability, review summary, check summary, and blocker/pending reasons.
 - Linked GitHub PR readiness also shows the checked head commit and freshness of the readiness fetch, so follow-up review commits on the same PR branch are visible in Symphony.

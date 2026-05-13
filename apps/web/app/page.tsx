@@ -623,15 +623,18 @@ export default async function DashboardPage({
       ? await fetchPullRequestStatus(selectedPullRequestArtifact)
       : { skippedReason: "No pull request artifact selected." };
   const selectedPullRequest = pullRequestStatus.pullRequest;
-  const canRequestReviewChanges =
-    selected?.status === "waiting_for_review" &&
-    Boolean(
-      readMetadataString(selectedPullRequestArtifact?.metadata, "branchName") ??
-      readMetadataString(
-        selectedPullRequestArtifact?.metadata,
-        "remoteBranchName",
-      ),
+  const reviewBranchName =
+    readMetadataString(selectedPullRequestArtifact?.metadata, "branchName") ??
+    readMetadataString(
+      selectedPullRequestArtifact?.metadata,
+      "remoteBranchName",
     );
+  const canRequestReviewChanges =
+    selected?.status === "waiting_for_review" && Boolean(reviewBranchName);
+  const isReviewChangeInProgress =
+    Boolean(reviewBranchName) &&
+    reviewFeedback.feedback.length > 0 &&
+    (selected?.status === "queued" || selected?.status === "running");
   const reviewChangeDefaultRuntime =
     selected?.desiredRuntime ??
     normalizeRuntimePreference(selected?.latestRun?.agentRuntime) ??
@@ -1442,6 +1445,32 @@ export default async function DashboardPage({
                             <span>Fix with agent</span>
                           </button>
                         </form>
+                      </div>
+                    ) : null}
+
+                    {isReviewChangeInProgress ? (
+                      <div className="reviewLoopNotice">
+                        <div className="reviewRequestHeader">
+                          <div>
+                            <span>Review loop</span>
+                            <strong>Follow-up in progress</strong>
+                          </div>
+                          <span className="readinessBadge pending">
+                            {formatStatus(selected?.status ?? "queued")}
+                          </span>
+                        </div>
+                        <p>
+                          The latest feedback has been queued for the same PR
+                          branch. The request controls return after the
+                          follow-up run reaches review again.
+                        </p>
+                        <div className="completionGateNext">
+                          <span>Next step</span>
+                          <strong>
+                            Wait for the worker to push the follow-up commit,
+                            then add the next feedback turn if needed.
+                          </strong>
+                        </div>
                       </div>
                     ) : null}
 
