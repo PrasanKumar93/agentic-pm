@@ -435,21 +435,6 @@ async function checkRepositoryUrl(
     };
   }
 
-  const lsRemote = await runGitForCheck(
-    tmpdir(),
-    ["ls-remote", repositoryUrl],
-    timeoutMs,
-  );
-  if (!lsRemote.ok) {
-    return {
-      name: "repository_url",
-      label: "Repository URL",
-      status: "error",
-      message: `Repository URL is not reachable: ${lsRemote.message}`,
-      details: repositoryUrl,
-    };
-  }
-
   const branchCheck = await runGitForCheck(
     tmpdir(),
     ["ls-remote", "--heads", repositoryUrl, defaultBranch],
@@ -468,8 +453,10 @@ async function checkRepositoryUrl(
   return {
     name: "repository_url",
     label: "Repository URL",
-    status: "warn",
-    message: `Repository is reachable, but ${defaultBranch} was not found.`,
+    status: branchCheck.ok ? "warn" : "error",
+    message: branchCheck.ok
+      ? `Repository is reachable, but ${defaultBranch} was not found.`
+      : `Repository URL is not reachable: ${branchCheck.message}`,
     details: repositoryUrl,
   };
 }
