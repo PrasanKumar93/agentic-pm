@@ -26,7 +26,12 @@ Request:
     "mode": "github_draft",
     "remoteName": "origin",
     "baseBranch": "main",
-    "draft": true
+    "draft": true,
+    "branch": {
+      "prefix": "agent",
+      "maxLength": 120,
+      "includeTimestamp": false
+    }
   },
   "actorId": "dashboard"
 }
@@ -82,7 +87,7 @@ Behavior:
 
 Checks repository access without creating or updating a repository record.
 
-Request body matches `POST /repositories`, plus optional `timeoutMs`.
+Request body matches `POST /repositories`, plus optional `repositoryId` and `timeoutMs`.
 
 Behavior:
 
@@ -91,7 +96,7 @@ Behavior:
 - Checks whether the configured default branch is visible from the repository URL.
 - For `github_draft` PR mode, checks whether the configured PR remote/base branch can be resolved from the local repo remote or repository URL.
 - Returns an aggregate `ok`, `warn`, or `error` status with per-check messages.
-- Appends a `repository.connectivity_checked` event for operator audit.
+- Appends a `repository.connectivity_checked` event for operator audit, including `repositoryId` when the probe came from an existing managed repository.
 - Does not persist repository configuration, create work items, push branches, or create PRs.
 
 Validation:
@@ -104,6 +109,7 @@ Validation:
 - `pullRequest.remoteName` defaults to `origin` in worker repository mode.
 - `pullRequest.baseBranch` falls back to the repository default branch.
 - `pullRequest.draft` defaults to `true`.
+- `pullRequest.branch.prefix` defaults to `agent`; `pullRequest.branch.maxLength` defaults to `120` and is clamped to `32..240`; `pullRequest.branch.includeTimestamp` is optional and defaults to false.
 
 ### `GET /repositories/connectivity-checks`
 
@@ -112,11 +118,13 @@ Returns recent repository connectivity check summaries for the selected project.
 Query parameters:
 
 - `projectId`: optional project scope; defaults to the API default project.
+- `repositoryId`: optional managed repository scope.
 - `limit`: optional count, capped at 25.
 
 Behavior:
 
 - Reads `repository.connectivity_checked` events from the project event stream.
+- Filters to events with the requested `repositoryId` when provided.
 - Returns newest checks first with repository name, aggregate status, actor, PR mode, local-path presence, and per-check messages.
 - Does not expose secrets or mutate repository configuration.
 
@@ -128,10 +136,11 @@ The Config view contains:
 
 - repository count metrics
 - a registration form for name, URL, default branch, local path, and PR settings
-- managed repository cards showing id, URL, local path, default branch, PR mode, PR target, and routed work item count
+- managed repository cards showing id, URL, local path, default branch, PR mode, PR target, branch naming policy, and routed work item count
 - inline edit forms on each managed repository card for updating name, URL, default branch, local path, and PR settings without re-registering the repository
 - typed archive controls on each managed repository card for removing a repository from future routing without deleting history
 - access check buttons on registration and edit forms for validating local path, clone access, and PR remote/base readiness before saving
+- compact per-repository access check summaries on managed repository cards, backed by `repositoryId` filtering and a fallback for older name-only check events
 
 The form posts through a server action and returns an action banner on success or failure.
 
@@ -143,9 +152,6 @@ The form posts through a server action and returns an action banner on success o
 - `PATCH /repositories/:repositoryId` updates an existing repository option.
 - `POST /repositories/:repositoryId/archive` hides an active repository from repository options and records an audit event.
 - `POST /repositories/connectivity-check` reports local path, repository URL, and PR remote readiness without saving.
-- The Config view renders recent `GET /repositories/connectivity-checks` results inline after access checks.
+- `GET /repositories/connectivity-checks?repositoryId=...` returns only matching repository check events.
+- The Config view renders recent `GET /repositories/connectivity-checks` results inline globally and per managed repository after access checks.
 - The Config view renders in full-width dashboard QA.
-
-## Follow-Up
-
-- Add optional per-repository filtering or collapse controls if a project accumulates many access checks.

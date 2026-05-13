@@ -151,6 +151,11 @@ type RepositoryOption = {
   localPath?: string;
   pullRequest?: {
     baseBranch?: string;
+    branch?: {
+      includeTimestamp?: boolean;
+      maxLength?: number;
+      prefix?: string;
+    };
     draft?: boolean;
     ghCommand?: string;
     mode: "disabled" | "local_draft" | "github_draft";
@@ -171,6 +176,7 @@ type RepositoryConnectivityCheck = {
 type RepositoryConnectivityCheckResult = {
   id: string;
   projectId?: string;
+  repositoryId?: string;
   repositoryName: string;
   status: RepositoryConnectivityStatus;
   checks: RepositoryConnectivityCheck[];
@@ -203,6 +209,7 @@ type RepositoryConnectivityChecksResponse = {
   meta?: {
     limit: number;
     projectId: string;
+    repositoryId?: string;
     generatedAt: string;
   };
 };
@@ -332,11 +339,7 @@ type ArtifactsResponse = {
   data: ArtifactSummary[];
 };
 
-type PullRequestReadinessStatus =
-  | "ready"
-  | "blocked"
-  | "pending"
-  | "unknown";
+type PullRequestReadinessStatus = "ready" | "blocked" | "pending" | "unknown";
 
 type PullRequestReviewStatus =
   | "approved"
@@ -446,6 +449,10 @@ type DashboardData = {
   projects: ProjectOption[];
   repositories: RepositoryOption[];
   repositoryConnectivityChecks: RepositoryConnectivityCheckResult[];
+  repositoryConnectivityChecksByRepository: Record<
+    string,
+    RepositoryConnectivityCheckResult[]
+  >;
   defaultProjectId: string;
   selectedProjectId: string;
   generatedAt?: string;
@@ -474,6 +481,7 @@ type ReviewCompletionGate = {
   label: string;
   title: string;
   detail: string;
+  nextStep: string;
   reasons: string[];
   buttonTitle: string;
 };
@@ -616,10 +624,10 @@ export default async function DashboardPage({
     selected?.status === "waiting_for_review" &&
     Boolean(
       readMetadataString(selectedPullRequestArtifact?.metadata, "branchName") ??
-        readMetadataString(
-          selectedPullRequestArtifact?.metadata,
-          "remoteBranchName",
-        ),
+      readMetadataString(
+        selectedPullRequestArtifact?.metadata,
+        "remoteBranchName",
+      ),
     );
   const completionGate = buildReviewCompletionGate(
     selected,
@@ -896,153 +904,93 @@ export default async function DashboardPage({
                 </section>
 
                 <div className="panel board">
-                <div className="panelHeader">
-                  <div>
-                    <h2>Work board</h2>
-                    <p>
-                      {formatWorkBoardCount(
-                        filteredItems.length,
-                        dashboard.items.length,
-                      )}
-                    </p>
-                  </div>
-                  <button disabled title="Retry failed">
-                    <RotateCcw size={16} />
-                  </button>
-                </div>
-
-                <nav
-                  aria-label="Work item status"
-                  className="filterTabs"
-                  role="tablist"
-                >
-                  {filterTabs.map((tab) => (
-                    <a
-                      aria-current={tab.active ? "page" : undefined}
-                      aria-selected={tab.active}
-                      className={`filterTab ${tab.active ? "active" : ""}`}
-                      href={buildDashboardHref({
-                        projectId: dashboard.selectedProjectId,
-                        status: tab.value,
-                      })}
-                      key={tab.value}
-                      role="tab"
-                    >
-                      <span>{tab.label}</span>
-                      <strong>{tab.count}</strong>
-                    </a>
-                  ))}
-                </nav>
-
-                {filteredItems.length > 0 ? (
-                  <div className="table">
-                    <div className="row tableHead">
-                      <span>Issue</span>
-                      <span>Title</span>
-                      <span className="repoCell">Repo</span>
-                      <span>Status</span>
-                      <span>Runtime</span>
-                      <span className="ownerCell">Owner</span>
-                      <span className="updatedCell">Updated</span>
-                      <span>Actions</span>
-                    </div>
-                    {filteredItems.map((row) => (
-                      <div
-                        className={`row ${selected?.id === row.id ? "selectedRow" : ""}`}
-                        key={row.id}
-                      >
-                        {row.issue.url ? (
-                          <a
-                            href={row.issue.url}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            {row.issue.identifier}
-                          </a>
-                        ) : (
-                          <strong>{row.issue.identifier}</strong>
+                  <div className="panelHeader">
+                    <div>
+                      <h2>Work board</h2>
+                      <p>
+                        {formatWorkBoardCount(
+                          filteredItems.length,
+                          dashboard.items.length,
                         )}
-                        <a
-                          className="rowSelectLink"
-                          href={buildDashboardHref({
-                            projectId: dashboard.selectedProjectId,
-                            status: statusFilter,
-                            workItemId: row.id,
-                          })}
-                          title={`Show run detail for ${row.issue.identifier}`}
+                      </p>
+                    </div>
+                    <button disabled title="Retry failed">
+                      <RotateCcw size={16} />
+                    </button>
+                  </div>
+
+                  <nav
+                    aria-label="Work item status"
+                    className="filterTabs"
+                    role="tablist"
+                  >
+                    {filterTabs.map((tab) => (
+                      <a
+                        aria-current={tab.active ? "page" : undefined}
+                        aria-selected={tab.active}
+                        className={`filterTab ${tab.active ? "active" : ""}`}
+                        href={buildDashboardHref({
+                          projectId: dashboard.selectedProjectId,
+                          status: tab.value,
+                        })}
+                        key={tab.value}
+                        role="tab"
+                      >
+                        <span>{tab.label}</span>
+                        <strong>{tab.count}</strong>
+                      </a>
+                    ))}
+                  </nav>
+
+                  {filteredItems.length > 0 ? (
+                    <div className="table">
+                      <div className="row tableHead">
+                        <span>Issue</span>
+                        <span>Title</span>
+                        <span className="repoCell">Repo</span>
+                        <span>Status</span>
+                        <span>Runtime</span>
+                        <span className="ownerCell">Owner</span>
+                        <span className="updatedCell">Updated</span>
+                        <span>Actions</span>
+                      </div>
+                      {filteredItems.map((row) => (
+                        <div
+                          className={`row ${selected?.id === row.id ? "selectedRow" : ""}`}
+                          key={row.id}
                         >
-                          {row.issue.title}
-                        </a>
-                        <span className="repoCell">
-                          {row.repository?.name ?? "unassigned"}
-                        </span>
-                        <span className={`pill ${row.status}`}>
-                          {formatStatus(row.status)}
-                        </span>
-                        <form
-                          action={submitRuntimePreference}
-                          className="runtimeForm"
-                        >
-                          <input
-                            name="projectId"
-                            type="hidden"
-                            value={dashboard.selectedProjectId}
-                          />
-                          <input
-                            name="status"
-                            type="hidden"
-                            value={statusFilter}
-                          />
-                          <input
-                            name="workItemId"
-                            type="hidden"
-                            value={row.id}
-                          />
-                          <select
-                            aria-label={`Runtime for ${row.issue.identifier}`}
-                            defaultValue={row.desiredRuntime ?? "default"}
-                            disabled={row.status === "running"}
-                            name="desiredRuntime"
-                            title="Desired runtime"
-                          >
-                            {runtimeOptions.map((option) => (
-                              <option key={option.value} value={option.value}>
-                                {option.label}
-                              </option>
-                            ))}
-                          </select>
-                          <button
-                            aria-label={`Save runtime for ${row.issue.identifier}`}
-                            className="actionButton runtimeSubmit"
-                            disabled={row.status === "running"}
-                            title="Save runtime"
-                            type="submit"
-                          >
-                            <Save size={14} />
-                          </button>
-                        </form>
-                        <span className="ownerCell">
-                          {row.claimedBy ??
-                            row.latestRun?.agentRuntime ??
-                            "unclaimed"}
-                        </span>
-                        <span className="updatedCell">
-                          {formatRelativeTime(row.updatedAt)}
-                        </span>
-                        <div className="actionGroup">
+                          {row.issue.url ? (
+                            <a
+                              href={row.issue.url}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              {row.issue.identifier}
+                            </a>
+                          ) : (
+                            <strong>{row.issue.identifier}</strong>
+                          )}
                           <a
-                            aria-label="Inspect run"
-                            className={`actionButton ${selected?.id === row.id ? "selectedAction" : ""}`}
+                            className="rowSelectLink"
                             href={buildDashboardHref({
                               projectId: dashboard.selectedProjectId,
                               status: statusFilter,
                               workItemId: row.id,
                             })}
-                            title="Inspect run"
+                            title={`Show run detail for ${row.issue.identifier}`}
                           >
-                            <Eye size={14} />
+                            {row.issue.title}
                           </a>
-                          <form action={submitWorkItemAction}>
+                          <span className="repoCell">
+                            {row.repository?.name ?? "unassigned"}
+                          </span>
+                          <span className={`pill ${row.status}`}>
+                            {formatStatus(row.status)}
+                          </span>
+                          <form
+                            action={submitRuntimePreference}
+                            className="runtimeForm"
+                          >
                             <input
                               name="projectId"
                               type="hidden"
@@ -1058,45 +1006,105 @@ export default async function DashboardPage({
                               type="hidden"
                               value={row.id}
                             />
-                            {getAvailableActions(row.status).map((action) => (
-                              <button
-                                aria-label={action.label}
-                                className={`actionButton ${action.name === "cancel" ? "dangerAction" : ""}`}
-                                key={action.name}
-                                name="action"
-                                title={action.label}
-                                type="submit"
-                                value={action.name}
-                              >
-                                <ActionIcon action={action.name} />
-                              </button>
-                            ))}
+                            <select
+                              aria-label={`Runtime for ${row.issue.identifier}`}
+                              defaultValue={row.desiredRuntime ?? "default"}
+                              disabled={row.status === "running"}
+                              name="desiredRuntime"
+                              title="Desired runtime"
+                            >
+                              {runtimeOptions.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              aria-label={`Save runtime for ${row.issue.identifier}`}
+                              className="actionButton runtimeSubmit"
+                              disabled={row.status === "running"}
+                              title="Save runtime"
+                              type="submit"
+                            >
+                              <Save size={14} />
+                            </button>
                           </form>
+                          <span className="ownerCell">
+                            {row.claimedBy ??
+                              row.latestRun?.agentRuntime ??
+                              "unclaimed"}
+                          </span>
+                          <span className="updatedCell">
+                            {formatRelativeTime(row.updatedAt)}
+                          </span>
+                          <div className="actionGroup">
+                            <a
+                              aria-label="Inspect run"
+                              className={`actionButton ${selected?.id === row.id ? "selectedAction" : ""}`}
+                              href={buildDashboardHref({
+                                projectId: dashboard.selectedProjectId,
+                                status: statusFilter,
+                                workItemId: row.id,
+                              })}
+                              title="Inspect run"
+                            >
+                              <Eye size={14} />
+                            </a>
+                            <form action={submitWorkItemAction}>
+                              <input
+                                name="projectId"
+                                type="hidden"
+                                value={dashboard.selectedProjectId}
+                              />
+                              <input
+                                name="status"
+                                type="hidden"
+                                value={statusFilter}
+                              />
+                              <input
+                                name="workItemId"
+                                type="hidden"
+                                value={row.id}
+                              />
+                              {getAvailableActions(row.status).map((action) => (
+                                <button
+                                  aria-label={action.label}
+                                  className={`actionButton ${action.name === "cancel" ? "dangerAction" : ""}`}
+                                  key={action.name}
+                                  name="action"
+                                  title={action.label}
+                                  type="submit"
+                                  value={action.name}
+                                >
+                                  <ActionIcon action={action.name} />
+                                </button>
+                              ))}
+                            </form>
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : dashboard.items.length === 0 ? (
-                  <div className="emptyState">
-                    <Database size={18} />
-                    <strong>No work items yet</strong>
-                    <span>
-                      Run the worker with the fake tracker, or connect Linear
-                      and move an issue into an active state.
-                    </span>
-                  </div>
-                ) : (
-                  <div className="emptyState">
-                    <Database size={18} />
-                    <strong>
-                      No {formatStatusFilterLabel(statusFilter)} work items
-                    </strong>
-                    <span>
-                      Choose another lane or move a tracker issue into this
-                      status.
-                    </span>
-                  </div>
-                )}
+                      ))}
+                    </div>
+                  ) : dashboard.items.length === 0 ? (
+                    <div className="emptyState">
+                      <Database size={18} />
+                      <strong>No work items yet</strong>
+                      <span>
+                        Run the worker with the fake tracker, or connect Linear
+                        and move an issue into an active state.
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="emptyState">
+                      <Database size={18} />
+                      <strong>
+                        No {formatStatusFilterLabel(statusFilter)} work items
+                      </strong>
+                      <span>
+                        Choose another lane or move a tracker issue into this
+                        status.
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1200,14 +1208,15 @@ export default async function DashboardPage({
                                   selectedPullRequest,
                                 )}
                               </span>
+                              <span>
+                                {formatPullRequestEvidence(selectedPullRequest)}
+                              </span>
                             </div>
                             <div className="pullRequestReadinessGrid">
                               <div>
                                 <span>State</span>
                                 <strong>
-                                  {formatPullRequestState(
-                                    selectedPullRequest,
-                                  )}
+                                  {formatPullRequestState(selectedPullRequest)}
                                 </strong>
                               </div>
                               <div>
@@ -1246,10 +1255,7 @@ export default async function DashboardPage({
                               )}
                             </div>
                             {selectedPullRequest.checks.checkRuns.length > 0 ? (
-                              <div
-                                className="pullRequestCheckList"
-                                role="list"
-                              >
+                              <div className="pullRequestCheckList" role="list">
                                 {selectedPullRequest.checks.checkRuns
                                   .slice(0, 4)
                                   .map((check) => (
@@ -1292,6 +1298,10 @@ export default async function DashboardPage({
                           </span>
                         </div>
                         <p>{completionGate.detail}</p>
+                        <div className="completionGateNext">
+                          <span>Next step</span>
+                          <strong>{completionGate.nextStep}</strong>
+                        </div>
                         {completionGate.reasons.length > 0 ? (
                           <div className="completionGateReasons" role="list">
                             {completionGate.reasons.map((reason) => (
@@ -1370,10 +1380,7 @@ export default async function DashboardPage({
                             {runtimeOptions
                               .filter((option) => option.value !== "default")
                               .map((option) => (
-                                <option
-                                  key={option.value}
-                                  value={option.value}
-                                >
+                                <option key={option.value} value={option.value}>
                                   {option.label}
                                 </option>
                               ))}
@@ -1577,9 +1584,7 @@ export default async function DashboardPage({
                               <div className="timelineItemHeader">
                                 <strong>{event.type}</strong>
                                 <span className="timelineMeta">
-                                  <span
-                                    className={`eventLevel ${event.level}`}
-                                  >
+                                  <span className={`eventLevel ${event.level}`}>
                                     {event.level}
                                   </span>
                                   <span>
@@ -1622,6 +1627,9 @@ export default async function DashboardPage({
             repositoryConnectivityChecks={
               dashboard.repositoryConnectivityChecks
             }
+            repositoryConnectivityChecksByRepository={
+              dashboard.repositoryConnectivityChecksByRepository
+            }
             repositories={dashboard.repositories}
             selectedProjectId={dashboard.selectedProjectId}
           />
@@ -1642,20 +1650,20 @@ async function fetchDashboardData(
       projectState.defaultProjectId,
     );
     const projectQuery = `projectId=${encodeURIComponent(selectedProjectId)}`;
-    const [
-      response,
-      dispatch,
-      integrations,
-      repositories,
-      repositoryConnectivityChecks,
-    ] = await Promise.all([
+    const [response, dispatch, integrations, repositories] = await Promise.all([
       fetch(`${apiUrl}/work-items?limit=50&${projectQuery}`, {
         cache: "no-store",
       }),
       fetchDispatchControl(selectedProjectId),
       fetchIntegrationHealth(),
       fetchRepositories(selectedProjectId),
+    ]);
+    const [
+      repositoryConnectivityChecks,
+      repositoryConnectivityChecksByRepository,
+    ] = await Promise.all([
       fetchRepositoryConnectivityChecks(selectedProjectId),
+      fetchRepositoryConnectivityCheckMap(selectedProjectId, repositories),
     ]);
 
     if (!response.ok) {
@@ -1670,6 +1678,7 @@ async function fetchDashboardData(
       projects: projectState.projects,
       repositories,
       repositoryConnectivityChecks,
+      repositoryConnectivityChecksByRepository,
       defaultProjectId: projectState.defaultProjectId,
       selectedProjectId,
       generatedAt: payload.meta?.generatedAt,
@@ -1685,6 +1694,7 @@ async function fetchDashboardData(
       projects: [createDefaultProjectOption(fallbackProjectId)],
       repositories: [],
       repositoryConnectivityChecks: [],
+      repositoryConnectivityChecksByRepository: {},
       defaultProjectId: fallbackProjectId,
       selectedProjectId: fallbackProjectId,
       error: `API unavailable at ${apiUrl}: ${message}`,
@@ -1741,10 +1751,20 @@ async function fetchRepositories(
 
 async function fetchRepositoryConnectivityChecks(
   projectId: string,
+  repositoryId?: string,
+  limit = 5,
 ): Promise<RepositoryConnectivityCheckResult[]> {
   try {
+    const params = new URLSearchParams({
+      projectId,
+      limit: String(limit),
+    });
+    if (repositoryId) {
+      params.set("repositoryId", repositoryId);
+    }
+
     const response = await fetch(
-      `${apiUrl}/repositories/connectivity-checks?projectId=${encodeURIComponent(projectId)}&limit=5`,
+      `${apiUrl}/repositories/connectivity-checks?${params.toString()}`,
       {
         cache: "no-store",
       },
@@ -1760,6 +1780,42 @@ async function fetchRepositoryConnectivityChecks(
   } catch {
     return [];
   }
+}
+
+async function fetchRepositoryConnectivityCheckMap(
+  projectId: string,
+  repositories: RepositoryOption[],
+): Promise<Record<string, RepositoryConnectivityCheckResult[]>> {
+  const entries = await Promise.all(
+    repositories.map(
+      async (repository) =>
+        [
+          repository.id,
+          await fetchRepositoryConnectivityChecks(projectId, repository.id, 3),
+        ] as const,
+    ),
+  );
+
+  return Object.fromEntries(entries);
+}
+
+function selectRepositoryConnectivityChecks(
+  repository: RepositoryOption,
+  byRepository: Record<string, RepositoryConnectivityCheckResult[]>,
+  projectResults: RepositoryConnectivityCheckResult[],
+): RepositoryConnectivityCheckResult[] {
+  const directResults = byRepository[repository.id] ?? [];
+  if (directResults.length > 0) {
+    return directResults;
+  }
+
+  return projectResults
+    .filter(
+      (result) =>
+        result.repositoryId === repository.id ||
+        (!result.repositoryId && result.repositoryName === repository.name),
+    )
+    .slice(0, 3);
 }
 
 async function fetchDispatchControl(
@@ -2291,6 +2347,8 @@ function buildReviewCompletionGate(
       detail:
         "No pull request artifact was captured for this review-state run.",
       label: "Blocked",
+      nextStep:
+        "Rerun the work item or link review evidence before using the completion gate.",
       reasons: ["Capture or link review evidence before completing the work."],
       title: "Review evidence missing",
       tone: "blocked",
@@ -2304,6 +2362,8 @@ function buildReviewCompletionGate(
       detail:
         "Symphony could not verify the linked GitHub PR, so completion is paused.",
       label: "Unknown",
+      nextStep:
+        "Restore GitHub/API access, then refresh PR readiness before completing.",
       reasons: [pullRequestStatus.error],
       title: "PR readiness unavailable",
       tone: "unknown",
@@ -2320,6 +2380,8 @@ function buildReviewCompletionGate(
         pullRequestStatus.skippedReason ??
         "No remote PR is linked, so this gate relies on manual local review.",
       label: "Manual",
+      nextStep:
+        "Open the local PR artifact, complete the external review, then mark complete.",
       reasons: ["Link a GitHub PR URL to enable live readiness checks."],
       title: "Local review gate",
       tone: "unknown",
@@ -2327,13 +2389,18 @@ function buildReviewCompletionGate(
   }
 
   if (pullRequest.readiness.status === "ready") {
+    const isMerged = Boolean(pullRequest.merged);
     return {
       buttonTitle:
         "Mark complete after the PR has been reviewed and merged externally.",
       canComplete: true,
-      detail:
-        "GitHub readiness is clear. Completion still records only the human merge gate result.",
+      detail: isMerged
+        ? "GitHub shows this PR is already merged. Symphony can now close the manual gate."
+        : "GitHub readiness is clear. Completion still records only the human merge gate result.",
       label: "Ready",
+      nextStep: isMerged
+        ? "Mark complete to sync Symphony and Linear with the merged PR."
+        : "Merge or approve externally as needed, then mark complete.",
       reasons: pullRequest.readiness.reasons,
       title: "Ready for human completion",
       tone: "ready",
@@ -2344,9 +2411,10 @@ function buildReviewCompletionGate(
     return {
       buttonTitle: "Wait for pending PR checks or reviews before completion.",
       canComplete: false,
-      detail:
-        "The linked PR still has pending review or check signals.",
+      detail: "The linked PR still has pending review or check signals.",
       label: "Pending",
+      nextStep:
+        "Wait for checks or reviews to settle, then refresh PR readiness.",
       reasons: pullRequest.readiness.reasons,
       title: "Waiting on PR readiness",
       tone: "pending",
@@ -2360,6 +2428,8 @@ function buildReviewCompletionGate(
       detail:
         "The linked PR has blockers that should be fixed through the review loop.",
       label: "Blocked",
+      nextStep:
+        "Use Fix with agent for code changes, or resolve GitHub blockers, then refresh.",
       reasons: pullRequest.readiness.reasons,
       title: "Completion blocked",
       tone: "blocked",
@@ -2372,6 +2442,7 @@ function buildReviewCompletionGate(
     detail:
       "The linked PR state is unknown, so Symphony is holding the manual completion action.",
     label: "Unknown",
+    nextStep: "Refresh PR readiness once GitHub state is available.",
     reasons: pullRequest.readiness.reasons,
     title: "PR readiness unknown",
     tone: "unknown",
@@ -2431,11 +2502,16 @@ function ProjectMenu({
 function ConfigView({
   integrations,
   repositoryConnectivityChecks,
+  repositoryConnectivityChecksByRepository,
   repositories,
   selectedProjectId,
 }: {
   integrations: IntegrationHealth;
   repositoryConnectivityChecks: RepositoryConnectivityCheckResult[];
+  repositoryConnectivityChecksByRepository: Record<
+    string,
+    RepositoryConnectivityCheckResult[]
+  >;
   repositories: RepositoryOption[];
   selectedProjectId: string;
 }) {
@@ -2499,7 +2575,9 @@ function ConfigView({
         <div className="linearStatusGrid">
           <div className={`linearStatusCard ${verificationTone}`}>
             <span>Status</span>
-            <strong>{formatLinearVerificationStatus(verification?.status)}</strong>
+            <strong>
+              {formatLinearVerificationStatus(verification?.status)}
+            </strong>
             <small>
               {verification?.checkedAt
                 ? `checked ${formatRelativeTime(verification.checkedAt)}`
@@ -2574,31 +2652,54 @@ function ConfigView({
           <div className={`linearStatusCard ${integrations.runtime.status}`}>
             <span>Selected runtime</span>
             <strong>{formatRuntime(integrations.runtime.kind)}</strong>
-            <small>{integrations.runtime.workflow.loaded ? "workflow loaded" : "workflow missing"}</small>
+            <small>
+              {integrations.runtime.workflow.loaded
+                ? "workflow loaded"
+                : "workflow missing"}
+            </small>
           </div>
           <div className="linearStatusCard">
             <span>Workflow root</span>
             <strong>{shortenPath(integrations.runtime.workflow.root)}</strong>
-            <small>{integrations.runtime.workflow.path ? shortenPath(integrations.runtime.workflow.path) : "default path"}</small>
+            <small>
+              {integrations.runtime.workflow.path
+                ? shortenPath(integrations.runtime.workflow.path)
+                : "default path"}
+            </small>
           </div>
           <div className="linearStatusCard">
             <span>Turn timeout</span>
-            <strong>{formatDurationMs(integrations.runtime.codex.turnTimeoutMs)}</strong>
-            <small>stall {formatDurationMs(integrations.runtime.codex.stallTimeoutMs)}</small>
+            <strong>
+              {formatDurationMs(integrations.runtime.codex.turnTimeoutMs)}
+            </strong>
+            <small>
+              stall{" "}
+              {formatDurationMs(integrations.runtime.codex.stallTimeoutMs)}
+            </small>
           </div>
         </div>
 
-        {integrations.runtime.workflow.error || integrations.runtime.configError ? (
+        {integrations.runtime.workflow.error ||
+        integrations.runtime.configError ? (
           <div className="linearError">
-            {integrations.runtime.workflow.error ?? integrations.runtime.configError}
+            {integrations.runtime.workflow.error ??
+              integrations.runtime.configError}
           </div>
         ) : null}
 
         <div className="runtimePolicyGrid">
-          <div className={integrations.runtime.codex.enabled ? "runtimePolicy active" : "runtimePolicy"}>
+          <div
+            className={
+              integrations.runtime.codex.enabled
+                ? "runtimePolicy active"
+                : "runtimePolicy"
+            }
+          >
             <div className="runtimePolicyHeader">
               <strong>Codex</strong>
-              <span>{integrations.runtime.codex.enabled ? "active" : "standby"}</span>
+              <span>
+                {integrations.runtime.codex.enabled ? "active" : "standby"}
+              </span>
             </div>
             <dl>
               <div>
@@ -2611,7 +2712,9 @@ function ConfigView({
               </div>
               <div>
                 <dt>Approval</dt>
-                <dd>{integrations.runtime.codex.approvalPolicy ?? "default"}</dd>
+                <dd>
+                  {integrations.runtime.codex.approvalPolicy ?? "default"}
+                </dd>
               </div>
               <div>
                 <dt>Sandbox</dt>
@@ -2619,13 +2722,17 @@ function ConfigView({
               </div>
               <div>
                 <dt>Skip git check</dt>
-                <dd>{integrations.runtime.codex.skipGitRepoCheck ? "enabled" : "disabled"}</dd>
+                <dd>
+                  {integrations.runtime.codex.skipGitRepoCheck
+                    ? "enabled"
+                    : "disabled"}
+                </dd>
               </div>
               <div>
                 <dt>Auth</dt>
                 <dd>
                   {integrations.runtime.codex.apiKeyConfigured
-                    ? integrations.runtime.codex.apiKeySource ?? "configured"
+                    ? (integrations.runtime.codex.apiKeySource ?? "configured")
                     : "CLI login"}
                 </dd>
               </div>
@@ -2635,15 +2742,25 @@ function ConfigView({
               </div>
               <div>
                 <dt>Reasoning</dt>
-                <dd>{integrations.runtime.codex.reasoningEffort ?? "CLI default"}</dd>
+                <dd>
+                  {integrations.runtime.codex.reasoningEffort ?? "CLI default"}
+                </dd>
               </div>
             </dl>
           </div>
 
-          <div className={integrations.runtime.cursor.enabled ? "runtimePolicy active" : "runtimePolicy"}>
+          <div
+            className={
+              integrations.runtime.cursor.enabled
+                ? "runtimePolicy active"
+                : "runtimePolicy"
+            }
+          >
             <div className="runtimePolicyHeader">
               <strong>Cursor</strong>
-              <span>{integrations.runtime.cursor.enabled ? "active" : "standby"}</span>
+              <span>
+                {integrations.runtime.cursor.enabled ? "active" : "standby"}
+              </span>
             </div>
             <dl>
               <div>
@@ -2663,11 +2780,17 @@ function ConfigView({
               </div>
               <div>
                 <dt>Trust workspace</dt>
-                <dd>{integrations.runtime.cursor.trustWorkspace ? "enabled" : "disabled"}</dd>
+                <dd>
+                  {integrations.runtime.cursor.trustWorkspace
+                    ? "enabled"
+                    : "disabled"}
+                </dd>
               </div>
               <div>
                 <dt>Force</dt>
-                <dd>{integrations.runtime.cursor.force ? "enabled" : "disabled"}</dd>
+                <dd>
+                  {integrations.runtime.cursor.force ? "enabled" : "disabled"}
+                </dd>
               </div>
               <div>
                 <dt>Auth</dt>
@@ -2721,11 +2844,7 @@ function ConfigView({
             </label>
             <label>
               <span>Default branch</span>
-              <input
-                maxLength={120}
-                name="defaultBranch"
-                placeholder="main"
-              />
+              <input maxLength={120} name="defaultBranch" placeholder="main" />
             </label>
             <label>
               <span>Local path</span>
@@ -2745,23 +2864,37 @@ function ConfigView({
             </label>
             <label>
               <span>PR remote</span>
-              <input
-                maxLength={120}
-                name="prRemoteName"
-                placeholder="origin"
-              />
+              <input maxLength={120} name="prRemoteName" placeholder="origin" />
             </label>
             <label>
               <span>PR base branch</span>
+              <input maxLength={120} name="prBaseBranch" placeholder="main" />
+            </label>
+            <label>
+              <span>PR branch prefix</span>
               <input
-                maxLength={120}
-                name="prBaseBranch"
-                placeholder="main"
+                maxLength={80}
+                name="prBranchPrefix"
+                placeholder="agent"
+              />
+            </label>
+            <label>
+              <span>PR branch max length</span>
+              <input
+                max={240}
+                min={32}
+                name="prBranchMaxLength"
+                placeholder="120"
+                type="number"
               />
             </label>
             <label className="checkboxLine">
               <input defaultChecked name="prDraft" type="checkbox" />
               <span>Create as draft</span>
+            </label>
+            <label className="checkboxLine">
+              <input name="prBranchIncludeTimestamp" type="checkbox" />
+              <span>Add timestamp to branch</span>
             </label>
             <div className="repoFormActions">
               <button
@@ -2795,203 +2928,261 @@ function ConfigView({
 
           {repositories.length > 0 ? (
             <div className="repoList">
-              {repositories.map((repository) => (
-                <article className="repoItem" key={repository.id}>
-                  <div>
-                    <strong>{repository.name}</strong>
-                    <span>{repository.id}</span>
-                  </div>
-                  <dl>
+              {repositories.map((repository) => {
+                const repositoryChecks = selectRepositoryConnectivityChecks(
+                  repository,
+                  repositoryConnectivityChecksByRepository,
+                  repositoryConnectivityChecks,
+                );
+                return (
+                  <article className="repoItem" key={repository.id}>
                     <div>
-                      <dt>URL</dt>
-                      <dd>{repository.url}</dd>
+                      <strong>{repository.name}</strong>
+                      <span>{repository.id}</span>
                     </div>
-                    <div>
-                      <dt>Local path</dt>
-                      <dd>{repository.localPath ?? "not set"}</dd>
-                    </div>
-                    <div>
-                      <dt>Branch</dt>
-                      <dd>{repository.defaultBranch}</dd>
-                    </div>
-                    <div>
-                      <dt>PR mode</dt>
-                      <dd>
-                        {formatPullRequestMode(repository.pullRequest?.mode)}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>PR target</dt>
-                      <dd>
-                        {[
-                          repository.pullRequest?.remoteName,
-                          repository.pullRequest?.baseBranch,
-                        ]
-                          .filter(Boolean)
-                          .join(" / ") || "not set"}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>Work items</dt>
-                      <dd>{repository.workItemCount}</dd>
-                    </div>
-                  </dl>
-                  <details className="repoEditDetails">
-                    <summary>Edit repository</summary>
-                    <form action={submitRepositoryUpdate} className="repoEditForm">
-                      <input
-                        name="projectId"
-                        type="hidden"
-                        value={selectedProjectId}
-                      />
-                      <input name="view" type="hidden" value="config" />
-                      <input
-                        name="repositoryId"
-                        type="hidden"
-                        value={repository.id}
-                      />
-                      <label>
-                        <span>Name</span>
+                    <dl>
+                      <div>
+                        <dt>URL</dt>
+                        <dd>{repository.url}</dd>
+                      </div>
+                      <div>
+                        <dt>Local path</dt>
+                        <dd>{repository.localPath ?? "not set"}</dd>
+                      </div>
+                      <div>
+                        <dt>Branch</dt>
+                        <dd>{repository.defaultBranch}</dd>
+                      </div>
+                      <div>
+                        <dt>PR mode</dt>
+                        <dd>
+                          {formatPullRequestMode(repository.pullRequest?.mode)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>PR target</dt>
+                        <dd>
+                          {[
+                            repository.pullRequest?.remoteName,
+                            repository.pullRequest?.baseBranch,
+                          ]
+                            .filter(Boolean)
+                            .join(" / ") || "not set"}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>PR branch</dt>
+                        <dd>
+                          {formatPullRequestBranchPolicy(
+                            repository.pullRequest?.branch,
+                          )}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Work items</dt>
+                        <dd>{repository.workItemCount}</dd>
+                      </div>
+                    </dl>
+                    <RepositoryConnectivityInline results={repositoryChecks} />
+                    <details className="repoEditDetails">
+                      <summary>Edit repository</summary>
+                      <form
+                        action={submitRepositoryUpdate}
+                        className="repoEditForm"
+                      >
                         <input
-                          defaultValue={repository.name}
-                          maxLength={120}
-                          name="name"
-                          required
+                          name="projectId"
+                          type="hidden"
+                          value={selectedProjectId}
                         />
-                      </label>
-                      <label className="fullLine">
-                        <span>Repository URL</span>
+                        <input name="view" type="hidden" value="config" />
                         <input
-                          defaultValue={repository.url}
-                          maxLength={2000}
-                          name="url"
-                          required
+                          name="repositoryId"
+                          type="hidden"
+                          value={repository.id}
                         />
-                      </label>
-                      <label>
-                        <span>Default branch</span>
+                        <label>
+                          <span>Name</span>
+                          <input
+                            defaultValue={repository.name}
+                            maxLength={120}
+                            name="name"
+                            required
+                          />
+                        </label>
+                        <label className="fullLine">
+                          <span>Repository URL</span>
+                          <input
+                            defaultValue={repository.url}
+                            maxLength={2000}
+                            name="url"
+                            required
+                          />
+                        </label>
+                        <label>
+                          <span>Default branch</span>
+                          <input
+                            defaultValue={repository.defaultBranch}
+                            maxLength={120}
+                            name="defaultBranch"
+                          />
+                        </label>
+                        <label className="fullLine">
+                          <span>Local path</span>
+                          <input
+                            defaultValue={repository.localPath ?? ""}
+                            maxLength={2000}
+                            name="localPath"
+                          />
+                        </label>
+                        <label>
+                          <span>PR mode</span>
+                          <select
+                            defaultValue={
+                              repository.pullRequest?.mode ?? "local_draft"
+                            }
+                            name="prMode"
+                          >
+                            <option value="local_draft">Local draft</option>
+                            <option value="github_draft">GitHub draft</option>
+                            <option value="disabled">Disabled</option>
+                          </select>
+                        </label>
+                        <label>
+                          <span>PR remote</span>
+                          <input
+                            defaultValue={
+                              repository.pullRequest?.remoteName ?? ""
+                            }
+                            maxLength={120}
+                            name="prRemoteName"
+                          />
+                        </label>
+                        <label>
+                          <span>PR base branch</span>
+                          <input
+                            defaultValue={
+                              repository.pullRequest?.baseBranch ?? ""
+                            }
+                            maxLength={120}
+                            name="prBaseBranch"
+                          />
+                        </label>
+                        <label>
+                          <span>PR branch prefix</span>
+                          <input
+                            defaultValue={
+                              repository.pullRequest?.branch?.prefix ?? ""
+                            }
+                            maxLength={80}
+                            name="prBranchPrefix"
+                          />
+                        </label>
+                        <label>
+                          <span>PR branch max length</span>
+                          <input
+                            defaultValue={
+                              repository.pullRequest?.branch?.maxLength ?? ""
+                            }
+                            max={240}
+                            min={32}
+                            name="prBranchMaxLength"
+                            type="number"
+                          />
+                        </label>
+                        <label className="checkboxLine">
+                          <input
+                            defaultChecked={
+                              repository.pullRequest?.draft ?? true
+                            }
+                            name="prDraft"
+                            type="checkbox"
+                          />
+                          <span>Create as draft</span>
+                        </label>
+                        <label className="checkboxLine">
+                          <input
+                            defaultChecked={
+                              repository.pullRequest?.branch
+                                ?.includeTimestamp ?? false
+                            }
+                            name="prBranchIncludeTimestamp"
+                            type="checkbox"
+                          />
+                          <span>Add timestamp to branch</span>
+                        </label>
+                        <div className="repoEditActions">
+                          <button
+                            formAction={submitRepositoryConnectivityCheck}
+                            title="Check repository access"
+                            type="submit"
+                          >
+                            <ShieldCheck size={14} />
+                            Check access
+                          </button>
+                          <button title="Save repository changes" type="submit">
+                            <Save size={14} />
+                            Save changes
+                          </button>
+                        </div>
+                      </form>
+                    </details>
+                    <details className="repoArchiveDetails">
+                      <summary>Archive repository</summary>
+                      <form
+                        action={submitRepositoryArchive}
+                        className="repoArchiveForm"
+                      >
                         <input
-                          defaultValue={repository.defaultBranch}
-                          maxLength={120}
-                          name="defaultBranch"
+                          name="projectId"
+                          type="hidden"
+                          value={selectedProjectId}
                         />
-                      </label>
-                      <label className="fullLine">
-                        <span>Local path</span>
+                        <input name="view" type="hidden" value="config" />
                         <input
-                          defaultValue={repository.localPath ?? ""}
-                          maxLength={2000}
-                          name="localPath"
+                          name="repositoryId"
+                          type="hidden"
+                          value={repository.id}
                         />
-                      </label>
-                      <label>
-                        <span>PR mode</span>
-                        <select
-                          defaultValue={
-                            repository.pullRequest?.mode ?? "local_draft"
-                          }
-                          name="prMode"
-                        >
-                          <option value="local_draft">Local draft</option>
-                          <option value="github_draft">GitHub draft</option>
-                          <option value="disabled">Disabled</option>
-                        </select>
-                      </label>
-                      <label>
-                        <span>PR remote</span>
                         <input
-                          defaultValue={repository.pullRequest?.remoteName ?? ""}
-                          maxLength={120}
-                          name="prRemoteName"
+                          name="repositoryName"
+                          type="hidden"
+                          value={repository.name}
                         />
-                      </label>
-                      <label>
-                        <span>PR base branch</span>
-                        <input
-                          defaultValue={repository.pullRequest?.baseBranch ?? ""}
-                          maxLength={120}
-                          name="prBaseBranch"
-                        />
-                      </label>
-                      <label className="checkboxLine">
-                        <input
-                          defaultChecked={repository.pullRequest?.draft ?? true}
-                          name="prDraft"
-                          type="checkbox"
-                        />
-                        <span>Create as draft</span>
-                      </label>
-                      <div className="repoEditActions">
+                        <p className="repoArchiveHint">
+                          Existing work items stay readable; future routing
+                          ignores this repo.
+                        </p>
+                        <label>
+                          <span>Confirm name</span>
+                          <input
+                            maxLength={120}
+                            name="confirmationName"
+                            placeholder={repository.name}
+                            required
+                          />
+                        </label>
+                        <label>
+                          <span>Reason</span>
+                          <input
+                            maxLength={500}
+                            name="archiveReason"
+                            placeholder="optional"
+                          />
+                        </label>
                         <button
-                          formAction={submitRepositoryConnectivityCheck}
-                          title="Check repository access"
+                          className="dangerButton"
+                          title="Archive repository"
                           type="submit"
                         >
-                          <ShieldCheck size={14} />
-                          Check access
+                          <Archive size={14} />
+                          Archive
                         </button>
-                        <button title="Save repository changes" type="submit">
-                          <Save size={14} />
-                          Save changes
-                        </button>
-                      </div>
-                    </form>
-                  </details>
-                  <details className="repoArchiveDetails">
-                    <summary>Archive repository</summary>
-                    <form
-                      action={submitRepositoryArchive}
-                      className="repoArchiveForm"
-                    >
-                      <input
-                        name="projectId"
-                        type="hidden"
-                        value={selectedProjectId}
-                      />
-                      <input name="view" type="hidden" value="config" />
-                      <input
-                        name="repositoryId"
-                        type="hidden"
-                        value={repository.id}
-                      />
-                      <input
-                        name="repositoryName"
-                        type="hidden"
-                        value={repository.name}
-                      />
-                      <p className="repoArchiveHint">
-                        Existing work items stay readable; future routing ignores
-                        this repo.
-                      </p>
-                      <label>
-                        <span>Confirm name</span>
-                        <input
-                          maxLength={120}
-                          name="confirmationName"
-                          placeholder={repository.name}
-                          required
-                        />
-                      </label>
-                      <label>
-                        <span>Reason</span>
-                        <input
-                          maxLength={500}
-                          name="archiveReason"
-                          placeholder="optional"
-                        />
-                      </label>
-                      <button
-                        className="dangerButton"
-                        title="Archive repository"
-                        type="submit"
-                      >
-                        <Archive size={14} />
-                        Archive
-                      </button>
-                    </form>
-                  </details>
-                </article>
-              ))}
+                      </form>
+                    </details>
+                  </article>
+                );
+              })}
             </div>
           ) : (
             <div className="emptyState">
@@ -3057,12 +3248,18 @@ function LinearWebhookSetupPanel({
         <div className="linearStatusCard">
           <span>Verification</span>
           <strong>{setup.signatureHeader}</strong>
-          <small>{setup.timestampField} · {setup.toleranceMs}ms</small>
+          <small>
+            {setup.timestampField} · {setup.toleranceMs}ms
+          </small>
         </div>
       </div>
 
       <div className="webhookSetupChecklist">
-        <div className={setup.secretConfigured ? "stateCheck ok" : "stateCheck error"}>
+        <div
+          className={
+            setup.secretConfigured ? "stateCheck ok" : "stateCheck error"
+          }
+        >
           {setup.secretConfigured ? (
             <CheckCircle2 size={14} />
           ) : (
@@ -3093,6 +3290,47 @@ function LinearWebhookSetupPanel({
         </div>
       </div>
     </section>
+  );
+}
+
+function RepositoryConnectivityInline({
+  results,
+}: {
+  results: RepositoryConnectivityCheckResult[];
+}) {
+  const latest = results[0];
+
+  if (!latest) {
+    return (
+      <div className="repositoryCheckInline empty">
+        <div>
+          <ShieldCheck size={14} />
+          <strong>No access check</strong>
+        </div>
+        <p>Run Check access to capture repository readiness.</p>
+      </div>
+    );
+  }
+
+  const checkSummary =
+    latest.checks.length > 0
+      ? latest.checks
+          .map(
+            (check) =>
+              `${formatRepositoryConnectivityCheckName(check.name)}: ${formatRepositoryConnectivityStatus(check.status)}`,
+          )
+          .join(" · ")
+      : latest.message;
+
+  return (
+    <div className={`repositoryCheckInline ${latest.status}`}>
+      <div>
+        {getRepositoryConnectivityIcon(latest.status, 14)}
+        <strong>{formatRepositoryConnectivityStatus(latest.status)}</strong>
+        <span>{formatRelativeTime(latest.createdAt)}</span>
+      </div>
+      <p>{checkSummary}</p>
+    </div>
   );
 }
 
@@ -3159,7 +3397,9 @@ function RepositoryConnectivityPanel({
                     >
                       {getRepositoryConnectivityIcon(check.status, 14)}
                       <div>
-                        <strong>{formatRepositoryConnectivityCheckName(check.name)}</strong>
+                        <strong>
+                          {formatRepositoryConnectivityCheckName(check.name)}
+                        </strong>
                         <span>{check.message}</span>
                       </div>
                     </div>
@@ -3393,7 +3633,9 @@ function TrackerHealthBadge({ health }: { health: IntegrationHealth }) {
   );
 }
 
-function combineHealthStatus(health: IntegrationHealth): IntegrationHealthStatus {
+function combineHealthStatus(
+  health: IntegrationHealth,
+): IntegrationHealthStatus {
   if (health.tracker.status === "error" || health.runtime.status === "error") {
     return "error";
   }
@@ -3431,6 +3673,21 @@ function formatStatus(status: string): string {
 
 function formatPullRequestMode(mode: string | undefined): string {
   return mode ? formatStatus(mode) : "local draft";
+}
+
+function formatPullRequestBranchPolicy(
+  branch:
+    | {
+        includeTimestamp?: boolean;
+        maxLength?: number;
+        prefix?: string;
+      }
+    | undefined,
+): string {
+  const prefix = branch?.prefix || "agent";
+  const maxLength = branch?.maxLength ?? 120;
+  const timestamp = branch?.includeTimestamp ? "timestamp" : "run id";
+  return `${prefix} / ${maxLength} chars / ${timestamp}`;
 }
 
 function formatRepositoryConnectivityStatus(
@@ -3533,9 +3790,7 @@ function formatReadinessStatus(status: PullRequestReadinessStatus): string {
   return labels[status];
 }
 
-function formatPullRequestState(
-  pullRequest: PullRequestStatusSummary,
-): string {
+function formatPullRequestState(pullRequest: PullRequestStatusSummary): string {
   if (pullRequest.merged) {
     return "merged";
   }
@@ -3551,6 +3806,19 @@ function formatPullRequestBranchPair(
   return [pullRequest.headRef, pullRequest.baseRef]
     .filter(Boolean)
     .join(" -> ");
+}
+
+function formatPullRequestEvidence(
+  pullRequest: PullRequestStatusSummary,
+): string {
+  const evidence = [
+    pullRequest.headSha ? `head ${pullRequest.headSha.slice(0, 7)}` : undefined,
+    pullRequest.fetchedAt
+      ? `checked ${formatRelativeTime(pullRequest.fetchedAt)}`
+      : undefined,
+  ].filter(Boolean);
+
+  return evidence.length > 0 ? evidence.join(" · ") : "readiness not checked";
 }
 
 function formatReviewStatus(

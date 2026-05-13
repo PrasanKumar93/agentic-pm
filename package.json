@@ -11,6 +11,8 @@
     "dev:web": "pnpm --filter @agentic-pm/web dev",
     "build": "turbo build",
     "cleanup:smoke": "pnpm --filter @agentic-pm/db cleanup:smoke",
+    "cleanup:workspaces": "pnpm --filter @agentic-pm/workspaces cleanup:workspaces",
+    "linear:webhook": "pnpm --filter @agentic-pm/api linear:webhook",
     "lint": "turbo lint",
     "smoke:codex-auth-write": "node apps/worker/scripts/smoke-codex-auth-write.mjs",
     "smoke:linear-webhook": "node apps/api/scripts/smoke-linear-webhook.mjs",

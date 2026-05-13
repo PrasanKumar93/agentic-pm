@@ -195,11 +195,26 @@ Signature validation must use the raw request body bytes. The API replaces Fasti
 1. Copy `.env.example` to `.env`.
 2. Set `LINEAR_API_KEY`.
 3. Confirm `packages/config/src/agentic-pm.config.ts` matches the Linear team key and workflow state names.
-4. Create a Linear webhook pointing to:
+4. Create or update a Linear webhook pointing to:
 
 ```txt
 https://<public-host>/webhooks/linear
 ```
+
+The repeatable operator path is:
+
+```sh
+pnpm linear:webhook -- --json
+pnpm linear:webhook -- --apply
+```
+
+The command is dry-run by default. It reads `LINEAR_API_KEY`, the TypeScript
+configured Linear team key, `LINEAR_WEBHOOK_PUBLIC_URL` or
+`AGENTIC_PM_PUBLIC_BASE_URL`, and `LINEAR_WEBHOOK_SECRET`, then creates or
+updates the team-scoped `Issue` webhook in Linear. Use `--webhook-id` or
+`LINEAR_WEBHOOK_ID` when multiple team webhooks exist; otherwise the command
+reuses an exact URL match, label match, or the single existing team webhook so
+ngrok URL rotation updates in place instead of creating duplicates.
 
 5. Set the same URL in `LINEAR_WEBHOOK_PUBLIC_URL` so Config can show the live callback target.
 6. Copy the webhook signing secret into `LINEAR_WEBHOOK_SECRET`.
@@ -224,9 +239,16 @@ Expected result for a complete Linear setup:
 Local signed webhook smoke:
 
 ```sh
+pnpm linear:webhook -- --json
+pnpm linear:webhook -- --apply
 pnpm smoke:linear-webhook -- --dry-run
 pnpm smoke:linear-webhook
 ```
+
+`pnpm linear:webhook` verifies the Linear team and webhook management access.
+Without `--apply`, it only reports whether it would create or update a webhook.
+With `--apply`, it mutates Linear and prints the resulting webhook id, label,
+URL, enabled state, resource types, and team.
 
 The script reads `.env`, signs a realistic Linear `Issue` webhook with `LINEAR_WEBHOOK_SECRET`, posts it to `/webhooks/linear`, replays the same `Linear-Delivery` id, and verifies:
 

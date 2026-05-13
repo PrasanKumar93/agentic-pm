@@ -80,6 +80,8 @@ Date: 2026-04-30
 - Repository archive controls: Config view managed repository cards now expose typed archive confirmation backed by `POST /repositories/:repositoryId/archive`. Archived repos are removed from future routing/default selection and intake lists, while historical work items remain readable and explicit reruns can still resolve their repo metadata.
 - Repository connectivity checks: Config registration/edit forms now include a non-mutating Check access action backed by `POST /repositories/connectivity-check`, validating local path git status, repository URL reachability, default branch visibility, and `github_draft` PR remote/base readiness.
 - Repository connectivity visibility: Config view now reads recent `repository.connectivity_checked` events through `GET /repositories/connectivity-checks` and renders the last per-check local path, repository URL, and PR remote results inline.
+- Repository connectivity scoping: connectivity events now persist `repositoryId`, `GET /repositories/connectivity-checks` accepts a repository filter, and Config cards show a compact per-repository latest check with a fallback for older name-only events.
+- Generated workspace cleanup: `pnpm cleanup:workspaces` now dry-runs old generated git workspace candidates under `AGENTIC_PM_WORKSPACE_ROOT`, skips dirty workspaces by default, supports project/repository filters, and only removes candidates with `--apply`.
 - Linear webhook setup visibility: `/integrations/health` now includes `linear.webhookSetup`, and Config shows local callback URL, public callback URL readiness, signing secret status, verification header/timestamp requirements, and delivery dedupe header before the real inbound smoke.
 - Linear webhook smoke automation: `pnpm smoke:linear-webhook` now builds a realistic signed Linear Issue payload from `.env`, posts it to `/webhooks/linear`, verifies work-item reconciliation, replays the same `Linear-Delivery` id, and checks `/webhook-deliveries` plus `/work-items` for persisted evidence.
 - Codex auth/write smoke automation: `pnpm smoke:codex-auth-write` loads `.env` without printing secrets, applies the worker's `OPENAI_API_KEY -> CODEX_API_KEY` bridge, runs `codex exec` with `workspace-write`, `--add-dir`, and `--cd` in a throwaway git workspace, verifies a marker file write, and classifies auth/model/workspace failures before a real Linear retry.
@@ -89,17 +91,29 @@ Date: 2026-04-30
 - Codex generated-worktree writable-root hardening: Codex runtime args now inject `--add-dir <workspacePath>`, `--cd <workspacePath>`, and `--sandbox workspace-write` as `exec` options, preserving explicit user-supplied args and normalizing old top-level workspace flags from `.env`.
 - Live Codex workspace-write recovery smoke: `PRA-9` was retried after the Codex arg normalization, ran safely under `workspace-write`, captured log/patch/PR/review artifacts, pushed branch `agent/pra-9-codex-webhook-smoke-add-status-cli-2026-05-07t17-59-52-ec394304`, created draft GitHub PR #4 for `test-linear-app`, synced Linear back to `In Review`, and posted the review-ready comment.
 - Live same-PR Codex review-change smoke on `PRA-9` / `test-linear-app` PR #4: persisted reviewer feedback for multi-word CLI args, synced Linear back to `Todo`, checked out the existing PR branch, reran Codex with feedback, pushed follow-up commit `2046ad79395e1af842833533a180b0698cf16a07`, recorded `github.pr.updated`, refreshed patch/PR/review artifacts, and kept the manual merge gate.
+- Codex warning severity cleanup: worker runtime event classification now downgrades known non-fatal Codex local-state and model-personality stderr chatter to `warn` with `severityReason: "known_stderr_warning"`, while preserving real `stderr` failures as `error`. Added focused worker tests for the classifier.
+- PR review readiness ergonomics: the run detail PR card now shows checked head commit and fetch freshness, and the Manual completion gate shows an explicit next-step instruction for ready, merged, pending, blocked, unknown, local-only, and missing-evidence states.
+- Linear webhook management command: `pnpm linear:webhook` now dry-runs or applies Linear webhook create/update from `.env` plus the TypeScript team config. It verifies the `PRA` team, reuses an existing matching webhook when present, syncs the callback URL/resource types/secret, and was applied to webhook `b2d35563-3229-4407-89db-12070d9e938c` for `https://1672-49-36-125-134.ngrok-free.app/webhooks/linear`.
+- Live PR branch-policy smoke: temporarily set `test-linear-app` repository PR branch policy to `prefix=policy-smoke`, `maxLength=72`, and `includeTimestamp=true`; created Linear issue `PRA-10`; ran a one-shot Codex worker; created GitHub draft PR #5 at `https://github.com/PrasanKumar93/test-linear-app/pull/5`; verified branch `policy-smoke/pra-10-branch-policy-smoke-add-tiny-cli-marker-202-82eb4fa9` is exactly 72 chars and starts with the policy prefix; captured PR artifact `art_ef3166209f89451e` with `pullRequestBranchPolicy`; reset repository policy back to `agent`, max length `120`, timestamp disabled.
 
 ## In Progress
 
-- Clean up remaining Codex run-log noise and PR review readiness ergonomics after the live `PRA-9` proof. The remaining non-blocking noise is the local `~/.codex/state_5.sqlite` migration warning emitted by Codex CLI; workspace writes, PR creation, and same-PR change requests now work without `danger-full-access`.
+- Review the polish backlog and choose the next product slice. Workspace writes, PR creation, same-PR change requests, Codex warning severity normalization, PR review gate ergonomics, Linear webhook management, repo-scoped access checks, dry-run workspace pruning, and branch policy smokes now work without `danger-full-access`.
 
 ## Next Queue
 
-- Normalize known Codex warning stderr into warning/info severity so the timeline is not visually dominated by non-fatal state DB and model-personality warnings.
-- Add an operator script or dashboard action for creating/updating the Linear webhook from `.env` so ngrok URL changes do not require ad hoc GraphQL.
 - Optional outer folder rename after the active tool sandbox/workspace path is refreshed.
-- Add repository connectivity result filtering per repository once Config has heavier repository fleets.
+
+## Polish Backlog For Review
+
+- Add a dashboard queue/backlog panel that shows the next suggested slices, their status, and the evidence needed before marking them done.
+- Add a one-command live acceptance runner that sequences repository access check, Linear issue creation, one-shot worker dispatch, PR artifact verification, and cleanup/reset.
+- Add UI controls for PR branch policy presets, including a preview of the generated branch name before saving repository settings.
+- Add stronger Codex stderr classification for known nonfatal plugin/cache/quarantine warnings so the timeline stays quieter during successful runs.
+- Add retention controls for generated workspaces and artifacts from the dashboard, backed by the dry-run cleanup command before destructive removal.
+- Add a run environment diagnostics card that shows the exact runtime command path, sandbox mode, writable roots, and auth source without exposing secrets.
+- Add a PR readiness refresh button and stale-status indicator so reviewers know when GitHub mergeability/check data was last fetched.
+- Add a safe test-data reset workflow for `test-linear-app`, including branch/PR inventory and explicit confirmation before deleting smoke branches.
 
 ## Immediate Execution Order
 
@@ -134,3 +148,8 @@ Date: 2026-04-30
 29. Add repeatable Codex auth/write smoke: done. The smoke exposed that top-level workspace/sandbox flags made nested Codex turns read-only; the adapter now normalizes those flags onto the `exec` side, and live smoke passes under `workspace-write`.
 30. Retry live Codex PR creation after workspace-write fix: done on `PRA-9`; Symphony created `test-linear-app` draft PR #4 with patch, PR, review packet, Linear comments, and pushed branch evidence.
 31. Prove live same-PR Codex review changes: done on `PRA-9`; Symphony persisted reviewer feedback, reran Codex on the existing PR #4 branch, pushed follow-up commit `2046ad79395e1af842833533a180b0698cf16a07`, and recorded `github.pr.updated`.
+32. Add repeatable Linear webhook management: done. `pnpm linear:webhook -- --json` dry-runs the current Linear webhook plan, and `pnpm linear:webhook -- --apply --json` updated the existing PRA webhook in Linear without ad hoc GraphQL.
+33. Scope repository connectivity checks per repository: done. Check events now carry `repositoryId`, the API accepts `repositoryId` filtering, and Config cards show the latest scoped readiness summary for each managed repository.
+34. Add generated workspace cleanup: done. `pnpm cleanup:workspaces` reports old generated git workspaces by default, can filter by project/repository slug, skips dirty trees unless requested, and requires `--apply` before filesystem removal.
+35. Add explicit PR branch naming policy: done. Repository PR settings and env fallback now control branch prefix, max length, and optional timestamp; Git helper tests verify default naming and truncation while review reruns keep the existing PR branch.
+36. Live branch-policy smoke: done on `PRA-10`; Symphony created `test-linear-app` draft PR #5 on `policy-smoke/pra-10-branch-policy-smoke-add-tiny-cli-marker-202-82eb4fa9`, verified max-length truncation and prefix behavior, recorded the policy in PR artifact metadata, and reset the repository policy to normal defaults.

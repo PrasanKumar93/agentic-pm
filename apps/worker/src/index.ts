@@ -10,7 +10,6 @@ import {
   FakeAgentRuntime,
   GenericCliRuntime,
   type AgentRuntime,
-  type AgentEvent,
   type AgentRuntimePreflightResult,
   type AgentSession,
 } from "@agentic-pm/agents";
@@ -27,6 +26,7 @@ import {
   type DesiredAgentRuntime,
   type EventLevel,
   type Issue,
+  type PullRequestBranchSettings,
   type PullRequestMode,
   type RepositoryRef,
   type ReviewChangeRequest,
@@ -54,6 +54,10 @@ import {
   type TrackerAdapter,
 } from "@agentic-pm/trackers";
 import { WorkspaceManager } from "@agentic-pm/workspaces";
+import {
+  buildAgentEventPayload,
+  classifyAgentEventSeverity,
+} from "./agent-event-severity.js";
 
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 loadDotenv({ path: fileURLToPath(new URL("../../../.env", import.meta.url)) });
@@ -118,13 +122,9 @@ type TrackerCommentKind =
   | "review_ready"
   | "setup_failed";
 
-interface AgentEventSeverity {
-  level: EventLevel;
-  reason?: string;
-}
-
 interface ResolvedPullRequestSettings {
   baseBranch?: string;
+  branch?: PullRequestBranchSettings;
   draft: boolean;
   ghCommand?: string;
   mode: PullRequestMode;
@@ -652,72 +652,6 @@ async function stopRun(input: {
   });
 }
 
-function classifyAgentEventSeverity(event: AgentEvent): AgentEventSeverity {
-  if (event.type === "session.failed") {
-    return {
-      level: "error",
-      reason: "session_failed",
-    };
-  }
-
-  if (event.type !== "stderr") {
-    return {
-      level: "info",
-    };
-  }
-
-  if (isKnownWarningStderr(event.message)) {
-    return {
-      level: "warn",
-      reason: "known_stderr_warning",
-    };
-  }
-
-  return {
-    level: "error",
-    reason: "stderr",
-  };
-}
-
-function buildAgentEventPayload(
-  payload: Record<string, unknown> | undefined,
-  severityReason: string | undefined,
-): Record<string, unknown> | undefined {
-  if (!severityReason) {
-    return payload;
-  }
-
-  return {
-    ...(payload ?? {}),
-    severityReason,
-  };
-}
-
-function isKnownWarningStderr(message: string): boolean {
-  const normalized = message.trim();
-  if (!normalized) {
-    return false;
-  }
-
-  const lower = normalized.toLowerCase();
-  const warningPatternMatched =
-    /^\s*(warning|warn):/im.test(normalized) ||
-    /^\s*\[warn\]/im.test(normalized) ||
-    /^\s*(npm|pnpm|yarn)\s+warn/im.test(normalized) ||
-    /\b(deprecationwarning|experimentalwarning)\b/i.test(normalized) ||
-    /^\s*browserslist: caniuse-lite is outdated/im.test(normalized);
-
-  if (!warningPatternMatched) {
-    return false;
-  }
-
-  const isWarningException =
-    /\b(deprecationwarning|experimentalwarning)\b/i.test(normalized);
-  return (
-    isWarningException || !/\b(error|failed|fatal|exception)\b/.test(lower)
-  );
-}
-
 type ReviewArtifactWorkItem = Pick<
   WorkItem,
   "id" | "projectId" | "reviewRequest"
@@ -1037,6 +971,7 @@ async function capturePullRequestArtifact(
       workspacePath: input.run.workspacePath,
       baseCommitSha: reviewRequest?.baseCommitSha,
       baseBranch: reviewRequest?.baseBranch ?? prSettings.baseBranch,
+      branch: prSettings.branch,
       branchName: reviewRequest?.branchName,
       remoteName,
       artifacts,
@@ -1155,6 +1090,7 @@ async function capturePullRequestArtifact(
         issueIdentifier: input.issue.identifier,
         mergeGate: "manual",
         mode: prMode,
+        pullRequestBranchPolicy: prSettings.branch,
         pullRequestConfigSource: prSettings.source,
         remoteName,
         remotePrUrl: remoteResult?.remotePrUrl ?? reviewRequest?.remotePrUrl,
@@ -1511,6 +1447,7 @@ function resolvePullRequestSettings(
     return {
       baseBranch:
         repositorySettings.baseBranch ?? repositoryRef?.defaultBranch,
+      branch: repositorySettings.branch,
       draft: repositorySettings.draft ?? true,
       ghCommand: repositorySettings.ghCommand,
       mode: repositorySettings.mode,
@@ -1523,12 +1460,48 @@ function resolvePullRequestSettings(
     baseBranch:
       readOptionalEnv("AGENTIC_PM_GITHUB_BASE_BRANCH") ??
       repositoryRef?.defaultBranch,
+    branch: readPullRequestBranchSettings(),
     draft: readBoolean(process.env.AGENTIC_PM_GITHUB_PR_DRAFT, true),
     ghCommand: readOptionalEnv("AGENTIC_PM_GH_COMMAND"),
     mode: readPullRequestMode(),
     remoteName: readOptionalEnv("AGENTIC_PM_GITHUB_REMOTE"),
     source: "env",
   };
+}
+
+function readPullRequestBranchSettings(): PullRequestBranchSettings | undefined {
+  const prefix = readOptionalEnv("AGENTIC_PM_PR_BRANCH_PREFIX");
+  const includeTimestamp = process.env.AGENTIC_PM_PR_BRANCH_INCLUDE_TIMESTAMP
+    ? readBoolean(process.env.AGENTIC_PM_PR_BRANCH_INCLUDE_TIMESTAMP, false)
+    : undefined;
+  const maxLength = readOptionalPositiveInteger(
+    process.env.AGENTIC_PM_PR_BRANCH_MAX_LENGTH,
+    32,
+    240,
+  );
+
+  if (!prefix && includeTimestamp === undefined && !maxLength) {
+    return undefined;
+  }
+
+  return {
+    prefix,
+    includeTimestamp,
+    maxLength,
+  };
+}
+
+function readOptionalPositiveInteger(
+  value: string | undefined,
+  min: number,
+  max: number,
+): number | undefined {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return undefined;
+  }
+
+  return Math.min(Math.max(Math.floor(parsed), min), max);
 }
 
 function createTracker(): TrackerAdapter {

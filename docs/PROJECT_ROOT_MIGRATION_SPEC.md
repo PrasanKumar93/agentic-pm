@@ -37,7 +37,7 @@ Generated runtime output remains local and ignored:
 
 ## Migration Rules
 
-- Remove generated workspace worktrees through `git worktree remove` or `git worktree prune` before deleting folders.
+- Remove generated workspace worktrees through `pnpm cleanup:workspaces`, `git worktree remove`, or `git worktree prune` before deleting folders.
 - Move tracked project files with Git-aware moves so history is preserved as renames.
 - Preserve `.env` locally and keep it ignored.
 - Keep dependency/build output ignored after the move.

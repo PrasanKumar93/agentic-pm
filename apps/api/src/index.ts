@@ -73,6 +73,11 @@ type RepositoryConfigurationBody = {
   projectId?: string;
   pullRequest?: {
     baseBranch?: string;
+    branch?: {
+      includeTimestamp?: boolean;
+      maxLength?: number;
+      prefix?: string;
+    };
     draft?: boolean;
     ghCommand?: string;
     mode?: string;
@@ -89,6 +94,7 @@ type RepositoryArchiveBody = {
 };
 
 type RepositoryConnectivityBody = RepositoryConfigurationBody & {
+  repositoryId?: string;
   timeoutMs?: number;
 };
 
@@ -394,8 +400,7 @@ app.post("/repositories", async (request, reply) => {
   const now = new Date();
   const repositoryRef = await repository.ensureRepository({
     id:
-      readRepositoryId(body.id) ??
-      createRepositoryId(requestedProjectId, name),
+      readRepositoryId(body.id) ?? createRepositoryId(requestedProjectId, name),
     projectId: requestedProjectId,
     name,
     url,
@@ -511,6 +516,7 @@ app.post("/repositories/connectivity-check", async (request, reply) => {
   const body = (request.body ?? {}) as RepositoryConnectivityBody;
   const name = readRequiredText(body.name, 120);
   const url = readRequiredText(body.url, 2_000);
+  const safeRepositoryId = readRepositoryId(body.repositoryId ?? body.id);
   if (!name || !url) {
     return reply.code(400).send({
       error: "Repository name and URL are required.",
@@ -532,6 +538,7 @@ app.post("/repositories/connectivity-check", async (request, reply) => {
     message: `${body.actorId || "local-operator"} checked ${name} repository connectivity`,
     payload: {
       actorId: body.actorId,
+      repositoryId: safeRepositoryId,
       repositoryName: name,
       status: result.status,
       checks: result.checks.map((check) => ({
@@ -558,11 +565,17 @@ app.post("/repositories/connectivity-check", async (request, reply) => {
 });
 
 app.get("/repositories/connectivity-checks", async (request) => {
-  const query = request.query as { limit?: string; projectId?: string };
+  const query = request.query as {
+    limit?: string;
+    projectId?: string;
+    repositoryId?: string;
+  };
   const requestedProjectId = readProjectId(query.projectId) ?? projectId;
+  const requestedRepositoryId = readRepositoryId(query.repositoryId);
   const limit = Math.min(readPositiveNumber(query.limit, 5), 25);
   const events = await repository.listProjectEvents({
     projectId: requestedProjectId,
+    repositoryId: requestedRepositoryId,
     type: "repository.connectivity_checked",
     limit,
   });
@@ -572,6 +585,7 @@ app.get("/repositories/connectivity-checks", async (request) => {
     meta: {
       limit,
       projectId: requestedProjectId,
+      repositoryId: requestedRepositoryId,
       generatedAt: new Date().toISOString(),
     },
   };
@@ -1334,7 +1348,9 @@ function parseCommandArgs(
   return parseOptionalCommandArgs(value) ?? fallback;
 }
 
-function parseOptionalCommandArgs(value: string | undefined): string[] | undefined {
+function parseOptionalCommandArgs(
+  value: string | undefined,
+): string[] | undefined {
   const trimmed = value?.trim();
   if (!trimmed) {
     return undefined;
@@ -1342,7 +1358,10 @@ function parseOptionalCommandArgs(value: string | undefined): string[] | undefin
 
   if (trimmed.startsWith("[")) {
     const parsed = JSON.parse(trimmed);
-    if (!Array.isArray(parsed) || !parsed.every((item) => typeof item === "string")) {
+    if (
+      !Array.isArray(parsed) ||
+      !parsed.every((item) => typeof item === "string")
+    ) {
       throw new Error("Command args JSON must be an array of strings.");
     }
     return parsed;
@@ -1366,13 +1385,20 @@ function parseCursorSandbox(
 }
 
 function readPullRequestSettings(
-  value: {
-    baseBranch?: string;
-    draft?: boolean;
-    ghCommand?: string;
-    mode?: string;
-    remoteName?: string;
-  } | undefined,
+  value:
+    | {
+        baseBranch?: string;
+        branch?: {
+          includeTimestamp?: boolean;
+          maxLength?: number;
+          prefix?: string;
+        };
+        draft?: boolean;
+        ghCommand?: string;
+        mode?: string;
+        remoteName?: string;
+      }
+    | undefined,
 ): RepositoryRef["pullRequest"] | undefined {
   const mode = readPullRequestMode(value?.mode);
   if (!mode) {
@@ -1381,11 +1407,56 @@ function readPullRequestSettings(
 
   return {
     mode,
+    branch: readPullRequestBranchSettings(value?.branch),
     remoteName: readOptionalText(value?.remoteName, 120),
     baseBranch: readOptionalText(value?.baseBranch, 120),
     draft: typeof value?.draft === "boolean" ? value.draft : undefined,
     ghCommand: readOptionalText(value?.ghCommand, 200),
   };
+}
+
+function readPullRequestBranchSettings(
+  value:
+    | {
+        includeTimestamp?: boolean;
+        maxLength?: number;
+        prefix?: string;
+      }
+    | undefined,
+): NonNullable<RepositoryRef["pullRequest"]>["branch"] | undefined {
+  const prefix = readOptionalText(value?.prefix, 80);
+  const maxLength = readOptionalRangeNumber(value?.maxLength, 32, 240);
+  const includeTimestamp =
+    typeof value?.includeTimestamp === "boolean"
+      ? value.includeTimestamp
+      : undefined;
+
+  if (!prefix && !maxLength && includeTimestamp === undefined) {
+    return undefined;
+  }
+
+  return {
+    prefix,
+    maxLength,
+    includeTimestamp,
+  };
+}
+
+function readOptionalRangeNumber(
+  value: number | undefined,
+  min: number,
+  max: number,
+): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return undefined;
+  }
+
+  return Math.min(Math.max(Math.floor(parsed), min), max);
 }
 
 function readPullRequestMode(value: unknown): PullRequestMode | undefined {
@@ -1398,6 +1469,7 @@ function readPullRequestMode(value: unknown): PullRequestMode | undefined {
 function toRepositoryConnectivityCheckSummary(event: RunEvent): {
   id: string;
   projectId?: string;
+  repositoryId?: string;
   repositoryName: string;
   status: RepositoryConnectivityStatus;
   checks: RepositoryConnectivityCheckSummary[];
@@ -1412,6 +1484,7 @@ function toRepositoryConnectivityCheckSummary(event: RunEvent): {
   return {
     id: event.id,
     projectId: event.projectId,
+    repositoryId: readPayloadText(payload.repositoryId),
     repositoryName:
       readPayloadText(payload.repositoryName) ?? "Unknown repository",
     status:
@@ -1564,13 +1637,17 @@ async function ensureDefaultRepositoryForProject(
   const selectedDefaultRepository =
     selectedProjectId === projectId
       ? defaultRepository
-      : readDefaultRepositoryRef(selectedProjectId, selectedProjectSlug, repoRoot);
+      : readDefaultRepositoryRef(
+          selectedProjectId,
+          selectedProjectSlug,
+          repoRoot,
+        );
 
   await repository.ensureProject({
     id: selectedProjectId,
     name:
       selectedProjectId === projectId
-        ? process.env.AGENTIC_PM_PROJECT_NAME ?? formatProjectName(projectId)
+        ? (process.env.AGENTIC_PM_PROJECT_NAME ?? formatProjectName(projectId))
         : formatProjectName(selectedProjectId),
     slug: selectedProjectSlug,
     trackerKind: readTrackerKind(),
@@ -2069,8 +2146,7 @@ async function buildRuntimeHealth(): Promise<RuntimeHealth> {
       command: process.env.CODEX_COMMAND ?? codexConfig.command,
       args: codexArgs,
       approvalPolicy: readOptionalEnvText(
-        process.env.CODEX_APPROVAL_POLICY ??
-          process.env.CODEX_ASK_FOR_APPROVAL,
+        process.env.CODEX_APPROVAL_POLICY ?? process.env.CODEX_ASK_FOR_APPROVAL,
         codexConfig.approval_policy,
       ),
       sandbox: readOptionalEnvText(
@@ -2090,7 +2166,8 @@ async function buildRuntimeHealth(): Promise<RuntimeHealth> {
     },
     cursor: {
       enabled: runtimeKind === "cursor",
-      command: readOptionalEnvText(process.env.CURSOR_COMMAND, "cursor-agent") ??
+      command:
+        readOptionalEnvText(process.env.CURSOR_COMMAND, "cursor-agent") ??
         "cursor-agent",
       args: cursorArgs,
       outputFormat: parseCursorOutputFormat(process.env.CURSOR_OUTPUT_FORMAT),

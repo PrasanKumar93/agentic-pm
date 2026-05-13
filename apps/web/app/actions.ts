@@ -97,6 +97,12 @@ export async function submitRepositoryRegistration(
   const prMode = String(formData.get("prMode") ?? "local_draft").trim();
   const prRemoteName = String(formData.get("prRemoteName") ?? "").trim();
   const prBaseBranch = String(formData.get("prBaseBranch") ?? "").trim();
+  const prBranchPrefix = String(formData.get("prBranchPrefix") ?? "").trim();
+  const prBranchMaxLength = String(
+    formData.get("prBranchMaxLength") ?? "",
+  ).trim();
+  const prBranchIncludeTimestamp =
+    formData.get("prBranchIncludeTimestamp") === "on";
   const prDraft = formData.get("prDraft") === "on";
   const returnState = {
     ...readReturnState(formData),
@@ -123,6 +129,11 @@ export async function submitRepositoryRegistration(
           projectId: returnState.projectId,
           pullRequest: {
             baseBranch: prBaseBranch,
+            branch: {
+              includeTimestamp: prBranchIncludeTimestamp,
+              maxLength: Number(prBranchMaxLength) || undefined,
+              prefix: prBranchPrefix,
+            },
             draft: prDraft,
             mode: prMode,
             remoteName: prRemoteName,
@@ -169,6 +180,12 @@ export async function submitRepositoryUpdate(
   const prMode = String(formData.get("prMode") ?? "local_draft").trim();
   const prRemoteName = String(formData.get("prRemoteName") ?? "").trim();
   const prBaseBranch = String(formData.get("prBaseBranch") ?? "").trim();
+  const prBranchPrefix = String(formData.get("prBranchPrefix") ?? "").trim();
+  const prBranchMaxLength = String(
+    formData.get("prBranchMaxLength") ?? "",
+  ).trim();
+  const prBranchIncludeTimestamp =
+    formData.get("prBranchIncludeTimestamp") === "on";
   const prDraft = formData.get("prDraft") === "on";
   const returnState = {
     ...readReturnState(formData),
@@ -200,6 +217,11 @@ export async function submitRepositoryUpdate(
           projectId: returnState.projectId,
           pullRequest: {
             baseBranch: prBaseBranch,
+            branch: {
+              includeTimestamp: prBranchIncludeTimestamp,
+              maxLength: Number(prBranchMaxLength) || undefined,
+              prefix: prBranchPrefix,
+            },
             draft: prDraft,
             mode: prMode,
             remoteName: prRemoteName,
@@ -313,6 +335,13 @@ export async function submitRepositoryConnectivityCheck(
   const prMode = String(formData.get("prMode") ?? "local_draft").trim();
   const prRemoteName = String(formData.get("prRemoteName") ?? "").trim();
   const prBaseBranch = String(formData.get("prBaseBranch") ?? "").trim();
+  const prBranchPrefix = String(formData.get("prBranchPrefix") ?? "").trim();
+  const prBranchMaxLength = String(
+    formData.get("prBranchMaxLength") ?? "",
+  ).trim();
+  const prBranchIncludeTimestamp =
+    formData.get("prBranchIncludeTimestamp") === "on";
+  const repositoryId = String(formData.get("repositoryId") ?? "").trim();
   const returnState = {
     ...readReturnState(formData),
     view: "config",
@@ -325,26 +354,35 @@ export async function submitRepositoryConnectivityCheck(
 
   if (name && url && isPullRequestMode(prMode)) {
     try {
-      const response = await fetch(`${apiUrl}/repositories/connectivity-check`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          actorId: "dashboard",
-          defaultBranch,
-          localPath,
-          name,
-          projectId: returnState.projectId,
-          pullRequest: {
-            baseBranch: prBaseBranch,
-            mode: prMode,
-            remoteName: prRemoteName,
+      const response = await fetch(
+        `${apiUrl}/repositories/connectivity-check`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
           },
-          url,
-        }),
-        cache: "no-store",
-      });
+          body: JSON.stringify({
+            actorId: "dashboard",
+            defaultBranch,
+            localPath,
+            name,
+            projectId: returnState.projectId,
+            repositoryId: repositoryId || undefined,
+            pullRequest: {
+              baseBranch: prBaseBranch,
+              branch: {
+                includeTimestamp: prBranchIncludeTimestamp,
+                maxLength: Number(prBranchMaxLength) || undefined,
+                prefix: prBranchPrefix,
+              },
+              mode: prMode,
+              remoteName: prRemoteName,
+            },
+            url,
+          }),
+          cache: "no-store",
+        },
+      );
 
       const payload = await readActionResponse(response);
       redirectUrl = response.ok

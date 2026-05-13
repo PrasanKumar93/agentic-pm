@@ -13,9 +13,10 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "cleanup:workspaces": "node scripts/cleanup-generated-workspaces.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src --ext .ts",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests && node --test scripts/*.test.mjs"
   },
   "dependencies": {
     "@agentic-pm/core": "workspace:*",

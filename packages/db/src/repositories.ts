@@ -203,7 +203,9 @@ export class AgenticRepository {
 
     const stored = await this.collections.repositories.findOne({ id });
     if (!stored) {
-      throw new Error(`Repository ${repository.name} was not found after upsert`);
+      throw new Error(
+        `Repository ${repository.name} was not found after upsert`,
+      );
     }
 
     return stored;
@@ -223,9 +225,13 @@ export class AgenticRepository {
     actorId?: string;
     reason?: string;
   }): Promise<RepositoryRef> {
-    const existing = await this.getRepository(input.repositoryId, input.projectId, {
-      includeArchived: true,
-    });
+    const existing = await this.getRepository(
+      input.repositoryId,
+      input.projectId,
+      {
+        includeArchived: true,
+      },
+    );
     if (!existing) {
       throw new RepositoryNotFoundError(input.repositoryId);
     }
@@ -466,9 +472,7 @@ export class AgenticRepository {
     });
   }
 
-  async listRepositoryOptions(
-    projectId: string,
-  ): Promise<RepositoryOption[]> {
+  async listRepositoryOptions(projectId: string): Promise<RepositoryOption[]> {
     const [project, repositories] = await Promise.all([
       this.collections.projects.findOne({ id: projectId }),
       this.collections.repositories
@@ -519,9 +523,7 @@ export class AgenticRepository {
     return this.collections.repositories.findOne(filter);
   }
 
-  async getDefaultRepository(
-    projectId: string,
-  ): Promise<RepositoryRef | null> {
+  async getDefaultRepository(projectId: string): Promise<RepositoryRef | null> {
     const [project, repositories] = await Promise.all([
       this.collections.projects.findOne({ id: projectId }),
       this.collections.repositories
@@ -541,7 +543,7 @@ export class AgenticRepository {
     );
 
     return preferredRepositoryId
-      ? repositoriesById.get(preferredRepositoryId) ?? repositories[0]
+      ? (repositoriesById.get(preferredRepositoryId) ?? repositories[0])
       : repositories[0];
   }
 
@@ -591,9 +593,7 @@ export class AgenticRepository {
       projectId: input.projectId,
       repositoryId: repositoryRef.id,
       status: "queued",
-      ...(input.desiredRuntime
-        ? { desiredRuntime: input.desiredRuntime }
-        : {}),
+      ...(input.desiredRuntime ? { desiredRuntime: input.desiredRuntime } : {}),
       retryCount: 0,
       createdAt: now,
       updatedAt: now,
@@ -1183,7 +1183,10 @@ export class AgenticRepository {
       baseBranch:
         readMetadataString(pullRequestArtifact.metadata, "baseBranch") ??
         readMetadataString(pullRequestArtifact.metadata, "remoteBaseBranch"),
-      remoteName: readMetadataString(pullRequestArtifact.metadata, "remoteName"),
+      remoteName: readMetadataString(
+        pullRequestArtifact.metadata,
+        "remoteName",
+      ),
       remotePrUrl: readMetadataString(
         pullRequestArtifact.metadata,
         "remotePrUrl",
@@ -1428,6 +1431,7 @@ export class AgenticRepository {
 
   async listProjectEvents(input: {
     projectId: string;
+    repositoryId?: string;
     type?: string;
     limit?: number;
   }): Promise<RunEvent[]> {
@@ -1438,6 +1442,10 @@ export class AgenticRepository {
 
     if (input.type) {
       filter.type = input.type;
+    }
+
+    if (input.repositoryId) {
+      filter["payload.repositoryId"] = input.repositoryId;
     }
 
     return this.collections.runEvents

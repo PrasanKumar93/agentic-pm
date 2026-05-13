@@ -4,7 +4,11 @@ import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { slugify, type PullRequestMode } from "@agentic-pm/core";
+import {
+  slugify,
+  type PullRequestBranchSettings,
+  type PullRequestMode,
+} from "@agentic-pm/core";
 
 const execFileAsync = promisify(execFile);
 
@@ -15,6 +19,7 @@ export interface PullRequestDraftInput {
   workspacePath: string;
   baseCommitSha?: string;
   baseBranch?: string;
+  branch?: PullRequestBranchSettings;
   branchName?: string;
   remoteName?: string;
   artifacts: Array<{
@@ -102,14 +107,62 @@ export interface RepositoryConnectivityResult {
   checks: RepositoryConnectivityCheck[];
 }
 
-export function buildAgentBranchName(issueIdentifier: string, title: string, suffix?: string): string {
+export function buildAgentBranchName(
+  issueIdentifier: string,
+  title: string,
+  suffix?: string,
+  settings: PullRequestBranchSettings = {},
+): string {
+  const prefix = normalizeBranchPrefix(settings.prefix);
+  const maxLength = normalizeBranchMaxLength(settings.maxLength);
   const slug = slugify(title);
   const suffixPart = suffix ? `-${slugify(suffix)}` : "";
-  return `agent/${issueIdentifier.toLowerCase()}-${slug}${suffixPart}`.slice(0, 120);
+  return truncateBranchName(
+    `${prefix}/${issueIdentifier.toLowerCase()}-${slug}${suffixPart}`,
+    maxLength,
+  );
 }
 
 export function isProtectedBranch(branch: string): boolean {
   return ["main", "master", "develop", "production"].includes(branch);
+}
+
+function normalizeBranchPrefix(value: string | undefined): string {
+  const prefix = slugify(value ?? "agent");
+  return prefix || "agent";
+}
+
+function normalizeBranchMaxLength(value: number | undefined): number {
+  if (!value || !Number.isFinite(value)) {
+    return 120;
+  }
+
+  return Math.min(Math.max(Math.floor(value), 32), 240);
+}
+
+function truncateBranchName(branchName: string, maxLength: number): string {
+  if (branchName.length <= maxLength) {
+    return branchName;
+  }
+
+  const lastDash = branchName.lastIndexOf("-");
+  const suffix =
+    lastDash >= 0 && branchName.length - lastDash <= 64
+      ? branchName.slice(lastDash)
+      : "";
+  if (!suffix) {
+    return branchName.slice(0, maxLength).replace(/-+$/g, "");
+  }
+
+  return `${branchName.slice(0, maxLength - suffix.length).replace(/-+$/g, "")}${suffix}`;
+}
+
+function formatBranchTimestamp(date: Date): string {
+  return date
+    .toISOString()
+    .replace(/\.\d{3}z$/i, "")
+    .replace(/[-:]/g, "")
+    .toLowerCase();
 }
 
 export async function checkRepositoryConnectivity(
@@ -154,7 +207,17 @@ export async function buildPullRequestDraft(input: PullRequestDraftInput): Promi
     : "committed_range";
 
   const baseBranch = input.baseBranch ?? (await readCurrentBranch(input.workspacePath));
-  const branchName = input.branchName ?? buildAgentBranchName(input.issueIdentifier, input.issueTitle, input.runId.slice(-8));
+  const branchSuffix = input.branch?.includeTimestamp
+    ? `${formatBranchTimestamp(new Date())}-${input.runId.slice(-8)}`
+    : input.runId.slice(-8);
+  const branchName =
+    input.branchName ??
+    buildAgentBranchName(
+      input.issueIdentifier,
+      input.issueTitle,
+      branchSuffix,
+      input.branch,
+    );
   const title = `${input.issueIdentifier}: ${input.issueTitle}`;
   const commitMessage = `${input.issueIdentifier}: ${input.issueTitle}`;
   const remoteUrl = await readRemoteUrl(input.workspacePath, input.remoteName);

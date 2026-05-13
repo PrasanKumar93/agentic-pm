@@ -90,6 +90,13 @@ export interface PullRequestSettings {
   baseBranch?: string;
   draft?: boolean;
   ghCommand?: string;
+  branch?: PullRequestBranchSettings;
+}
+
+export interface PullRequestBranchSettings {
+  prefix?: string;
+  includeTimestamp?: boolean;
+  maxLength?: number;
 }
 
 export interface Issue {

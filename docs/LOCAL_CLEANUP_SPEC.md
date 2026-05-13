@@ -63,6 +63,20 @@ The command can delete these MongoDB documents:
 
 It does not delete local workspace folders, repository checkouts, `.env`, or any files on disk.
 
+## 4.1 Generated Workspace Cleanup
+
+Generated workspace folders use a separate dry-run-first command:
+
+```txt
+pnpm cleanup:workspaces
+pnpm cleanup:workspaces -- --apply
+```
+
+This command scans `AGENTIC_PM_WORKSPACE_ROOT`, defaults to candidates older
+than `7d`, skips dirty git workspaces, and only removes candidates when
+`--apply` is present. It is intentionally separate from smoke Mongo cleanup so
+database document removal and filesystem workspace removal are explicit choices.
+
 ## 5. Safety Rules
 
 - `--apply` is required for deletion.
@@ -76,5 +90,6 @@ It does not delete local workspace folders, repository checkouts, `.env`, or any
 Required checks:
 
 - `pnpm cleanup:smoke`
+- `pnpm cleanup:workspaces`
 - `pnpm typecheck`
 - `pnpm build`

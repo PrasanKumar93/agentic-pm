@@ -52,6 +52,8 @@ Recognized warning forms:
 - `npm warn`, `pnpm warn`, and `yarn warn`.
 - Node `DeprecationWarning` and `ExperimentalWarning`.
 - Browserslist `caniuse-lite is outdated` messages.
+- Known Codex operational chatter such as local `~/.codex/state_*.sqlite`
+  migration messages and non-fatal model-personality config notices.
 
 If a stderr chunk contains error-shaped words such as `error`, `failed`, `fatal`, or `exception`, it remains `error` unless it is a Node warning class.
 

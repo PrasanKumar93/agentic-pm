@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 import {
+  buildAgentBranchName,
   buildPullRequestDraft,
   checkRepositoryConnectivity,
   checkoutPullRequestBranch,
@@ -12,6 +13,36 @@ import {
 } from "./index.js";
 
 const execFileAsync = promisify(execFile);
+
+describe("agent PR branch names", () => {
+  it("keeps the default agent prefix and run suffix", () => {
+    expect(
+      buildAgentBranchName(
+        "PRA-9",
+        "Codex webhook smoke: add status CLI",
+        "ec394304",
+      ),
+    ).toBe("agent/pra-9-codex-webhook-smoke-add-status-cli-ec394304");
+  });
+
+  it("applies repository branch policy and preserves the unique suffix when truncated", () => {
+    const branchName = buildAgentBranchName(
+      "PRA-10",
+      "Add a very long command palette workflow for repeated repository review requests",
+      "20260513t173000-abcdef12",
+      {
+        prefix: "symphony",
+        maxLength: 64,
+      },
+    );
+
+    expect(branchName).toHaveLength(64);
+    expect(branchName.startsWith("symphony/pra-10-add-a-very-long-command")).toBe(
+      true,
+    );
+    expect(branchName.endsWith("-abcdef12")).toBe(true);
+  });
+});
 
 describe("repository connectivity checks", () => {
   it("passes for a local repo with a reachable draft PR remote", async () => {

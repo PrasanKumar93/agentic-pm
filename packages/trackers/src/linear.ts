@@ -72,9 +72,56 @@ export interface LinearVerificationResult {
   missingStateNames: string[];
 }
 
+export interface LinearWebhookNode {
+  id: string;
+  label?: string | null;
+  url?: string | null;
+  enabled: boolean;
+  resourceTypes: string[];
+  allPublicTeams: boolean;
+  team?: LinearTeamNode | null;
+}
+
+export interface LinearWebhookCreateInput {
+  url: string;
+  resourceTypes: string[];
+  allPublicTeams?: boolean;
+  enabled?: boolean;
+  label?: string;
+  secret?: string;
+  teamId?: string;
+}
+
+export interface LinearWebhookUpdateInput {
+  enabled?: boolean;
+  label?: string;
+  resourceTypes?: string[];
+  secret?: string;
+  url?: string;
+}
+
+export interface LinearWebhookMutationResult {
+  success: boolean;
+  webhook?: LinearWebhookNode;
+}
+
 interface LinearNormalizeOptions {
   fallbackUrl?: string;
 }
+
+const linearWebhookSelection = `
+  id
+  label
+  url
+  enabled
+  resourceTypes
+  allPublicTeams
+  team {
+    id
+    key
+    name
+  }
+`;
 
 export class LinearTrackerAdapter implements TrackerAdapter {
   readonly kind = "linear" as const;
@@ -210,6 +257,61 @@ export class LinearTrackerAdapter implements TrackerAdapter {
     };
   }
 
+  async listWebhooks(): Promise<LinearWebhookNode[]> {
+    const query = `
+      query AgenticLinearWebhooks {
+        webhooks(first: 100) {
+          nodes {
+            ${linearWebhookSelection}
+          }
+        }
+      }
+    `;
+
+    const data = await this.request<{ webhooks: { nodes: LinearWebhookNode[] } }>(query, {});
+    return data.webhooks.nodes;
+  }
+
+  async createWebhook(input: LinearWebhookCreateInput): Promise<LinearWebhookMutationResult> {
+    const mutation = `
+      mutation AgenticLinearWebhookCreate($input: WebhookCreateInput!) {
+        webhookCreate(input: $input) {
+          success
+          webhook {
+            ${linearWebhookSelection}
+          }
+        }
+      }
+    `;
+
+    const data = await this.request<{ webhookCreate: LinearWebhookMutationResult }>(mutation, {
+      input: removeUndefined(input),
+    });
+    return data.webhookCreate;
+  }
+
+  async updateWebhook(
+    id: string,
+    input: LinearWebhookUpdateInput,
+  ): Promise<LinearWebhookMutationResult> {
+    const mutation = `
+      mutation AgenticLinearWebhookUpdate($id: String!, $input: WebhookUpdateInput!) {
+        webhookUpdate(id: $id, input: $input) {
+          success
+          webhook {
+            ${linearWebhookSelection}
+          }
+        }
+      }
+    `;
+
+    const data = await this.request<{ webhookUpdate: LinearWebhookMutationResult }>(mutation, {
+      id,
+      input: removeUndefined(input),
+    });
+    return data.webhookUpdate;
+  }
+
   private async findStateId(name: string): Promise<string> {
     const query = `
       query AgenticWorkflowStates($name: String!) {
@@ -317,4 +419,10 @@ function readLinearDate(value: string | null | undefined, fallback: Date): Date 
 
 function uniqueValues(values: string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function removeUndefined<T extends object>(value: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, entryValue]) => entryValue !== undefined),
+  ) as Partial<T>;
 }

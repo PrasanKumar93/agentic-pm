@@ -63,7 +63,12 @@ Prefer configuring PR mode on the managed repository from the Config view. A rep
     "mode": "github_draft",
     "remoteName": "origin",
     "baseBranch": "main",
-    "draft": true
+    "draft": true,
+    "branch": {
+      "prefix": "agent",
+      "maxLength": 120,
+      "includeTimestamp": false
+    }
   }
 }
 ```
@@ -76,6 +81,9 @@ AGENTIC_PM_GITHUB_REMOTE=origin
 AGENTIC_PM_GITHUB_BASE_BRANCH=main
 AGENTIC_PM_GITHUB_PR_DRAFT=true
 AGENTIC_PM_GH_COMMAND=gh
+AGENTIC_PM_PR_BRANCH_PREFIX=agent
+AGENTIC_PM_PR_BRANCH_MAX_LENGTH=120
+AGENTIC_PM_PR_BRANCH_INCLUDE_TIMESTAMP=false
 ```
 
 The worker will:
@@ -90,6 +98,8 @@ The worker will:
 
 If remote config is missing or `gh` fails, the run still moves to review and the worker records `github.pr.create_skipped` or `github.pr.create_failed`. This keeps local Symphony state authoritative during GitHub outages or auth problems. PR artifact metadata records `pullRequestConfigSource` as `repository` or `env`.
 
+Branch names default to `agent/<issue>-<title slug>-<run suffix>`. Repository PR settings can override the prefix, clamp the maximum branch length, and optionally include a timestamp before the run suffix. Review change requests keep using the existing PR branch recorded in the prior PR artifact.
+
 ## 5. Manual Gate
 
 The dashboard shows a manual merge gate for review-state runs. The `complete` operator action is allowed only when a work item is `waiting_for_review`.
@@ -101,8 +111,9 @@ The selected run artifact list exposes PR review evidence:
 - Local PR artifacts without `metadata.remotePrUrl` expose a compact PR URL link form in the dashboard.
 - Review-state work items show a Feedback history section above artifacts. It lists persisted reviewer feedback turns with runtime, actor, branch, base commit, and submitted feedback text.
 - Linked GitHub PR artifacts show a read-only readiness card with PR state, draft/mergeability, review summary, check summary, and blocker/pending reasons.
+- Linked GitHub PR readiness also shows the checked head commit and freshness of the readiness fetch, so follow-up review commits on the same PR branch are visible in Symphony.
 - The review-state `complete` action is exposed from a Manual completion card in run detail, not as an icon-only work-board quick action.
-- Linked GitHub PRs enable `Mark complete` only when readiness is `ready`, including already merged PRs. Blocked, pending, unknown, or missing PR evidence keeps visible completion disabled. Local-only PR artifacts can still be completed after explicit manual review because no remote readiness exists.
+- Linked GitHub PRs enable `Mark complete` only when readiness is `ready`, including already merged PRs. Blocked, pending, unknown, or missing PR evidence keeps visible completion disabled and shows a concrete next step. Local-only PR artifacts can still be completed after explicit manual review because no remote readiness exists.
 
 Manual PR linking uses:
 
@@ -183,6 +194,14 @@ AGENTIC_PM_PR_MODE=local_draft
 Set `AGENTIC_PM_PR_MODE=disabled` to skip PR draft artifact generation.
 
 `github_draft` mode requires `AGENTIC_PM_GITHUB_REMOTE`; `AGENTIC_PM_GITHUB_BASE_BRANCH` is optional and defaults to the current workspace branch.
+
+Env branch policy fallback is optional:
+
+```env
+AGENTIC_PM_PR_BRANCH_PREFIX=agent
+AGENTIC_PM_PR_BRANCH_MAX_LENGTH=120
+AGENTIC_PM_PR_BRANCH_INCLUDE_TIMESTAMP=false
+```
 
 ## 8. Validation
 

@@ -581,7 +581,10 @@ h2 {
 .webhookSetupGrid {
   display: grid;
   gap: 10px;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.2fr) minmax(0, 0.7fr) minmax(0, 0.7fr);
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.2fr) minmax(
+      0,
+      0.7fr
+    ) minmax(0, 0.7fr);
 }
 
 .runtimeStatusGrid {
@@ -953,6 +956,59 @@ h2 {
   overflow-wrap: anywhere;
 }
 
+.repositoryCheckInline {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  padding: 9px 10px;
+}
+
+.repositoryCheckInline.ok {
+  background: #f3faf7;
+  border-color: #b8ddcf;
+}
+
+.repositoryCheckInline.warn {
+  background: #fff9eb;
+  border-color: #ecd19d;
+}
+
+.repositoryCheckInline.error {
+  background: #fff3f3;
+  border-color: #efc1c1;
+}
+
+.repositoryCheckInline.empty {
+  background: #f7f8f6;
+}
+
+.repositoryCheckInline > div {
+  align-items: center;
+  display: flex;
+  gap: 7px;
+  min-width: 0;
+}
+
+.repositoryCheckInline strong {
+  font-size: 12px;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.repositoryCheckInline span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.repositoryCheckInline p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 .repoItem dl {
   display: grid;
   gap: 8px;
@@ -1232,7 +1288,10 @@ h2 {
   display: grid;
   font-size: 13px;
   gap: 10px;
-  grid-template-columns: 76px minmax(170px, 1fr) minmax(104px, 120px) 132px 164px 104px 72px 148px;
+  grid-template-columns: 76px minmax(170px, 1fr) minmax(
+      104px,
+      120px
+    ) 132px 164px 104px 72px 148px;
   min-width: 1080px;
   min-height: 46px;
   padding: 0 12px;
@@ -1629,6 +1688,27 @@ h2 {
   line-height: 1.35;
 }
 
+.completionGateNext {
+  background: #f7f9f7;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  display: grid;
+  gap: 3px;
+  padding: 8px;
+}
+
+.completionGateNext span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.completionGateNext strong {
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .completionGateReasons {
   display: grid;
   gap: 5px;
@@ -1887,12 +1967,7 @@ h2 {
 }
 
 .scrollableList {
-  background: linear-gradient(
-    to left,
-    #eef2ef 0,
-    #eef2ef 8px,
-    transparent 8px
-  );
+  background: linear-gradient(to left, #eef2ef 0, #eef2ef 8px, transparent 8px);
   border-right: 1px solid #cbd4cf;
 }
 
@@ -2133,7 +2208,10 @@ h2 {
 
 @media (max-width: 1320px) {
   .row {
-    grid-template-columns: 76px minmax(160px, 1fr) minmax(110px, 140px) 132px 164px 148px;
+    grid-template-columns: 76px minmax(160px, 1fr) minmax(
+        110px,
+        140px
+      ) 132px 164px 148px;
     min-width: 0;
   }
 

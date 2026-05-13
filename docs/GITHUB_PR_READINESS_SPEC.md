@@ -101,6 +101,8 @@ For review-state work items, the run detail panel shows `Manual completion` belo
 - Linked GitHub PR with `blocked`, `pending`, or `unknown`: disable `Mark complete` and show the readiness reasons.
 - Local-only PR artifact: enable `Mark complete` with a manual-review warning because there is no remote status to query.
 - Missing PR artifact: disable `Mark complete` until review evidence exists.
+- The PR card shows the checked head commit and readiness fetch freshness so same-PR follow-up commits are visible without opening GitHub first.
+- The completion card shows an explicit `Next step` line so the operator can tell whether to wait, fix with agent, refresh readiness, merge externally, or mark complete.
 
 The work-board row no longer shows `complete` as an icon-only quick action for review items; completion is intentionally handled from the run detail panel where the operator can see PR evidence.
 

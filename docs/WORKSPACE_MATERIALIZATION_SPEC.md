@@ -106,15 +106,52 @@ This means `before_run` can install dependencies from the checked-out repository
 - Clone failure bubbles to the worker setup failure path.
 - Setup failure marks the work item failed and records `run.setup_failed`.
 
+## Generated Workspace Cleanup
+
+Operators can inspect and prune old generated workspaces with:
+
+```bash
+pnpm cleanup:workspaces
+pnpm cleanup:workspaces -- --apply
+```
+
+Dry-run is the default. The command scans `AGENTIC_PM_WORKSPACE_ROOT`, or
+`<repo-root>/workspaces` when the env var is missing, and only treats leaf
+directories at the generated workspace layout depth as candidates. A candidate
+must be a git workspace whose git root is the candidate directory itself.
+
+Safety behavior:
+
+- Defaults to workspaces older than `7d`.
+- Skips dirty git workspaces unless `--include-dirty` is passed.
+- Supports `--project` and `--repository` filters using folder slugs.
+- Uses `git worktree remove --force` for linked worktrees and recursive removal
+  for clone fallback workspaces.
+- Refuses to treat the source repo root or its parent as a generated workspace
+  root.
+
+## Pull Request Branch Policy
+
+New PR drafts use the repository PR branch policy when present, then fall back
+to env policy, then defaults:
+
+- `pullRequest.branch.prefix` / `AGENTIC_PM_PR_BRANCH_PREFIX`: default `agent`.
+- `pullRequest.branch.maxLength` / `AGENTIC_PM_PR_BRANCH_MAX_LENGTH`: default
+  `120`, clamped to `32..240`.
+- `pullRequest.branch.includeTimestamp` /
+  `AGENTIC_PM_PR_BRANCH_INCLUDE_TIMESTAMP`: default false.
+
+The generated branch format is
+`<prefix>/<issue identifier>-<title slug>-<optional timestamp>-<run suffix>`.
+Truncation preserves the unique suffix. Review change-request reruns do not
+generate a new branch; they check out and push the existing branch from the
+prior PR artifact.
+
 ## Acceptance
 
 - `@agentic-pm/workspaces` test creates a throwaway git repository and verifies `prepareIssueWorkspace` materializes it as a git worktree.
+- `@agentic-pm/git` tests verify default branch names and repository policy truncation.
+- `pnpm cleanup:workspaces -- --json` reports candidate/skipped generated workspaces without removing them.
 - `pnpm --filter @agentic-pm/workspaces test` passes.
 - `pnpm typecheck` passes.
 - `pnpm build` passes.
-
-## Follow-Up
-
-- Add a repository config UI for registering multiple repositories without environment variables.
-- Add explicit branch policy controls for per-work-item branch naming.
-- Add optional cleanup/prune tooling for old detached worktrees.

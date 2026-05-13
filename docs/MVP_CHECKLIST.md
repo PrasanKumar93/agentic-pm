@@ -89,6 +89,7 @@
 - [x] Open local log, patch, test report, review packet, and plan artifacts from the dashboard.
 - [x] Show full run timelines and long artifact lists in explicit scroll regions.
 - [x] Prioritize run artifacts above compact event timeline rows in the detail panel.
+- [x] Add dry-run generated workspace prune tooling.
 - [x] Add a review change-request action that reruns Codex/Cursor on the existing PR branch and pushes a follow-up commit.
 - [x] Handle Cursor/Codex self-committed clean workspaces by pushing the advanced HEAD to the same PR branch.
 - [x] Let queued dispatch proceed when tracker polling has a transient failure.
@@ -97,3 +98,4 @@
 - [x] Gate manual completion in the run detail panel with PR readiness evidence.
 - [x] Add a repeatable Codex auth/write smoke for generated repository worktrees.
 - [x] Use the Codex auth/write smoke result to fix the remaining `workspace-write` execution blocker without using `danger-full-access` as the default.
+- [x] Add repository/env PR branch naming policy controls.
